@@ -49,13 +49,18 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  overlayClassName,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
+  /** Extra classes for the backdrop — a blur, say. Opt-in per dialog rather
+   *  than applied to all of them, so a safety surface like the approval dialog
+   *  keeps the plain dimmed backdrop it was designed with. */
+  overlayClassName?: string;
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay />
+      <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(

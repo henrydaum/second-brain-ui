@@ -16,10 +16,12 @@ import {
   MessageSquarePlusIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
+  SettingsIcon,
   Trash2Icon,
 } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSecondBrain } from "@/runtime/provider";
@@ -51,6 +53,8 @@ export const ConversationSidebar: FC = () => {
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, String(collapsed));
   }, [collapsed]);
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const run = async (work: () => Promise<void>) => {
     setBusy(true);
@@ -180,6 +184,36 @@ export const ConversationSidebar: FC = () => {
         })}
       </nav>
       )}
+
+      {/* `mt-auto` is what pins this to the bottom in both states — with the
+          list unmounted there is nothing else to push it down. Separated by a
+          rule, because it is not another conversation. */}
+      <div
+        className={cn(
+          "mt-auto flex border-t p-2",
+          collapsed ? "justify-center" : "justify-start",
+        )}
+      >
+        <TooltipIconButton
+          tooltip="Settings"
+          side="right"
+          variant="ghost"
+          className="size-8 shrink-0"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <SettingsIcon className="size-4" />
+        </TooltipIconButton>
+        {!collapsed && (
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="text-muted-foreground hover:text-foreground min-w-0 flex-1 truncate px-1 text-start text-sm"
+          >
+            Settings
+          </button>
+        )}
+      </div>
+
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </aside>
   );
 };
