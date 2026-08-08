@@ -1,5 +1,5 @@
 ﻿import { type PropsWithChildren, useEffect, useState, type FC } from "react";
-import { XIcon, PlusIcon, FileText } from "lucide-react";
+import { AlertCircleIcon, FileText, MicIcon, PlusIcon, XIcon } from "lucide-react";
 import {
   AttachmentPrimitive,
   ComposerPrimitive,
@@ -106,6 +106,12 @@ const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
 
 const AttachmentThumb: FC = () => {
   const src = useAttachmentSrc();
+  // A voice note has no thumbnail and never will, so it gets its own icon
+  // rather than looking like a document that failed to render.
+  const isAudio = useAuiState((s) =>
+    Boolean(s.attachment.contentType?.startsWith("audio/")),
+  );
+  const Icon = isAudio ? MicIcon : FileText;
 
   return (
     <Avatar className="aui-attachment-tile-avatar h-full w-full rounded-none">
@@ -115,9 +121,56 @@ const AttachmentThumb: FC = () => {
         className="aui-attachment-tile-image object-cover"
       />
       <AvatarFallback>
-        <FileText className="aui-attachment-tile-fallback-icon text-muted-foreground size-8" />
+        <Icon className="aui-attachment-tile-fallback-icon text-muted-foreground size-8" />
       </AvatarFallback>
     </Avatar>
+  );
+};
+
+/**
+ * What the tile is doing, drawn over the top of it.
+ *
+ * An attachment is not instant here — the bytes go to the host a window at a
+ * time — and it can fail, because a write is a Request like any other. Without
+ * this the tile looks identical whether the file is on its way, arrived, or
+ * refused, which is the difference between a slow app and a broken one.
+ */
+const AttachmentProgress: FC = () => {
+  const status = useAuiState((s) => s.attachment.status);
+
+  if (status.type === "running") {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-[10px] font-medium text-white tabular-nums">
+        {Math.round((status.progress ?? 0) * 100)}%
+      </div>
+    );
+  }
+
+  if (status.type === "incomplete" && status.reason === "error") {
+    return (
+      <div className="border-destructive bg-destructive/15 absolute inset-0 flex items-center justify-center rounded-md border">
+        <AlertCircleIcon className="text-destructive size-5" />
+      </div>
+    );
+  }
+
+  return null;
+};
+
+/** The tooltip carries the failure's actual wording. A red tile says something
+ *  went wrong; only this says what. */
+const AttachmentLabel: FC = () => {
+  const status = useAuiState((s) => s.attachment.status);
+  const failed =
+    status.type === "incomplete" && status.reason === "error"
+      ? (status.message ?? "Could not attach this file.")
+      : null;
+
+  return (
+    <>
+      <AttachmentPrimitive.Name />
+      {failed && <span className="text-destructive block text-xs">{failed}</span>}
+    </>
   );
 };
 
@@ -153,19 +206,22 @@ const AttachmentUI: FC = () => {
         <AttachmentPreviewDialog>
           <TooltipTrigger asChild>
             <div
-              className="aui-attachment-tile bg-muted size-14 cursor-pointer overflow-hidden rounded-md border transition-opacity hover:opacity-75"
+              // `relative`, so the progress and error overlays have something
+              // to sit inside.
+              className="aui-attachment-tile bg-muted relative size-14 cursor-pointer overflow-hidden rounded-md border transition-opacity hover:opacity-75"
               role="button"
               tabIndex={0}
               aria-label={`${typeLabel} attachment`}
             >
               <AttachmentThumb />
+              <AttachmentProgress />
             </div>
           </TooltipTrigger>
         </AttachmentPreviewDialog>
         {isComposer && <AttachmentRemove />}
       </AttachmentPrimitive.Root>
       <TooltipContent side="top">
-        <AttachmentPrimitive.Name />
+        <AttachmentLabel />
       </TooltipContent>
     </Tooltip>
   );

@@ -11,12 +11,17 @@
  */
 
 import { useEffect, useState, type FC } from "react";
-import { FileIcon } from "lucide-react";
+import { FileIcon, PaperclipIcon } from "lucide-react";
 
 import type { DataMessagePartProps } from "@assistant-ui/react";
 import { downloadFromHost } from "@/lib/upload";
 
-type HostFiles = { paths: string[] };
+type HostFiles = {
+  paths: string[];
+  /** These came *from* the person, so they are names rather than host paths and
+   *  there is nothing to fetch — see `FilesPart` in `runtime/store.ts`. */
+  sent?: boolean;
+};
 
 /** Best-effort MIME from the extension. The kernel does not tell us, and the
  *  only thing riding on it is whether the browser will draw the image inline. */
@@ -106,10 +111,23 @@ const OneFile: FC<{ path: string }> = ({ path }) => {
   );
 };
 
+/** A file the person attached. Named, not fetched: the copy it was sent from is
+ *  gone by the time this renders, because ingesting moves it. */
+const SentFile: FC<{ name: string }> = ({ name }) => (
+  <span className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs">
+    <PaperclipIcon className="size-3.5" />
+    {name}
+  </span>
+);
+
 export const HostFiles: FC<DataMessagePartProps<HostFiles>> = ({ data }) => (
   <div className="my-2 flex flex-wrap items-start gap-2">
-    {data.paths.map((path: string) => (
-      <OneFile key={path} path={path} />
-    ))}
+    {data.paths.map((path: string) =>
+      data.sent ? (
+        <SentFile key={path} name={nameOf(path)} />
+      ) : (
+        <OneFile key={path} path={path} />
+      ),
+    )}
   </div>
 );

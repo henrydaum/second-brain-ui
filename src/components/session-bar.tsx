@@ -83,7 +83,10 @@ export const ErrorBanner: FC = () => {
   const taken = state.error.details === "session_taken";
 
   return (
-    <div className="border-destructive bg-destructive/10 text-destructive flex items-start gap-2 rounded-md border p-3 text-sm">
+    <div
+      data-slot="error-banner"
+      className="border-destructive bg-destructive/10 text-destructive flex items-start gap-2 rounded-md border p-3 text-sm"
+    >
       <div className="flex-1">
         <p>
           {taken

@@ -50,6 +50,7 @@ import { ApprovalDialog } from "@/components/approval-dialog";
 import { CommandPanel } from "@/components/command-panel";
 import { HostFiles } from "@/components/host-file";
 import { ErrorBanner } from "@/components/session-bar";
+import { VoiceNoteButton } from "@/components/voice-note";
 import { describeForm } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 import { HOST_FILES } from "@/runtime/convert";
@@ -219,7 +220,12 @@ const Composer: FC = () => {
               className="placeholder:text-muted-foreground max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
             />
             <div className="relative flex items-center justify-between">
-              <ComposerAddAttachment />
+              <div className="flex items-center gap-1">
+                <ComposerAddAttachment />
+                {/* Beside the paperclip because it produces the same thing: a
+                    voice note is an attachment, not a second kind of input. */}
+                <VoiceNoteButton />
+              </div>
               {/* Send and Cancel occupy the same corner: a turn is either yours
                   to start or the agent's to stop, never both. */}
               <AuiIf condition={(s) => !s.thread.isRunning}>

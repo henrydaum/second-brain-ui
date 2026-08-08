@@ -61,8 +61,16 @@ export type ToolPart = {
   error?: string | null;
 };
 
-/** Host paths the agent produced. Not URLs — see `components/host-file.tsx`. */
-export type FilesPart = { kind: "files"; paths: string[] };
+/**
+ * Files in a turn — which are two different things wearing one shape.
+ *
+ * From the agent they are **host paths**, and showing one means fetching its
+ * bytes back (`components/host-file.tsx`). From the person they are the *names*
+ * of files they just attached, and there is nothing to fetch: the scratch copy
+ * is deleted the moment the kernel ingests it, so the only honest thing to draw
+ * is the name they chose. `sent` is which of the two this is.
+ */
+export type FilesPart = { kind: "files"; paths: string[]; sent?: boolean };
 
 /**
  * A slash command being run.
@@ -226,7 +234,9 @@ export function reduce(state: State, action: Action): State {
       }
 
       const parts: Part[] = [];
-      if (action.files?.length) parts.push({ kind: "files", paths: action.files });
+      if (action.files?.length) {
+        parts.push({ kind: "files", paths: action.files, sent: true });
+      }
       if (action.text) {
         parts.push({
           kind: "text",

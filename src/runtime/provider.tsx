@@ -41,7 +41,7 @@ import {
 } from "@/lib/conversations";
 import { connect, type StreamStatus } from "@/lib/events";
 import { readConversation } from "@/lib/history";
-import { uploadToHost } from "@/lib/upload";
+import { extensionOf, uploadToHost } from "@/lib/upload";
 import { convertMessage } from "@/runtime/convert";
 import { initialState, reduce, type State } from "@/runtime/store";
 
@@ -56,7 +56,17 @@ import { initialState, reduce, type State } from "@/runtime/store";
 const hostPaths = new Map<string, string>();
 
 const attachmentAdapter: AttachmentAdapter = {
-  accept: "*/*",
+  // Everything.
+  //
+  // **A bare star, not the MIME wildcard.** assistant-ui treats this as a
+  // literal, not a pattern: the single star is special-cased as "no filter",
+  // and anything else goes through `fileMatchesAccept`, which compares MIME
+  // types and extensions against the list. The MIME wildcard matches neither
+  // of those, so *every* file was rejected — and `AddAttachment` swallows that
+  // rejection, which is why picking a file did nothing rather than saying why.
+  // The same string is also handed to the file input's `accept`, so the picker
+  // itself was filtering everything out before we were even asked.
+  accept: "*",
 
   async *add({ file }) {
     const id = crypto.randomUUID();
@@ -67,6 +77,16 @@ const attachmentAdapter: AttachmentAdapter = {
       contentType: file.type,
       file,
     };
+
+    // **Yielded before anything is attempted.** assistant-ui shows the chip on
+    // the first yield and, if this throws, marks whatever it last saw as
+    // failed — so work done before the first yield fails invisibly. Claiming
+    // the chip up front means a refused write shows up as a broken attachment
+    // rather than as a click that did nothing.
+    yield {
+      ...base,
+      status: { type: "running", reason: "uploading", progress: 0 },
+    } satisfies PendingAttachment;
 
     // Uploading here rather than in `send` so the progress bar means something:
     // by the time the person hits send, the bytes are already across and the
@@ -131,6 +151,9 @@ export type SecondBrain = {
   /** Send a line of text as if typed — how form steps and quick replies are
    *  answered, since both are plain submissions. */
   say: (text: string) => Promise<void>;
+  /** Put something in the error banner. For the surfaces that are not Requests
+   *  and so have nowhere else to fail — a refused microphone, say. */
+  report: (error: unknown) => void;
   dismissError: () => void;
   /** Put a finished command's panel away. */
   dismissCommand: () => void;
@@ -507,6 +530,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
               input_kind: "attachment",
               path: file.path,
               file_name: file.name,
+              // What decides the file's modality, and whether the current model
+              // accepts it at all — see `extensionOf`.
+              extension: extensionOf(file.name),
               caption: last ? text : "",
               // Into the watched attachment cache, so the file is extracted and
               // indexed rather than left in scratch.
@@ -595,6 +621,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       deleteConversation,
       resolve,
       say,
+      report,
       dismissError,
       dismissCommand,
     }),
@@ -609,6 +636,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       deleteConversation,
       resolve,
       say,
+      report,
       dismissError,
       dismissCommand,
     ],

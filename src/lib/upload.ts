@@ -47,6 +47,21 @@ function suffixOf(name: string): string {
 }
 
 /**
+ * The extension without its dot, which is what `frontend.submit` calls
+ * `extension`.
+ *
+ * The kernel would work this out from the file name on its own, but the
+ * extension is what decides the file's *modality* — whether it is offered to an
+ * image parser, an audio parser, or none — and which extensions the current
+ * model will accept at all. Saying it explicitly, as the Telegram frontend
+ * does, keeps that decision on something we chose rather than on how a path
+ * happened to be spelled.
+ */
+export function extensionOf(name: string): string {
+  return suffixOf(name).replace(/^\./, "");
+}
+
+/**
  * Write a file to host scratch and answer with its path.
  *
  * **A generator, so that progress can be shown.** It yields the fraction

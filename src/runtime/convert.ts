@@ -59,7 +59,7 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
         return {
           type: "data" as const,
           name: HOST_FILES,
-          data: { paths: part.paths },
+          data: { paths: part.paths, sent: part.sent === true },
         };
     }
   });
