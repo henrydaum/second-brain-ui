@@ -11,13 +11,22 @@
  * answers it, exactly as it does for anything else consequential.
  */
 
-import { useState, type FC } from "react";
-import { MessageSquarePlusIcon, Trash2Icon } from "lucide-react";
+import { useEffect, useState, type FC } from "react";
+import {
+  MessageSquarePlusIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
+  Trash2Icon,
+} from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSecondBrain } from "@/runtime/provider";
+
+/** Remembered across reloads. A collapse that undoes itself every time the page
+ *  loads is a preference the app keeps overruling. */
+const COLLAPSED_KEY = "second-brain:sidebar-collapsed";
 
 export const ConversationSidebar: FC = () => {
   const {
@@ -34,6 +43,15 @@ export const ConversationSidebar: FC = () => {
   const [busy, setBusy] = useState(false);
   const locked = busy || state.typing;
 
+  // Read lazily so the stored preference applies on the first paint rather than
+  // expanding and then snapping shut.
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(COLLAPSED_KEY) === "true",
+  );
+  useEffect(() => {
+    localStorage.setItem(COLLAPSED_KEY, String(collapsed));
+  }, [collapsed]);
+
   const run = async (work: () => Promise<void>) => {
     setBusy(true);
     try {
@@ -44,19 +62,66 @@ export const ConversationSidebar: FC = () => {
   };
 
   return (
-    <aside className="bg-sidebar flex h-full w-64 shrink-0 flex-col border-e">
-      <div className="p-2">
-        <Button
-          variant="outline"
-          className="w-full justify-start gap-2"
-          disabled={locked}
-          onClick={() => void run(newConversation)}
+    <aside
+      data-slot="conversation-sidebar"
+      data-collapsed={collapsed || undefined}
+      className={cn(
+        "bg-sidebar flex h-full shrink-0 flex-col border-e transition-[width] duration-200",
+        collapsed ? "w-12" : "w-64",
+      )}
+    >
+      {/* Collapsed, this is a rail: the toggle and New chat stay reachable,
+          because a collapsed sidebar that also hides the way to start a
+          conversation is just a smaller dead end. */}
+      <div
+        className={cn(
+          "flex items-center gap-1 p-2",
+          collapsed && "flex-col px-2",
+        )}
+      >
+        <TooltipIconButton
+          tooltip={collapsed ? "Show conversations" : "Hide conversations"}
+          side="right"
+          variant="ghost"
+          className="size-8 shrink-0"
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsed((was) => !was)}
         >
-          <MessageSquarePlusIcon className="size-4" />
-          New chat
-        </Button>
+          {collapsed ? (
+            <PanelLeftOpenIcon className="size-4" />
+          ) : (
+            <PanelLeftCloseIcon className="size-4" />
+          )}
+        </TooltipIconButton>
+
+        {collapsed ? (
+          <TooltipIconButton
+            tooltip="New chat"
+            side="right"
+            variant="ghost"
+            className="size-8 shrink-0"
+            disabled={locked}
+            onClick={() => void run(newConversation)}
+          >
+            <MessageSquarePlusIcon className="size-4" />
+          </TooltipIconButton>
+        ) : (
+          <Button
+            variant="outline"
+            className="flex-1 justify-start gap-2"
+            disabled={locked}
+            onClick={() => void run(newConversation)}
+          >
+            <MessageSquarePlusIcon className="size-4" />
+            New chat
+          </Button>
+        )}
       </div>
 
+      {/* The list itself is the only thing that actually goes away. Unmounted
+          rather than hidden, so a long list is not still being laid out behind
+          a 48px rail. */}
+      {collapsed ? null : (
       <nav className="flex-1 overflow-y-auto p-2 pt-0">
         {conversations.length === 0 && (
           <p className="text-muted-foreground px-2 py-4 text-xs">
@@ -114,6 +179,7 @@ export const ConversationSidebar: FC = () => {
           );
         })}
       </nav>
+      )}
     </aside>
   );
 };
