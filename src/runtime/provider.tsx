@@ -33,6 +33,11 @@ import {
 
 import { RequestFailed, sdk } from "@/lib/client";
 import { listCommands, type Command } from "@/lib/commands";
+import {
+  listConversations,
+  type Conversation,
+  type LoadResult,
+} from "@/lib/conversations";
 import { connect, type StreamStatus } from "@/lib/events";
 import { readConversation } from "@/lib/history";
 import { uploadToHost } from "@/lib/upload";
@@ -108,6 +113,17 @@ export type SecondBrain = {
   state: State;
   /** The server's own command catalogue, for the composer's "/" palette. */
   commands: Command[];
+  /** Every conversation this user owns, newest first. */
+  conversations: Conversation[];
+  /** The one the session is currently pointing at. */
+  conversationId: number | null;
+  /** Point the session at another conversation and show it. */
+  openConversation: (id: number) => Promise<void>;
+  /** Start a fresh conversation and switch to it. */
+  newConversation: () => Promise<void>;
+  /** Delete one. **Unsafe** — the server raises an approval dialog, which
+   *  arrives on the event stream while this is still in flight. */
+  deleteConversation: (id: number) => Promise<void>;
   /** Answer an approval. The value goes to the server; the label is the
    *  person's business. */
   resolve: (value: unknown) => Promise<void>;
@@ -140,6 +156,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   // or removed, which is rare enough that re-reading on every keystroke would
   // be a Request per character for no benefit.
   const [commands, setCommands] = useState<Command[]>([]);
+
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversationId, setConversationId] = useState<number | null>(null);
 
   /**
    * Open the stream, then boot.
@@ -182,37 +201,35 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         // So booting into one is not a convenience, it is what makes the
         // composer work at all.
         //
-        // **`conv.create`, never `conv.load`** — and that is a workaround, not
-        // a preference. `load_conversation` in the kernel restores
-        // `frontend_name` from the conversation's stored marker
-        // (`runtime/persistence.py`), so loading a conversation last used from
-        // the REPL stamps `frontend_name = "repl"` onto this session. Every
-        // Request after that is refused with "session http:… belongs to the
-        // repl frontend", permanently, because the bridge runs everything
-        // through `frontend.act` and that checks the owner.
-        //
-        // Creating is unaffected: a new conversation has no prior owner. So the
-        // conversations sidebar stays parked until the kernel carries the live
-        // binding across a load the way `reset_conversation` already does.
-        let conversationId = session?.conversation_id ?? null;
-        if (conversationId === null) {
+        // Creating rather than loading, because there is nothing to load into
+        // yet — and creating is also the one path that has never been able to
+        // take the session away from us, since a new conversation has no prior
+        // owner to be restored from.
+        let bound = session?.conversation_id ?? null;
+        if (bound === null) {
           const created = await sdk<{ id: number }>("conv.create", {
             title: "New chat",
             activate: true,
           });
-          conversationId = created?.id ?? null;
+          bound = created?.id ?? null;
         }
 
-        if (conversationId !== null) {
-          const turns = await readConversation(conversationId);
-          if (!cancelled) dispatch({ type: "history", turns });
+        if (bound !== null) {
+          const turns = await readConversation(bound);
+          if (!cancelled) {
+            dispatch({ type: "history", turns });
+            setConversationId(bound);
+          }
         }
 
-        // After the conversation, not before: the palette is useless until
-        // there is somewhere to run a command, and scrollback is what the
-        // person is waiting to see.
+        // After the conversation, not before: neither the palette nor the
+        // sidebar is any use until there is somewhere to run a command, and
+        // scrollback is what the person is actually waiting to see.
         const catalogue = await listCommands();
         if (!cancelled) setCommands(catalogue);
+
+        const listed = await listConversations();
+        if (!cancelled) setConversations(listed);
 
         // An approval raised before this page existed. The stream replays the
         // last 500 frames, so usually the real `approval` frame arrives on its
@@ -312,6 +329,92 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   );
 
   const dismissError = useCallback(() => dispatch({ type: "clearError" }), []);
+
+  /* ── Conversations ──────────────────────────────────────────────── */
+
+  const refreshConversations = useCallback(async () => {
+    try {
+      setConversations(await listConversations());
+    } catch (error) {
+      report(error);
+    }
+  }, [report]);
+
+  /**
+   * Point the session at another conversation.
+   *
+   * Not a view change — `conv.load` re-points the *session*, so after this the
+   * agent is talking about something else. The scrollback is re-read rather
+   * than taken from `conv.load`'s own `history`, because `conv.read` hands back
+   * whole rows and `history.ts` knows which of those are the kernel's own
+   * bookkeeping and must never reach the screen.
+   *
+   * Requires the kernel fix that keeps a session's frontend across a load
+   * (`runtime/persistence.py`). Without it, one switch hands `http:<thread>` to
+   * whichever frontend last had that conversation open and every later Request
+   * is refused as somebody else's.
+   */
+  const openConversation = useCallback(
+    async (id: number) => {
+      try {
+        const result = await sdk<LoadResult>("conv.load", { id });
+        if (!result?.ok) {
+          // "No such conversation." is also what a conversation this user does
+          // not own looks like — the server declines to distinguish them, and
+          // repeating its wording is more honest than inventing a reason.
+          report(new Error(result?.messages?.[0] ?? "Could not open it."));
+          return;
+        }
+        dispatch({ type: "history", turns: await readConversation(id) });
+        setConversationId(id);
+        await refreshConversations();
+      } catch (error) {
+        report(error);
+      }
+    },
+    [report, refreshConversations],
+  );
+
+  const newConversation = useCallback(async () => {
+    try {
+      const created = await sdk<{ id: number }>("conv.create", {
+        title: "New chat",
+        activate: true,
+      });
+      // `activate: true` binds it to this session, so there is nothing to load
+      // afterwards — and an empty conversation has no scrollback to read.
+      dispatch({ type: "history", turns: [] });
+      setConversationId(created?.id ?? null);
+      await refreshConversations();
+    } catch (error) {
+      report(error);
+    }
+  }, [report, refreshConversations]);
+
+  /**
+   * Delete a conversation.
+   *
+   * **Unsafe, and therefore not a plain call.** The server raises a real
+   * approval, which arrives on the event stream while this POST is still open;
+   * the modal answers it and only then does this finish. So it may sit here for
+   * as long as a person takes, which is the design rather than a hang.
+   */
+  const deleteConversation = useCallback(
+    async (id: number) => {
+      try {
+        await sdk("conv.delete", { id });
+        await refreshConversations();
+        // Deleting the one being read leaves the session pointing at nothing,
+        // which is the state where every submit answers "No conversation
+        // loaded" — so land somewhere real rather than leaving that to be
+        // discovered by typing.
+        if (id === conversationId) await newConversation();
+      } catch (error) {
+        report(error);
+      }
+    },
+    [conversationId, newConversation, refreshConversations, report],
+  );
 
   /* ── The runtime ────────────────────────────────────────────────── */
 
@@ -431,8 +534,32 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   });
 
   const value = useMemo<SecondBrain>(
-    () => ({ status, state, commands, resolve, say, dismissError }),
-    [status, state, commands, resolve, say, dismissError],
+    () => ({
+      status,
+      state,
+      commands,
+      conversations,
+      conversationId,
+      openConversation,
+      newConversation,
+      deleteConversation,
+      resolve,
+      say,
+      dismissError,
+    }),
+    [
+      status,
+      state,
+      commands,
+      conversations,
+      conversationId,
+      openConversation,
+      newConversation,
+      deleteConversation,
+      resolve,
+      say,
+      dismissError,
+    ],
   );
 
   return (

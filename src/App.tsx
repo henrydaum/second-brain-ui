@@ -9,6 +9,7 @@
 
 import type { FC } from "react";
 
+import { ConversationSidebar } from "@/components/conversation-sidebar";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { SessionBar } from "@/components/session-bar";
 import { Thread } from "@/components/thread";
@@ -19,11 +20,14 @@ export const App: FC = () => (
   // the case a boundary inside it would miss.
   <ErrorBoundary>
     <SecondBrainProvider>
-      <div className="flex h-dvh w-full flex-col overflow-hidden">
-        <SessionBar />
-        <main className="flex-1 overflow-hidden">
-          <Thread />
-        </main>
+      <div className="flex h-dvh w-full overflow-hidden">
+        <ConversationSidebar />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <SessionBar />
+          <main className="flex-1 overflow-hidden">
+            <Thread />
+          </main>
+        </div>
       </div>
     </SecondBrainProvider>
   </ErrorBoundary>
