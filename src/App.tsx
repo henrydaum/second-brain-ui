@@ -75,10 +75,16 @@ export default function App() {
   // create two conversations on a first visit.
   const booted = useRef(false);
 
-  /** Point a thread at a conversation, then load its history and show it. */
-  const open = useCallback(async (id: number) => {
+  /**
+   * Point a thread at a conversation, then load its history and show it.
+   *
+   * `quiet` suppresses the error banner so boot can *try* a conversation and
+   * move on if it will not open, rather than greeting you with a wall of red
+   * about a conversation you never asked for.
+   */
+  const open = useCallback(async (id: number, quiet = false): Promise<boolean> => {
     setBusy(true);
-    setError(null);
+    if (!quiet) setError(null);
     const thread = api.threadFor(id);
     try {
       // Already pointed here? Then there is nothing to bind, and asking the
@@ -100,16 +106,17 @@ export default function App() {
         // Deliberately fatal for this conversation rather than "carry on
         // anyway". An unbound session still accepts messages — they would land
         // in whatever conversation it does point at, silently, which is far
-        // worse than refusing to open. See the note on the load route in
-        // README; this is a server-side gap, not a client bug.
-        setError(
-          `Could not open conversation ${id}. It was not started from this ` +
-            `browser (or the server has restarted since), so it needs the ` +
-            `load route — which is not currently binding the thread. ` +
-            `New chat works, and conversations started here reopen fine.`,
-        );
+        // worse than refusing to open.
+        if (!quiet) {
+          setError(
+            `Could not open conversation ${id}: the server did not point this ` +
+              `window at it. If Second Brain was restarted since the load ` +
+              `route was fixed, this should work — otherwise it still needs ` +
+              `that restart.`,
+          );
+        }
         setActiveId(null);
-        return;
+        return false;
       }
       const stored = await api.readConversation(id);
       setInitialMessages(toInitialMessages(stored));
@@ -118,8 +125,10 @@ export default function App() {
       setRecovered((pending[0] as AgUiInterrupt | undefined) ?? null);
       setActiveId(id);
       setConversations(await api.listConversations());
+      return true;
     } catch (problem) {
-      setError(String(problem));
+      if (!quiet) setError(String(problem));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -173,8 +182,20 @@ export default function App() {
       try {
         const listed = await api.listConversations();
         setConversations(listed);
-        if (listed.length > 0) await open(listed[0].id);
-        else await startNew();
+        const exists = new Set(listed.map((conversation) => conversation.id));
+
+        // Prefer a conversation this browser started: its session is already
+        // bound, so it opens without touching the load route. The globally
+        // most recent conversation is a bad default — it may belong to another
+        // client, a scheduled job, or a leftover script.
+        for (const id of api.rememberedIds()) {
+          if (exists.has(id) && (await open(id, true))) return;
+        }
+        if (listed.length > 0 && (await open(listed[0].id, true))) return;
+
+        // Nothing opened. That is a normal state, not an error: the sidebar and
+        // New chat are both right there.
+        setBusy(false);
       } catch (problem) {
         setError(String(problem));
         setReachable(false);
@@ -244,7 +265,9 @@ export default function App() {
         <div className="min-h-0 flex-1">
           {activeId === null ? (
             <p className="text-muted-foreground p-8 text-sm">
-              {busy ? "Connecting…" : "No conversation."}
+              {busy
+                ? "Connecting…"
+                : "Pick a conversation, or start a new chat."}
             </p>
           ) : (
             // `key` is doing real work: changing it unmounts the old

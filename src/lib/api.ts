@@ -110,6 +110,21 @@ export function mintThread(): string {
   return `t-${crypto.randomUUID().slice(0, 8)}`;
 }
 
+/**
+ * Conversations this browser started, newest first.
+ *
+ * These are the ones that can be opened without the load route, because their
+ * session was bound when they were created. Used at boot to pick something
+ * that will actually open rather than the globally most recent conversation,
+ * which may well be somebody else's — or a leftover from a script.
+ */
+export function rememberedIds(): number[] {
+  return Object.keys(threadMap())
+    .map(Number)
+    .filter((id) => Number.isFinite(id))
+    .sort((a, b) => b - a);
+}
+
 // ── Reads ──────────────────────────────────────────────────────────────────
 
 export async function listConversations(): Promise<Conversation[]> {
