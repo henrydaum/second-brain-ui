@@ -55,14 +55,28 @@ import { cn } from "@/lib/utils";
 import { HOST_FILES } from "@/runtime/convert";
 import { useSecondBrain } from "@/runtime/provider";
 
-/** Shown while the agent has the turn but has not said anything yet. Without
- *  it, sending a message looks like nothing happened until the first token. */
-const WorkingIndicator: FC = () => (
-  <span className="text-muted-foreground inline-flex items-center gap-2">
-    <DotMatrix state="connecting" aria-hidden />
-    <span className="text-sm">Thinking</span>
-  </span>
-);
+/**
+ * Shown while the agent has the turn but has not said anything yet.
+ *
+ * Without it, sending a message looks like nothing happened until the first
+ * token arrives. **With it unguarded, it lies.** assistant-ui renders this slot
+ * whenever a message has nothing to show *or*, by default, whenever the last
+ * part is not text — and a command turn ends on a tool-call part, so "Thinking"
+ * would appear next to a finished command and stay there. `isRunning` follows
+ * the `typing` frame, which is the server's own statement about whether it
+ * still has the turn, so it is the only honest thing to key this on.
+ */
+const WorkingIndicator: FC = () => {
+  const running = useAuiState((s) => s.thread.isRunning);
+  if (!running) return null;
+
+  return (
+    <span className="text-muted-foreground inline-flex items-center gap-2">
+      <DotMatrix state="connecting" aria-hidden />
+      <span className="text-sm">Thinking</span>
+    </span>
+  );
+};
 
 /** How every message's parts are drawn. One object, reused by both roles, so
  *  markdown and tool rendering cannot drift between them. */
@@ -257,7 +271,15 @@ const AssistantMessage: FC = () => (
     className="fade-in animate-in relative mx-auto w-full max-w-(--thread-max-width) duration-150"
   >
     <div className="text-foreground px-2 leading-relaxed wrap-break-word">
-      <MessagePrimitive.Parts components={messageComponents} />
+      {/* `unstable_showEmptyOnNonTextEnd` defaults to true, which puts the
+          working indicator after any message not ending in text — a command
+          turn ends on its tool-call part, so it would sit beside a finished
+          command forever. An indicator belongs where there is nothing to see,
+          not next to a tool block that already reports its own state. */}
+      <MessagePrimitive.Parts
+        components={messageComponents}
+        unstable_showEmptyOnNonTextEnd={false}
+      />
       <MessagePrimitive.Error>
         <ErrorPrimitive.Root className="border-destructive bg-destructive/10 text-destructive mt-2 rounded-md border p-3 text-sm">
           <ErrorPrimitive.Message />
