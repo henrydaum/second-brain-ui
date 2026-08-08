@@ -58,11 +58,28 @@ export const ErrorBanner: FC = () => {
   const { state, dismissError } = useSecondBrain();
   if (!state.error) return null;
 
-  // A session another frontend now owns is not a failure to retry: every
-  // Request goes through `frontend.act`, which refuses it, so the thread is
-  // finished. Saying so — and offering the one recovery available from a
-  // browser — beats repeating `frontend.act: denied` at somebody who has no way
-  // to know what it means.
+  /**
+   * The server has this session recorded as another frontend's.
+   *
+   * **This should not be reachable.** The kernel's owner check is about
+   * sessions, not conversations: it stops one frontend declaring another's
+   * session attended, since attendance is what decides whether an unsafe
+   * Request raises a dialog rather than being refused. Our session key is
+   * always `http:<thread>` and we are always the http frontend, so the two can
+   * only disagree if something mislabelled the session.
+   *
+   * Native frontends survive being mislabelled because `_tag_session` re-stamps
+   * the session with their own name on every use — the REPL and Telegram open
+   * each other's conversations all day without noticing. This frontend cannot,
+   * and the reason it is fatal rather than untidy is a deadlock: every Request
+   * the bridge makes goes through `frontend.act`, *including the submit that
+   * would trigger the re-tag*, so the repair path sits behind the check that is
+   * failing.
+   *
+   * Hence the wording: an inconsistency, not a rule. Presenting it as how the
+   * system works would teach the wrong thing about conversations, which are
+   * rows in a database and belong to no frontend at all.
+   */
   const taken = state.error.details === "session_taken";
 
   return (
@@ -70,7 +87,7 @@ export const ErrorBanner: FC = () => {
       <div className="flex-1">
         <p>
           {taken
-            ? "This session now belongs to another frontend, so the server will not act on it again."
+            ? "Second Brain has this session filed under another frontend's name and is refusing to act on it. That is a stale label rather than anything you did."
             : (state.error.message ?? "Something went wrong.")}
           {!taken && state.error.code && (
             <span className="ml-2 font-mono text-xs opacity-70">
@@ -81,8 +98,9 @@ export const ErrorBanner: FC = () => {
         {taken && (
           <>
             <p className="mt-1 text-xs opacity-80">
-              Restarting Second Brain clears it. Or carry on in a fresh session —
-              the conversations are on the server either way.
+              Restarting Second Brain clears it, since sessions are only held in
+              memory. A fresh session works too — your conversations are in the
+              database and belong to no frontend.
             </p>
             <button
               onClick={() => {
