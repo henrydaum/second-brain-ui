@@ -1,0 +1,15 @@
+name = "xulux-template-base-assistant"
+type = "sandbox"
+description = "Xulux hosted Base Assistant UI template"
+
+[build]
+slim = false
+
+[runtime]
+generation = "mk3"
+memory = 4096
+
+[[runtime.ports]]
+name = "preview"
+target = 3000
+protocol = "tcp"
