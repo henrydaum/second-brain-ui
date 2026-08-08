@@ -13,16 +13,6 @@ import * as api from "@/lib/api";
 import type { Conversation, Session } from "@/lib/api";
 
 /**
- * A thread used only to ask for a new conversation.
- *
- * `POST /conversations?thread=X` works by submitting `/new` into X's session,
- * so it needs a thread to submit *into* — but a brand-new conversation has no
- * id yet, and the id is what names its real thread. This is the scratch session
- * that breaks the circularity. Nothing is ever chatted here.
- */
-const BOOTSTRAP_THREAD = "bootstrap";
-
-/**
  * One conversation, live.
  *
  * Remounted whenever the conversation changes (App gives it a `key`), which is
@@ -91,21 +81,32 @@ export default function App() {
     setError(null);
     const thread = api.threadFor(id);
     try {
-      // 202 — the bind is a submitted command, so it has *started*, not
-      // finished. Waiting for the session to actually point at the
-      // conversation is what stops the first message landing nowhere.
-      await api.loadConversation(id, thread);
-      const bound = await api.awaitBinding(thread, id);
-      if (bound === null) {
+      // Already pointed here? Then there is nothing to bind, and asking the
+      // load route to do it anyway would fail for no reason. This is the
+      // ordinary case for any conversation this browser created — it was born
+      // on this thread and never left it.
+      const existing = await api.readSession(thread);
+      let bound = existing.session?.conversation_id ?? null;
+
+      if (bound !== id) {
+        // 202 — the bind is a submitted command, so it has *started*, not
+        // finished. Waiting for the session to actually point at the
+        // conversation is what stops the first message landing nowhere.
+        await api.loadConversation(id, thread);
+        bound = await api.awaitBinding(thread, id);
+      }
+
+      if (bound !== id) {
         // Deliberately fatal for this conversation rather than "carry on
         // anyway". An unbound session still accepts messages — they would land
         // in whatever conversation it does point at, silently, which is far
         // worse than refusing to open. See the note on the load route in
         // README; this is a server-side gap, not a client bug.
         setError(
-          `Could not point this window at conversation ${id}. ` +
-            `The server's load route is not binding the thread. ` +
-            `New chat still works.`,
+          `Could not open conversation ${id}. It was not started from this ` +
+            `browser (or the server has restarted since), so it needs the ` +
+            `load route — which is not currently binding the thread. ` +
+            `New chat works, and conversations started here reopen fine.`,
         );
         setActiveId(null);
         return;
@@ -137,12 +138,17 @@ export default function App() {
     setError(null);
     try {
       const before = new Set((await api.listConversations()).map((c) => c.id));
-      await api.startConversation(BOOTSTRAP_THREAD);
+      // A fresh thread per conversation. The conversation is created *into*
+      // this thread's session, so it is bound the moment it exists and never
+      // needs the load route.
+      const thread = api.mintThread();
+      await api.startConversation(thread);
       for (let attempt = 0; attempt < 25; attempt++) {
         const now = await api.listConversations();
         const fresh = now.find((conversation) => !before.has(conversation.id));
         if (fresh) {
           setConversations(now);
+          api.rememberThread(fresh.id, thread);
           await open(fresh.id);
           return;
         }

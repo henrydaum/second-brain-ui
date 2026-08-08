@@ -69,14 +69,46 @@ export type PendingInterrupt = {
 /**
  * One AG-UI thread per conversation, which is what makes conversations
  * independent rather than one shared session being re-pointed.
- *
- * `frontend_agui.session_key` keys a session on `threadId`, and says so
+ * `frontend_agui.session_key` keys a session on `threadId` and says so
  * outright: "a client with two threads open gets two sessions, which is what
- * makes their conversations independent." Deriving the name from the id keeps
- * it stable across reloads and server restarts, so re-binding is always
- * possible without remembering anything client-side.
+ * makes their conversations independent."
+ *
+ * **The thread cannot be derived from the id, and that is forced on us.** A new
+ * conversation has to be created *on a thread* (`POST /conversations?thread=X`
+ * submits `/new` into X's session), so the thread exists before the id does.
+ * Re-pointing it afterwards to a tidier name would mean using the load route,
+ * which does not currently bind — so the thread a conversation was born on is
+ * the thread it keeps.
+ *
+ * Remembered in localStorage because the mapping is not recoverable from
+ * anything the server exposes. `conv-<id>` is the fallback for conversations
+ * this browser never created, which is also the only case that needs the load
+ * route at all.
  */
-export const threadFor = (conversationId: number) => `conv-${conversationId}`;
+const THREAD_MAP_KEY = "second-brain-ui.threads";
+
+function threadMap(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(THREAD_MAP_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+export function threadFor(conversationId: number): string {
+  return threadMap()[String(conversationId)] ?? `conv-${conversationId}`;
+}
+
+export function rememberThread(conversationId: number, thread: string): void {
+  const map = threadMap();
+  map[String(conversationId)] = thread;
+  localStorage.setItem(THREAD_MAP_KEY, JSON.stringify(map));
+}
+
+/** A thread name for a conversation that does not exist yet. */
+export function mintThread(): string {
+  return `t-${crypto.randomUUID().slice(0, 8)}`;
+}
 
 // ── Reads ──────────────────────────────────────────────────────────────────
 
