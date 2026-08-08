@@ -58,16 +58,47 @@ export const ErrorBanner: FC = () => {
   const { state, dismissError } = useSecondBrain();
   if (!state.error) return null;
 
+  // A session another frontend now owns is not a failure to retry: every
+  // Request goes through `frontend.act`, which refuses it, so the thread is
+  // finished. Saying so — and offering the one recovery available from a
+  // browser — beats repeating `frontend.act: denied` at somebody who has no way
+  // to know what it means.
+  const taken = state.error.details === "session_taken";
+
   return (
     <div className="border-destructive bg-destructive/10 text-destructive flex items-start gap-2 rounded-md border p-3 text-sm">
-      <p className="flex-1">
-        {state.error.message ?? "Something went wrong."}
-        {state.error.code && (
-          <span className="ml-2 font-mono text-xs opacity-70">
-            {state.error.code}
-          </span>
+      <div className="flex-1">
+        <p>
+          {taken
+            ? "This session now belongs to another frontend, so the server will not act on it again."
+            : (state.error.message ?? "Something went wrong.")}
+          {!taken && state.error.code && (
+            <span className="ml-2 font-mono text-xs opacity-70">
+              {state.error.code}
+            </span>
+          )}
+        </p>
+        {taken && (
+          <>
+            <p className="mt-1 text-xs opacity-80">
+              Restarting Second Brain clears it. Or carry on in a fresh session —
+              the conversations are on the server either way.
+            </p>
+            <button
+              onClick={() => {
+                // A thread name the server has never seen is a new session, and
+                // the only recovery that does not need the server restarted.
+                const url = new URL(window.location.href);
+                url.searchParams.set("thread", `web-${Date.now()}`);
+                window.location.assign(url);
+              }}
+              className="border-destructive mt-2 rounded-md border px-2 py-1 text-xs"
+            >
+              Start a fresh session
+            </button>
+          </>
         )}
-      </p>
+      </div>
       <button
         onClick={dismissError}
         aria-label="Dismiss"

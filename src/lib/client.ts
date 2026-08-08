@@ -97,6 +97,20 @@ export class RequestFailed extends Error {
   get isDeclined() {
     return this.code === "approval_declined";
   }
+
+  /**
+   * The session now belongs to a different frontend, and nothing this client
+   * does can take it back.
+   *
+   * Every Request runs through `frontend.act`, which refuses a session another
+   * frontend owns — so once this happens the thread is finished, not merely
+   * failing. It is worth naming because the recovery is not "try again": it is
+   * a new thread, or a server restart, and a person staring at a raw
+   * `frontend.act: denied` has no way to know that.
+   */
+  get isSessionTaken() {
+    return /belongs to the .* frontend/.test(this.message);
+  }
 }
 
 /**

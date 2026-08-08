@@ -20,6 +20,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type PropsWithChildren,
 } from "react";
@@ -161,6 +162,59 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const [conversationId, setConversationId] = useState<number | null>(null);
 
   /**
+   * Turn a thrown Request into the error banner.
+   *
+   * **Nothing that reaches the server may reject.** assistant-ui calls several
+   * of these from an event handler, and an unhandled rejection there unmounts
+   * the tree — the symptom is the whole page going white, with the actual cause
+   * (a refusal, a dropped connection) never shown. A failed Request is ordinary
+   * news and belongs in the banner, not in a crash.
+   *
+   * Declared here, above its callers, rather than beside the other actions: a
+   * `useCallback` that lists it as a dependency reads it while the component
+   * body is still running, so anything using it has to come after it.
+   */
+  const report = useCallback((error: unknown) => {
+    const failed = error instanceof RequestFailed;
+    dispatch({
+      type: "frame",
+      frame: {
+        kind: "error",
+        payload: {
+          message: failed
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : String(error),
+          code: failed ? error.code : "",
+          // The banner reads this to explain a dead session rather than
+          // repeating the kernel's wording at somebody who cannot act on it.
+          details: failed && error.isSessionTaken ? "session_taken" : undefined,
+        },
+      },
+    });
+  }, []);
+
+  /**
+   * The two lists the chrome is built from.
+   *
+   * Together because they fail together: both are ordinary Requests, so a
+   * session the server will not act on takes out both at once — which is what
+   * makes an empty command palette a *symptom* rather than a bug in the
+   * palette. Fetching them in one place means one retry brings back both.
+   */
+  const loadCatalogue = useCallback(async () => {
+    try {
+      setCommands(await listCommands());
+      setConversations(await listConversations());
+    } catch (error) {
+      // Reported rather than thrown: a chat window with no sidebar is still a
+      // chat window, and the banner says why it is empty.
+      report(error);
+    }
+  }, [report]);
+
+  /**
    * Open the stream, then boot.
    *
    * **Order is the whole point.** Opening `/events` is what declares that
@@ -225,11 +279,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         // After the conversation, not before: neither the palette nor the
         // sidebar is any use until there is somewhere to run a command, and
         // scrollback is what the person is actually waiting to see.
-        const catalogue = await listCommands();
-        if (!cancelled) setCommands(catalogue);
-
-        const listed = await listConversations();
-        if (!cancelled) setConversations(listed);
+        if (!cancelled) await loadCatalogue();
 
         // An approval raised before this page existed. The stream replays the
         // last 500 frames, so usually the real `approval` frame arrives on its
@@ -268,34 +318,28 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
-  /* ── What the person can do ─────────────────────────────────────── */
-
   /**
-   * Turn a thrown Request into the error banner.
+   * Come back to life when the connection does.
    *
-   * **Nothing below may reject.** assistant-ui calls these from an event
-   * handler, and an unhandled rejection there unmounts the tree — the symptom
-   * is the whole page going white, with the actual cause (a refusal, a dropped
-   * connection) never shown. A failed Request is ordinary news and belongs in
-   * the banner, not in a crash.
+   * `EventSource` reconnects on its own, so a server restart is invisible to
+   * the transport — but everything fetched over `/sdk` was read once at boot
+   * and is now stale or, if the boot failed, still empty. Re-reading on the
+   * *transition* back to open is what turns "restart Second Brain" into a fix
+   * the person sees, rather than one that also requires reloading the page.
+   *
+   * The ref skips the first open, which boot has already covered.
    */
-  const report = useCallback((error: unknown) => {
-    const failed = error instanceof RequestFailed;
-    dispatch({
-      type: "frame",
-      frame: {
-        kind: "error",
-        payload: {
-          message: failed
-            ? error.message
-            : error instanceof Error
-              ? error.message
-              : String(error),
-          code: failed ? error.code : "",
-        },
-      },
-    });
-  }, []);
+  const openedBefore = useRef(false);
+  useEffect(() => {
+    if (status !== "open") return;
+    if (!openedBefore.current) {
+      openedBefore.current = true;
+      return;
+    }
+    void loadCatalogue();
+  }, [status, loadCatalogue]);
+
+  /* ── What the person can do ─────────────────────────────────────── */
 
   const say = useCallback(
     async (text: string) => {
