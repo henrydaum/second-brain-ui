@@ -22,7 +22,6 @@ import {
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { SettingsDialog } from "@/components/settings-dialog";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSecondBrain } from "@/runtime/provider";
 
@@ -38,12 +37,22 @@ export const ConversationSidebar: FC = () => {
     newConversation,
     deleteConversation,
     state,
+    settingsOpen,
+    setSettingsOpen,
   } = useSecondBrain();
 
   // One switch at a time. Each of these is several Requests, and a second click
   // partway through would interleave two loads into one session.
   const [busy, setBusy] = useState(false);
-  const locked = busy || state.typing;
+  const commandRunning = Boolean(
+    state.command && state.command.status !== "finished",
+  );
+  const locked =
+    busy ||
+    state.typing ||
+    state.form !== null ||
+    state.approval !== null ||
+    commandRunning;
 
   // Read lazily so the stored preference applies on the first paint rather than
   // expanding and then snapping shut.
@@ -54,7 +63,10 @@ export const ConversationSidebar: FC = () => {
     localStorage.setItem(COLLAPSED_KEY, String(collapsed));
   }, [collapsed]);
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => {
+    const name = state.form?.name ?? state.command?.name;
+    if (name) setSettingsOpen(true);
+  }, [state.form?.name, state.command?.name, setSettingsOpen]);
 
   const run = async (work: () => Promise<void>) => {
     setBusy(true);
@@ -70,56 +82,52 @@ export const ConversationSidebar: FC = () => {
       data-slot="conversation-sidebar"
       data-collapsed={collapsed || undefined}
       className={cn(
-        "bg-sidebar flex h-full shrink-0 flex-col border-e transition-[width] duration-200",
+        "bg-sidebar flex h-full shrink-0 flex-col overflow-hidden border-e transition-[width] duration-200",
         collapsed ? "w-12" : "w-64",
       )}
     >
-      {/* Collapsed, this is a rail: the toggle and New chat stay reachable,
-          because a collapsed sidebar that also hides the way to start a
-          conversation is just a smaller dead end. */}
-      <div
-        className={cn(
-          "flex items-center gap-1 p-2",
-          collapsed && "flex-col px-2",
-        )}
-      >
+      {/* New chat remains pinned to the rail while its label is revealed. The
+          drawer toggle follows the moving outer edge, matching the panel it
+          opens and closes. */}
+      <div className="relative grid grid-cols-[2rem_1fr] gap-x-1 p-2 pt-11">
         <TooltipIconButton
           tooltip={collapsed ? "Show conversations" : "Hide conversations"}
           side="right"
           variant="ghost"
-          className="size-8 shrink-0"
+          className="absolute top-2 right-2 size-8 shrink-0"
           aria-expanded={!collapsed}
-          onClick={() => setCollapsed((was) => !was)}
+          onClick={() => setCollapsed((value) => !value)}
         >
           {collapsed ? (
-            <PanelLeftOpenIcon className="size-4" />
+            <PanelLeftOpenIcon className="size-4 translate-x-[0.5px]" />
           ) : (
-            <PanelLeftCloseIcon className="size-4" />
+            <PanelLeftCloseIcon className="size-4 translate-x-[0.5px]" />
           )}
         </TooltipIconButton>
 
-        {collapsed ? (
-          <TooltipIconButton
-            tooltip="New chat"
-            side="right"
-            variant="ghost"
-            className="size-8 shrink-0"
-            disabled={locked}
-            onClick={() => void run(newConversation)}
-          >
-            <MessageSquarePlusIcon className="size-4" />
-          </TooltipIconButton>
-        ) : (
-          <Button
-            variant="outline"
-            className="flex-1 justify-start gap-2"
-            disabled={locked}
-            onClick={() => void run(newConversation)}
-          >
-            <MessageSquarePlusIcon className="size-4" />
-            New chat
-          </Button>
-        )}
+        <TooltipIconButton
+          tooltip="New chat"
+          side="right"
+          variant="ghost"
+          className="col-start-1 size-8 shrink-0"
+          disabled={locked}
+          onClick={() => void run(newConversation)}
+        >
+          <MessageSquarePlusIcon className="size-4" />
+        </TooltipIconButton>
+        <button
+          type="button"
+          disabled={locked}
+          tabIndex={collapsed ? -1 : undefined}
+          aria-hidden={collapsed || undefined}
+          onClick={() => void run(newConversation)}
+          className={cn(
+            "text-muted-foreground hover:text-foreground col-start-2 min-w-0 truncate px-1 text-start text-sm transition-opacity disabled:opacity-50",
+            collapsed ? "pointer-events-none opacity-0" : "opacity-100",
+          )}
+        >
+          New chat
+        </button>
       </div>
 
       {/* The list itself is the only thing that actually goes away. Unmounted
@@ -188,12 +196,7 @@ export const ConversationSidebar: FC = () => {
       {/* `mt-auto` is what pins this to the bottom in both states — with the
           list unmounted there is nothing else to push it down. Separated by a
           rule, because it is not another conversation. */}
-      <div
-        className={cn(
-          "mt-auto flex border-t p-2",
-          collapsed ? "justify-center" : "justify-start",
-        )}
-      >
+      <div className="mt-auto grid grid-cols-[2rem_1fr] gap-x-1 border-t p-2">
         <TooltipIconButton
           tooltip="Settings"
           side="right"
@@ -203,14 +206,18 @@ export const ConversationSidebar: FC = () => {
         >
           <SettingsIcon className="size-4" />
         </TooltipIconButton>
-        {!collapsed && (
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="text-muted-foreground hover:text-foreground min-w-0 flex-1 truncate px-1 text-start text-sm"
-          >
-            Settings
-          </button>
-        )}
+        <button
+          type="button"
+          tabIndex={collapsed ? -1 : undefined}
+          aria-hidden={collapsed || undefined}
+          onClick={() => setSettingsOpen(true)}
+          className={cn(
+            "text-muted-foreground hover:text-foreground min-w-0 truncate px-1 text-start text-sm transition-opacity",
+            collapsed ? "pointer-events-none opacity-0" : "opacity-100",
+          )}
+        >
+          Settings
+        </button>
       </div>
 
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />

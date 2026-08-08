@@ -21,13 +21,8 @@ const LABELS = {
 } as const;
 
 export const SessionBar: FC = () => {
-  const { status, state } = useSecondBrain();
-
-  // "Thinking" outranks "Connected": while the agent has the turn, that is the
-  // more useful of the two facts. A dropped connection still wins over both,
-  // because it is the one that means something is wrong.
-  const label =
-    status === "open" && state.typing ? "Thinking…" : LABELS[status];
+  const { status } = useSecondBrain();
+  const label = LABELS[status];
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">

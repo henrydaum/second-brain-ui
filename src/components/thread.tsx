@@ -13,16 +13,11 @@
  * nothing here is passed any props about the conversation.
  */
 
-import { useMemo, type FC } from "react";
+import type { FC } from "react";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
-  ClockIcon,
-  MessageSquareIcon,
-  SettingsIcon,
-  SlashIcon,
   SquareIcon,
-  WrenchIcon,
 } from "lucide-react";
 import {
   AuiIf,
@@ -30,9 +25,8 @@ import {
   ErrorPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
-  unstable_useSlashCommandAdapter,
+  groupPartByType,
   useAuiState,
-  type Unstable_SlashCommand,
 } from "@assistant-ui/react";
 
 import {
@@ -40,21 +34,23 @@ import {
   ComposerAttachments,
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
-import { ComposerTriggerPopover } from "@/components/assistant-ui/composer-trigger-popover";
 import { DotMatrix } from "@/components/assistant-ui/dot-matrix";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
+import {
+  ToolGroupContent,
+  ToolGroupRoot,
+  ToolGroupTrigger,
+} from "@/components/assistant-ui/tool-group";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { ApprovalDialog } from "@/components/approval-dialog";
-import { CommandPanel } from "@/components/command-panel";
 import { HostFiles } from "@/components/host-file";
 import { ErrorBanner } from "@/components/session-bar";
+import { SecurityModePicker } from "@/components/security-mode-picker";
 import { VoiceNoteButton } from "@/components/voice-note";
-import { describeForm } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 import { HOST_FILES } from "@/runtime/convert";
-import { useSecondBrain } from "@/runtime/provider";
 
 /**
  * Shown while the agent has the turn but has not said anything yet.
@@ -72,9 +68,14 @@ const WorkingIndicator: FC = () => {
   if (!running) return null;
 
   return (
-    <span className="text-muted-foreground inline-flex items-center gap-2">
+    <span
+      className="text-muted-foreground inline-flex items-center gap-2"
+      role="status"
+      aria-live="polite"
+      aria-label="Second Brain is working"
+    >
       <DotMatrix state="connecting" aria-hidden />
-      <span className="text-sm">Thinking</span>
+      <span className="text-sm">Working</span>
     </span>
   );
 };
@@ -117,7 +118,9 @@ export const Thread: FC = () => {
       >
         <AuiIf condition={(s) => s.thread.messages.length === 0}>
           <div className="mx-auto mb-6 w-full max-w-(--thread-max-width) text-center">
-            <h1 className="text-primary text-2xl font-semibold">Second Brain</h1>
+            <h1 className="text-primary text-2xl font-semibold">
+              What can I help with?
+            </h1>
           </div>
         </AuiIf>
 
@@ -137,9 +140,6 @@ export const Thread: FC = () => {
         >
           <ScrollToBottom />
           <ErrorBanner />
-          {/* Above the composer, deliberately: a step is still answered by
-              submitting text, so the composer stays live beside it. */}
-          <CommandPanel />
           <Composer />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
@@ -163,52 +163,7 @@ const ScrollToBottom: FC = () => (
   </ThreadPrimitive.ScrollToBottom>
 );
 
-/** Category name â†’ icon, for the palette. Falls back to a slash. */
-const commandIcons: Record<string, FC<{ className?: string }>> = {
-  System: SettingsIcon,
-  Conversation: MessageSquareIcon,
-  Capabilities: WrenchIcon,
-  Automation: ClockIcon,
-};
-
-const Composer: FC = () => {
-  const { commands, say } = useSecondBrain();
-
-  /**
-   * The "/" palette, built from the server's own catalogue.
-   *
-   * **Running a command is submitting its text.** There is no separate
-   * invocation path to write and no argument parsing to get wrong: the state
-   * machine works out what the line was, and a command that needs arguments
-   * starts asking for them as `form_field` frames, which `CommandPanel` already
-   * draws. `command.call` exists for structured invocation, but going through
-   * the same door a typed line uses means the palette can never drift from what
-   * typing would have done.
-   */
-  const slash = unstable_useSlashCommandAdapter({
-    commands: useMemo(
-      () =>
-        commands.map<Unstable_SlashCommand>((command) => ({
-          id: command.name,
-          description: [command.description, describeForm(command)]
-            .filter(Boolean)
-            .join(" · "),
-          // The adapter looks icons up by this key; categories are what the
-          // server groups by, so they are what the icons key off.
-          icon: command.category,
-          execute: () => void say(`/${command.name}`),
-        })),
-      [commands, say],
-    ),
-    // Strip the half-typed "/conf" once it has been run, or the composer keeps
-    // text the person did not mean to send next.
-    removeOnExecute: true,
-    iconMap: commandIcons,
-    fallbackIcon: SlashIcon,
-  });
-
-  return (
-    <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+const Composer: FC = () => (
       <ComposerPrimitive.Root className="relative flex w-full flex-col">
         <ComposerPrimitive.AttachmentDropzone asChild>
           <div className="border-primary/25 data-[dragging=true]:border-ring focus-within:border-primary/60 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-2 data-[dragging=true]:border-dashed">
@@ -216,7 +171,7 @@ const Composer: FC = () => {
             <ComposerPrimitive.Input
               rows={1}
               autoFocus
-              placeholder="Message, or press / for commands"
+              placeholder="Message Second Brain"
               className="placeholder:text-muted-foreground max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
             />
             <div className="relative flex items-center justify-between">
@@ -225,6 +180,7 @@ const Composer: FC = () => {
                 {/* Beside the paperclip because it produces the same thing: a
                     voice note is an attachment, not a second kind of input. */}
                 <VoiceNoteButton />
+                <SecurityModePicker />
               </div>
               {/* Send and Cancel occupy the same corner: a turn is either yours
                   to start or the agent's to stop, never both. */}
@@ -259,17 +215,8 @@ const Composer: FC = () => {
           </div>
         </ComposerPrimitive.AttachmentDropzone>
 
-        {/* Anchored to the composer, opening upward — see the popover's own
-            positioning. It renders nothing until "/" is typed. */}
-        <ComposerTriggerPopover
-          char="/"
-          {...slash}
-          emptyItemsLabel="No matching commands"
-        />
       </ComposerPrimitive.Root>
-    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
-  );
-};
+);
 
 const AssistantMessage: FC = () => (
   <MessagePrimitive.Root
@@ -282,10 +229,34 @@ const AssistantMessage: FC = () => (
           turn ends on its tool-call part, so it would sit beside a finished
           command forever. An indicator belongs where there is nothing to see,
           not next to a tool block that already reports its own state. */}
-      <MessagePrimitive.Parts
-        components={messageComponents}
-        unstable_showEmptyOnNonTextEnd={false}
-      />
+      <MessagePrimitive.GroupedParts
+        groupBy={groupPartByType({ "tool-call": ["group-tool"] })}
+      >
+        {({ part, children }) => {
+          switch (part.type) {
+            case "group-tool":
+              return (
+                <ToolGroupRoot variant="ghost">
+                  <ToolGroupTrigger
+                    count={part.indices.length}
+                    active={part.status.type === "running"}
+                  />
+                  <ToolGroupContent>{children}</ToolGroupContent>
+                </ToolGroupRoot>
+              );
+            case "text":
+              return <MarkdownText />;
+            case "tool-call":
+              return part.toolUI ?? <ToolFallback {...part} />;
+            case "indicator":
+              return <WorkingIndicator />;
+            case "data":
+              return part.dataRendererUI;
+            default:
+              return null;
+          }
+        }}
+      </MessagePrimitive.GroupedParts>
       <MessagePrimitive.Error>
         <ErrorPrimitive.Root className="border-destructive bg-destructive/10 text-destructive mt-2 rounded-md border p-3 text-sm">
           <ErrorPrimitive.Message />

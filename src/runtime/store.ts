@@ -128,6 +128,10 @@ export type State = {
    *  beside `form` rather than inside it because a command outlives its steps:
    *  it still has an outcome to show once the last question is answered. */
   command: CommandRun | null;
+  /** A command the person cancelled. Frames and the HTTP response travel on
+   *  independent paths, so its final status can arrive after the panel was
+   *  dismissed. Keep its identity long enough to ignore that late tail. */
+  suppressedCommand: { callId: string; name: string } | null;
   /** Quick replies offered by a store plugin. */
   buttons: ButtonsPayload;
   error: ErrorPayload | null;
@@ -149,6 +153,7 @@ export const initialState: State = {
   approval: null,
   form: null,
   command: null,
+  suppressedCommand: null,
   buttons: [],
   error: null,
   shownText: [],
@@ -227,10 +232,27 @@ export function reduce(state: State, action: Action): State {
       // suppress anything. Once its questions are answered, the next line the
       // person types is an ordinary message again.
       const answering = state.form !== null;
+      if (action.text.trim().toLowerCase() === "/cancel" && state.command) {
+        return {
+          ...state,
+          form: null,
+          buttons: [],
+          suppressedCommand: {
+            callId: state.command.callId,
+            name: state.command.name,
+          },
+        };
+      }
       if (answering || action.text.startsWith("/")) {
         // The step has been sent, so the form goes; the command itself stays,
         // because it is about to say what it did.
-        return { ...state, form: null, buttons: [] };
+        return {
+          ...state,
+          form: null,
+          buttons: [],
+          // Starting another slash command retires the previous tombstone.
+          suppressedCommand: answering ? state.suppressedCommand : null,
+        };
       }
 
       const parts: Part[] = [];
@@ -260,6 +282,7 @@ export function reduce(state: State, action: Action): State {
         turns: [...state.turns, turn],
         form: null,
         command: null,
+        suppressedCommand: null,
         buttons: [],
       };
     }
@@ -359,6 +382,13 @@ function applyFrame(state: State, frame: Frame): State {
 
     /* Whole messages, already complete. */
     case "messages": {
+      if (
+        state.suppressedCommand &&
+        frame.payload.every((text) => /^cancelled\.?$/i.test(text.trim()))
+      ) {
+        return state;
+      }
+
       // A running command's output belongs to the command, not the chat. This
       // is how "Cancelled." and a command's results stay out of a conversation
       // that has nothing to do with them — and it is why the panel keeps the
@@ -400,9 +430,11 @@ function applyFrame(state: State, frame: Frame): State {
       // agent working during a reply and stays in the message, because that is
       // genuinely part of what it said.
       if (p.kind === "command") {
+        if (state.suppressedCommand?.callId === p.call_id) return state;
         const same = state.command?.callId === p.call_id;
         return {
           ...state,
+          suppressedCommand: null,
           command: {
             callId: p.call_id,
             name: p.command_name ?? state.command?.name ?? "command",
@@ -462,6 +494,12 @@ function applyFrame(state: State, frame: Frame): State {
     case "approval":
       return { ...state, approval: frame.payload };
     case "form_field":
+      if (
+        state.suppressedCommand?.name &&
+        state.suppressedCommand.name === frame.payload.name
+      ) {
+        return state;
+      }
       return { ...state, form: frame.payload };
     case "buttons":
       return { ...state, buttons: frame.payload };

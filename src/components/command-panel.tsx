@@ -1,200 +1,291 @@
-/**
- * A command, start to finish, without touching the chat.
- *
- * **The chat is between the person and the agent.** Choosing a tool from a list
- * is administration — it travels over the same wire, but interleaving it turns
- * the conversation into a log of button presses. So everything a command does
- * happens here: the question it is asking, the answers given so far, and
- * whatever it printed at the end.
- *
- * Above the composer rather than in a modal, because a step is still answered
- * by submitting plain text. Someone who would rather type `run_script` than
- * hunt for the button should be able to, and the composer has to stay live for
- * that.
- *
- * Prompts are markdown — the kernel sends tables describing a tool's arguments —
- * so they go through the same renderer the chat uses.
- */
+/** A conventional form renderer for Second Brain's state-machine commands. */
 
-import { useEffect, useState, type FC } from "react";
-import { CheckIcon, XIcon } from "lucide-react";
-import { TextMessagePartProvider } from "@assistant-ui/react";
+import { useEffect, useId, useState, type FC, type FormEvent } from "react";
+import {
+  CheckCircle2Icon,
+  CheckIcon,
+  CircleIcon,
+  LoaderCircleIcon,
+  XCircleIcon,
+} from "lucide-react";
 
-import { MarkdownText } from "@/components/assistant-ui/markdown-text";
+import {
+  CommandMarkdown,
+  CommandOutput,
+} from "@/components/command-renderers";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSecondBrain } from "@/runtime/provider";
 
-/**
- * Server markdown, rendered the way the chat renders it.
- *
- * `MarkdownText` reads its text from *message-part* scope, which
- * `TextMessagePartProvider` exists to supply — so it is mounted directly.
- * Wrapping it in `MessagePrimitive.Parts` instead does not work: that needs a
- * *message* scope, and there is no message here, only a string.
- */
-const Markdown: FC<{ text: string }> = ({ text }) => (
-  <TextMessagePartProvider text={text}>
-    <MarkdownText />
-  </TextMessagePartProvider>
-);
+function humanize(value?: string) {
+  return (value || "Value")
+    .replace(/[._-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 export const CommandPanel: FC = () => {
   const { state, say, dismissCommand } = useSecondBrain();
   const { command, form } = state;
   const display = form?.display;
-
+  const fieldId = useId();
   const [typed, setTyped] = useState("");
+  const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
 
-  // Each step is a fresh question, so the input clears — but it prefills with
-  // the step's default when there is one, since a default nobody can see is a
-  // default nobody uses.
   useEffect(() => {
-    setTyped(form?.field?.default != null ? String(form.field.default) : "");
+    if (!form) return;
+    const defaultValue = form?.field?.default;
+    setTyped(defaultValue != null ? String(defaultValue) : "");
+    const choices = form?.display?.choices ?? [];
+    const defaultIndex = choices.findIndex(
+      (choice) => String(choice.value) === String(defaultValue),
+    );
+    setSelectedChoice(defaultIndex >= 0 ? defaultIndex : null);
+    setAdvancing(false);
   }, [form]);
 
   if (!command && !form) return null;
 
   const choices = display?.choices ?? [];
-  const numeric =
-    form?.field?.type === "integer" || form?.field?.type === "number";
-  const answer = (text: string) => void say(text);
-
-  // Answers given so far, straight off the command's own `args` — the wire
-  // sends them cumulatively, so there is nothing to track here.
-  const collected = Object.entries(command?.args ?? {});
+  const mode = display?.input_mode ?? "text";
+  const collected = Object.entries(form?.collected ?? command?.args ?? {});
   const finished = command?.status === "finished";
   const failed = finished && command?.ok === false;
+  const advance = async (text: string) => {
+    setAdvancing(true);
+    const submitted = await say(text);
+    if (!submitted) setAdvancing(false);
+  };
+  const cancel = async () => {
+    setCancelling(true);
+    const submitted = await say("/cancel");
+    if (submitted) dismissCommand();
+    else setCancelling(false);
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (choices.length > 0 || advancing) return;
+    void advance(typed);
+  };
 
   return (
-    <div
-      data-slot="command-panel"
-      className="bg-muted/40 mx-auto w-full max-w-(--thread-max-width) overflow-hidden rounded-xl border text-sm"
-    >
-      <div className="flex items-center gap-2 border-b px-3 py-2">
-        <span className="font-mono text-xs font-medium">
-          /{command?.name ?? form?.name}
-        </span>
-
-        {collected.map(([name, value]) => (
-          // The blurb Henry asked for: what has been answered, growing a chip
-          // at a time as each step is given.
-          <span
-            key={name}
-            className="bg-background text-muted-foreground rounded-md border px-1.5 py-0.5 text-xs"
-          >
-            {name}: <span className="text-foreground">{String(value)}</span>
-          </span>
-        ))}
-
-        {finished && (
-          <span
-            className={cn(
-              "ms-auto inline-flex items-center gap-1 text-xs",
-              failed ? "text-destructive" : "text-emerald-600",
-            )}
-          >
-            {failed ? <XIcon className="size-3" /> : <CheckIcon className="size-3" />}
-            {failed ? (command?.error ?? "failed") : "done"}
-          </span>
-        )}
-      </div>
-
-      <div className="p-3">
-        {/* The question, while there is one. */}
-        {display && (
-          <>
-            <div className="[&_p]:my-0 [&_table]:my-2">
-              <Markdown text={display.prompt} />
+    <div data-slot="command-panel" className="w-full text-sm">
+      {collected.length > 0 && (
+        <dl className="bg-muted/30 mb-6 grid gap-x-6 gap-y-3 rounded-lg px-4 py-3 sm:grid-cols-2 lg:grid-cols-3">
+          {collected.map(([name, value]) => (
+            <div key={name} className="min-w-0">
+              <dt className="text-muted-foreground text-xs font-medium">
+                {humanize(name)}
+              </dt>
+              <dd className="mt-0.5 truncate font-medium" title={String(value)}>
+                {String(value)}
+              </dd>
             </div>
-            {display.assist && (
-              <p className="text-muted-foreground mt-1 text-xs">
-                {display.assist}
-              </p>
-            )}
+          ))}
+        </dl>
+      )}
+
+      {cancelling && (
+        <div className="text-muted-foreground flex items-center gap-2 py-8">
+          <LoaderCircleIcon className="size-4 animate-spin" />
+          Cancelling…
+        </div>
+      )}
+
+      {!cancelling && display && form && (
+        <form onSubmit={submit} className="space-y-6">
+          <fieldset>
+            <legend className="sr-only">{display.prompt}</legend>
+            <div className="max-w-3xl">
+              <CommandMarkdown
+                text={display.prompt}
+                className="[&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
+              />
+              {display.assist && (
+                <p className="text-muted-foreground mt-2 text-sm">
+                  {display.assist}
+                </p>
+              )}
+            </div>
 
             {choices.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {choices.map((choice, index) => (
-                  <Button
-                    key={index}
-                    size="sm"
-                    variant="outline"
-                    // The value goes to the server, the label to the person —
-                    // the same pairing rule as an approval.
-                    onClick={() => answer(String(choice.value))}
-                  >
-                    {choice.label ?? String(choice.value)}
-                  </Button>
-                ))}
+              <div
+                className={cn(
+                  "mt-5 grid gap-2",
+                  form.field?.columns === 1
+                    ? "grid-cols-1"
+                    : "sm:grid-cols-2",
+                )}
+              >
+                {choices.map((choice, index) => {
+                  const selected = selectedChoice === index;
+                  return (
+                    <label
+                      key={`${index}-${String(choice.value)}`}
+                      className={cn(
+                        "has-[:focus-visible]:border-ring has-[:focus-visible]:ring-ring/30 flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-start transition-colors has-[:focus-visible]:ring-[3px]",
+                        selected
+                          ? "border-primary bg-primary/5"
+                          : "bg-background hover:bg-muted/45",
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name={`${fieldId}-choice`}
+                        value={index}
+                        checked={selected}
+                        disabled={advancing}
+                        onChange={() => {
+                          setSelectedChoice(index);
+                          void advance(String(choice.value));
+                        }}
+                        className="sr-only"
+                      />
+                      <span
+                        className={cn(
+                          "flex size-5 shrink-0 items-center justify-center rounded-full",
+                          selected
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {selected ? (
+                          <CheckIcon className="size-3.5" />
+                        ) : (
+                          <CircleIcon className="size-5" />
+                        )}
+                      </span>
+                      <span className="font-medium">
+                        {choice.label ?? String(choice.value)}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
             ) : (
-              <form
-                className="mt-3 flex gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  answer(typed);
-                }}
-              >
-                <input
+              <div className="mt-5 max-w-3xl">
+                <label htmlFor={fieldId} className="mb-2 block font-medium">
+                  {humanize(form.field?.name)}
+                  {form.field?.required !== false && (
+                    <span className="text-destructive ms-1" aria-hidden>
+                      *
+                    </span>
+                  )}
+                </label>
+                {mode === "json" ? (
+                  <textarea
+                    id={fieldId}
                   autoFocus
-                  inputMode={numeric ? "numeric" : undefined}
-                  value={typed}
-                  onChange={(event) => setTyped(event.target.value)}
-                  className="border-input flex-1 rounded-md border bg-transparent px-3 py-1.5 outline-none focus-visible:ring-[3px]"
-                />
-                <Button type="submit" size="sm">
-                  Send
-                </Button>
-              </form>
+                    disabled={advancing}
+                    required={form.field?.required !== false}
+                    rows={6}
+                    value={typed}
+                    onChange={(event) => setTyped(event.target.value)}
+                    className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/30 w-full resize-y rounded-lg border px-3 py-2 font-mono text-sm outline-none focus-visible:ring-[3px]"
+                  />
+                ) : (
+                  <input
+                    id={fieldId}
+                    autoFocus
+                    disabled={advancing}
+                    required={form.field?.required !== false}
+                    type={mode === "number" ? "number" : "text"}
+                    step={
+                      form.field?.type === "integer" ||
+                      form.field?.type === "int"
+                        ? "1"
+                        : undefined
+                    }
+                    value={typed}
+                    onChange={(event) => setTyped(event.target.value)}
+                    className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/30 h-10 w-full rounded-lg border px-3 outline-none focus-visible:ring-[3px]"
+                  />
+                )}
+              </div>
             )}
+          </fieldset>
 
-            <div className="text-muted-foreground mt-3 flex gap-1">
-              {display.allow_back && (
-                <Button size="sm" variant="ghost" onClick={() => answer("/back")}>
-                  Back
-                </Button>
-              )}
-              {display.allow_skip && (
-                <Button size="sm" variant="ghost" onClick={() => answer("/skip")}>
-                  Skip
-                </Button>
-              )}
-              {/* `allow_cancel` is effectively always true, but it is read
-                  rather than assumed — a form nobody can get out of is the
-                  worse failure. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+            <div className="flex items-center gap-1">
               {display.allow_cancel !== false && (
-                <Button size="sm" variant="ghost" onClick={() => answer("/cancel")}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={cancelling}
+                  onClick={() => void cancel()}
+                >
                   Cancel
                 </Button>
               )}
+              {display.allow_back && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={advancing}
+                  onClick={() => void advance("/back")}
+                >
+                  Back
+                </Button>
+              )}
             </div>
-          </>
-        )}
-
-        {/* What it printed. Here rather than in the chat, which is the whole
-            point of this component. */}
-        {command && command.outcome.length > 0 && (
-          <div className={cn(display && "mt-3 border-t pt-3")}>
-            {command.outcome.map((text, index) => (
-              <Markdown key={index} text={text} />
-            ))}
+            <div className="flex items-center gap-2">
+              {display.allow_skip && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={advancing}
+                  onClick={() => void advance("/skip")}
+                >
+                  Skip
+                </Button>
+              )}
+              {choices.length === 0 && (
+                <Button type="submit" disabled={advancing}>
+                  Continue
+                </Button>
+              )}
+            </div>
           </div>
-        )}
+        </form>
+      )}
 
-        {/* Only once there is nothing left to answer — a command still asking
-            questions is dismissed with Cancel, which tells the server too. */}
-        {command && !display && (
-          <Button
-            size="sm"
-            variant="outline"
-            className={cn(command.outcome.length > 0 && "mt-3")}
-            onClick={dismissCommand}
+      {!cancelling && command && command.outcome.length > 0 && (
+        <CommandOutput output={command.outcome} />
+      )}
+
+      {!cancelling &&
+        command &&
+        !display &&
+        command.outcome.length === 0 &&
+        !finished && (
+        <div className="text-muted-foreground flex items-center gap-2 py-8">
+          <LoaderCircleIcon className="size-4 animate-spin" />
+          {advancing ? "Loading next step…" : "Running command…"}
+        </div>
+      )}
+
+      {!cancelling && command && !display && finished && (
+        <div className="mt-6 flex items-center justify-between gap-4 border-t pt-4">
+          <span
+            className={cn(
+              "inline-flex items-center gap-2 text-sm",
+              failed ? "text-destructive" : "text-muted-foreground",
+            )}
           >
+            {failed ? (
+              <XCircleIcon className="size-4" />
+            ) : (
+              <CheckCircle2Icon className="size-4 text-emerald-600" />
+            )}
+            {failed ? (command.error ?? "Command failed") : "Complete"}
+          </span>
+          <Button type="button" variant="outline" onClick={dismissCommand}>
             Close
           </Button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

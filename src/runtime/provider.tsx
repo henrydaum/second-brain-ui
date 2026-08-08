@@ -132,7 +132,7 @@ const attachmentAdapter: AttachmentAdapter = {
 export type SecondBrain = {
   status: StreamStatus;
   state: State;
-  /** The server's own command catalogue, for the composer's "/" palette. */
+  /** The server's own command catalogue, organized by Settings. */
   commands: Command[];
   /** Every conversation this user owns, newest first. */
   conversations: Conversation[];
@@ -150,13 +150,17 @@ export type SecondBrain = {
   resolve: (value: unknown) => Promise<void>;
   /** Send a line of text as if typed — how form steps and quick replies are
    *  answered, since both are plain submissions. */
-  say: (text: string) => Promise<void>;
+  say: (text: string) => Promise<boolean>;
   /** Put something in the error banner. For the surfaces that are not Requests
    *  and so have nowhere else to fail — a refused microphone, say. */
   report: (error: unknown) => void;
   dismissError: () => void;
   /** Put a finished command's panel away. */
   dismissCommand: () => void;
+  settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
+  securityMode: "lockdown" | "ask" | "yolo";
+  setSecurityMode: (mode: "lockdown" | "ask" | "yolo") => Promise<void>;
 };
 
 const SecondBrainContext = createContext<SecondBrain | null>(null);
@@ -172,6 +176,10 @@ export function useSecondBrain(): SecondBrain {
 export function SecondBrainProvider({ children }: PropsWithChildren) {
   const [state, dispatch] = useReducer(reduce, initialState);
   const [status, setStatus] = useState<StreamStatus>("connecting");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [securityMode, setSecurityModeState] = useState<
+    "lockdown" | "ask" | "yolo"
+  >("ask");
 
   // `isLoading` covers the gap between "the page is up" and "scrollback is on
   // screen", so the thread does not flash an empty-conversation welcome at
@@ -225,8 +233,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    *
    * Together because they fail together: both are ordinary Requests, so a
    * session the server will not act on takes out both at once — which is what
-   * makes an empty command palette a *symptom* rather than a bug in the
-   * palette. Fetching them in one place means one retry brings back both.
+   * makes empty Settings a *symptom* rather than a bug in that surface.
+   * Fetching them in one place means one retry brings back both.
    */
   const loadCatalogue = useCallback(async () => {
     try {
@@ -269,10 +277,14 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
     void (async () => {
       try {
-        const session = await sdk<{ conversation_id?: number | null } | null>(
+        const session = await sdk<{
+          conversation_id?: number | null;
+          mode?: "lockdown" | "ask" | "yolo" | null;
+        } | null>(
           "session.get",
           { details: true },
         );
+        if (!cancelled) setSecurityModeState(session?.mode ?? "ask");
 
         // A session is made lazily and holds no conversation until something
         // binds one, and **a session with no conversation cannot be talked
@@ -301,9 +313,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
           }
         }
 
-        // After the conversation, not before: neither the palette nor the
-        // sidebar is any use until there is somewhere to run a command, and
-        // scrollback is what the person is actually waiting to see.
+        // After the conversation, not before: neither Settings nor the sidebar
+        // is useful until there is somewhere to run a command, and scrollback
+        // is what the person is actually waiting to see.
         if (!cancelled) await loadCatalogue();
 
         // An approval raised before this page existed. The stream replays the
@@ -371,8 +383,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       dispatch({ type: "said", text });
       try {
         await sdk("frontend.submit", { input_kind: "text", text });
+        return true;
       } catch (error) {
         report(error);
+        return false;
       }
     },
     [report],
@@ -402,6 +416,51 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     () => dispatch({ type: "clearCommand" }),
     [],
   );
+
+  const refreshSecurityMode = useCallback(async () => {
+    try {
+      const session = await sdk<{
+        mode?: "lockdown" | "ask" | "yolo" | null;
+      } | null>("session.get", { details: true });
+      setSecurityModeState(session?.mode ?? "ask");
+    } catch (error) {
+      report(error);
+    }
+  }, [report]);
+
+  // A backend restart clears this ephemeral per-conversation setting. Refresh
+  // it whenever the event stream opens so the composer chip cannot keep
+  // showing the pre-restart mode after EventSource reconnects.
+  useEffect(() => {
+    if (status === "open") void refreshSecurityMode();
+  }, [status, refreshSecurityMode]);
+
+  /** Set the per-conversation mode from the dedicated composer control.
+   * The kernel treats an attended switch to Ask as Lockdown's narrow escape
+   * hatch; YOLO remains unsafe and therefore raises the normal approval. */
+  const setSecurityMode = useCallback(
+    async (mode: "lockdown" | "ask" | "yolo") => {
+      try {
+        const selected = await sdk<"lockdown" | "ask" | "yolo">(
+          "session.set_mode",
+          {
+            mode,
+            scope: "conversation",
+          },
+        );
+        setSecurityModeState(selected ?? mode);
+      } catch (error) {
+        report(error);
+      }
+    },
+    [report],
+  );
+
+  useEffect(() => {
+    if (state.command?.name !== "mode") return;
+    if (state.command.status !== "finished") return;
+    void refreshSecurityMode();
+  }, [state.command?.name, state.command?.status, refreshSecurityMode]);
 
   /* ── Conversations ──────────────────────────────────────────────── */
 
@@ -440,12 +499,13 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         }
         dispatch({ type: "history", turns: await readConversation(id) });
         setConversationId(id);
+        await refreshSecurityMode();
         await refreshConversations();
       } catch (error) {
         report(error);
       }
     },
-    [report, refreshConversations],
+    [report, refreshConversations, refreshSecurityMode],
   );
 
   const newConversation = useCallback(async () => {
@@ -458,6 +518,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       // afterwards — and an empty conversation has no scrollback to read.
       dispatch({ type: "history", turns: [] });
       setConversationId(created?.id ?? null);
+      setSecurityModeState("ask");
       await refreshConversations();
     } catch (error) {
       report(error);
@@ -624,6 +685,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       report,
       dismissError,
       dismissCommand,
+      settingsOpen,
+      setSettingsOpen,
+      securityMode,
+      setSecurityMode,
     }),
     [
       status,
@@ -639,6 +704,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       report,
       dismissError,
       dismissCommand,
+      settingsOpen,
+      securityMode,
+      setSecurityMode,
     ],
   );
 
