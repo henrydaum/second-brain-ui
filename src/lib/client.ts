@@ -38,8 +38,17 @@ const TOKEN = import.meta.env.VITE_SB_TOKEN ?? "";
  * session — a `session_key`, `token` or `key` in a request body is stripped and
  * replaced by the server, because identity is the server's to state, not ours
  * to claim. So never put one in `args`; it will be silently overwritten.
+ *
+ * The page's own `?thread=` wins over the configured default, which is what
+ * makes a second window a second conversation rather than a fight over the
+ * first. **Only one stream may be open per thread** — a second `GET /events`
+ * replaces the first — so two tabs on one thread take turns being connected and
+ * both sit there reconnecting.
  */
-export const THREAD = import.meta.env.VITE_SB_THREAD ?? "main";
+export const THREAD =
+  new URLSearchParams(window.location.search).get("thread") ||
+  import.meta.env.VITE_SB_THREAD ||
+  "main";
 
 /** Bearer auth on every request. `/events` is the one route that also takes a
  *  query token, because `EventSource` cannot send headers. */

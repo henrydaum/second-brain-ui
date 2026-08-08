@@ -13,15 +13,26 @@
  * nothing here is passed any props about the conversation.
  */
 
-import type { FC } from "react";
-import { ArrowDownIcon, ArrowUpIcon, SquareIcon } from "lucide-react";
+import { useMemo, type FC } from "react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ClockIcon,
+  MessageSquareIcon,
+  SettingsIcon,
+  SlashIcon,
+  SquareIcon,
+  WrenchIcon,
+} from "lucide-react";
 import {
   AuiIf,
   ComposerPrimitive,
   ErrorPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  unstable_useSlashCommandAdapter,
   useAuiState,
+  type Unstable_SlashCommand,
 } from "@assistant-ui/react";
 
 import {
@@ -29,6 +40,7 @@ import {
   ComposerAttachments,
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
+import { ComposerTriggerPopover } from "@/components/assistant-ui/composer-trigger-popover";
 import { DotMatrix } from "@/components/assistant-ui/dot-matrix";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
@@ -38,8 +50,10 @@ import { ApprovalDialog } from "@/components/approval-dialog";
 import { FormPanel } from "@/components/form-panel";
 import { HostFiles } from "@/components/host-file";
 import { ErrorBanner } from "@/components/session-bar";
+import { describeForm } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 import { HOST_FILES } from "@/runtime/convert";
+import { useSecondBrain } from "@/runtime/provider";
 
 /** Shown while the agent has the turn but has not said anything yet. Without
  *  it, sending a message looks like nothing happened until the first token. */
@@ -134,53 +148,108 @@ const ScrollToBottom: FC = () => (
   </ThreadPrimitive.ScrollToBottom>
 );
 
-const Composer: FC = () => (
-  <ComposerPrimitive.Root className="relative flex w-full flex-col">
-    <ComposerPrimitive.AttachmentDropzone asChild>
-      <div className="border-primary/25 data-[dragging=true]:border-ring focus-within:border-primary/60 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-2 data-[dragging=true]:border-dashed">
-        <ComposerAttachments />
-        <ComposerPrimitive.Input
-          rows={1}
-          autoFocus
-          placeholder="Message, or a slash command like /config"
-          className="placeholder:text-muted-foreground max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
+/** Category name → icon, for the palette. Falls back to a slash. */
+const commandIcons: Record<string, FC<{ className?: string }>> = {
+  System: SettingsIcon,
+  Conversation: MessageSquareIcon,
+  Capabilities: WrenchIcon,
+  Automation: ClockIcon,
+};
+
+const Composer: FC = () => {
+  const { commands, say } = useSecondBrain();
+
+  /**
+   * The "/" palette, built from the server's own catalogue.
+   *
+   * **Running a command is submitting its text.** There is no separate
+   * invocation path to write and no argument parsing to get wrong: the state
+   * machine works out what the line was, and a command that needs arguments
+   * starts asking for them as `form_field` frames, which `FormPanel` already
+   * draws. `command.call` exists for structured invocation, but going through
+   * the same door a typed line uses means the palette can never drift from what
+   * typing would have done.
+   */
+  const slash = unstable_useSlashCommandAdapter({
+    commands: useMemo(
+      () =>
+        commands.map<Unstable_SlashCommand>((command) => ({
+          id: command.name,
+          description: [command.description, describeForm(command)]
+            .filter(Boolean)
+            .join(" · "),
+          // The adapter looks icons up by this key; categories are what the
+          // server groups by, so they are what the icons key off.
+          icon: command.category,
+          execute: () => void say(`/${command.name}`),
+        })),
+      [commands, say],
+    ),
+    // Strip the half-typed "/conf" once it has been run, or the composer keeps
+    // text the person did not mean to send next.
+    removeOnExecute: true,
+    iconMap: commandIcons,
+    fallbackIcon: SlashIcon,
+  });
+
+  return (
+    <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+      <ComposerPrimitive.Root className="relative flex w-full flex-col">
+        <ComposerPrimitive.AttachmentDropzone asChild>
+          <div className="border-primary/25 data-[dragging=true]:border-ring focus-within:border-primary/60 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-2 data-[dragging=true]:border-dashed">
+            <ComposerAttachments />
+            <ComposerPrimitive.Input
+              rows={1}
+              autoFocus
+              placeholder="Message, or press / for commands"
+              className="placeholder:text-muted-foreground max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
+            />
+            <div className="relative flex items-center justify-between">
+              <ComposerAddAttachment />
+              {/* Send and Cancel occupy the same corner: a turn is either yours
+                  to start or the agent's to stop, never both. */}
+              <AuiIf condition={(s) => !s.thread.isRunning}>
+                <ComposerPrimitive.Send asChild>
+                  <TooltipIconButton
+                    tooltip="Send message"
+                    side="bottom"
+                    type="button"
+                    variant="default"
+                    size="icon"
+                    className="size-7 rounded-full"
+                  >
+                    <ArrowUpIcon className="size-4.5" />
+                  </TooltipIconButton>
+                </ComposerPrimitive.Send>
+              </AuiIf>
+              <AuiIf condition={(s) => s.thread.isRunning}>
+                <ComposerPrimitive.Cancel asChild>
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="icon"
+                    className="size-7 rounded-full"
+                    aria-label="Stop generating"
+                  >
+                    <SquareIcon className="size-3.5 fill-current" />
+                  </Button>
+                </ComposerPrimitive.Cancel>
+              </AuiIf>
+            </div>
+          </div>
+        </ComposerPrimitive.AttachmentDropzone>
+
+        {/* Anchored to the composer, opening upward — see the popover's own
+            positioning. It renders nothing until "/" is typed. */}
+        <ComposerTriggerPopover
+          char="/"
+          {...slash}
+          emptyItemsLabel="No matching commands"
         />
-        <div className="relative flex items-center justify-between">
-          <ComposerAddAttachment />
-          {/* Send and Cancel occupy the same corner: a turn is either yours to
-              start or the agent's to stop, never both. */}
-          <AuiIf condition={(s) => !s.thread.isRunning}>
-            <ComposerPrimitive.Send asChild>
-              <TooltipIconButton
-                tooltip="Send message"
-                side="bottom"
-                type="button"
-                variant="default"
-                size="icon"
-                className="size-7 rounded-full"
-              >
-                <ArrowUpIcon className="size-4.5" />
-              </TooltipIconButton>
-            </ComposerPrimitive.Send>
-          </AuiIf>
-          <AuiIf condition={(s) => s.thread.isRunning}>
-            <ComposerPrimitive.Cancel asChild>
-              <Button
-                type="button"
-                variant="default"
-                size="icon"
-                className="size-7 rounded-full"
-                aria-label="Stop generating"
-              >
-                <SquareIcon className="size-3.5 fill-current" />
-              </Button>
-            </ComposerPrimitive.Cancel>
-          </AuiIf>
-        </div>
-      </div>
-    </ComposerPrimitive.AttachmentDropzone>
-  </ComposerPrimitive.Root>
-);
+      </ComposerPrimitive.Root>
+    </ComposerPrimitive.Unstable_TriggerPopoverRoot>
+  );
+};
 
 const AssistantMessage: FC = () => (
   <MessagePrimitive.Root

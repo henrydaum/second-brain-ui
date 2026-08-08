@@ -32,6 +32,7 @@ import {
 } from "@assistant-ui/react";
 
 import { RequestFailed, sdk } from "@/lib/client";
+import { listCommands, type Command } from "@/lib/commands";
 import { connect, type StreamStatus } from "@/lib/events";
 import { readConversation } from "@/lib/history";
 import { uploadToHost } from "@/lib/upload";
@@ -105,6 +106,8 @@ const attachmentAdapter: AttachmentAdapter = {
 export type SecondBrain = {
   status: StreamStatus;
   state: State;
+  /** The server's own command catalogue, for the composer's "/" palette. */
+  commands: Command[];
   /** Answer an approval. The value goes to the server; the label is the
    *  person's business. */
   resolve: (value: unknown) => Promise<void>;
@@ -132,6 +135,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   // screen", so the thread does not flash an empty-conversation welcome at
   // someone who has a conversation.
   const [loading, setLoading] = useState(true);
+
+  // Read once at boot. The catalogue only changes when a package is installed
+  // or removed, which is rare enough that re-reading on every keystroke would
+  // be a Request per character for no benefit.
+  const [commands, setCommands] = useState<Command[]>([]);
 
   /**
    * Open the stream, then boot.
@@ -199,6 +207,12 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
           const turns = await readConversation(conversationId);
           if (!cancelled) dispatch({ type: "history", turns });
         }
+
+        // After the conversation, not before: the palette is useless until
+        // there is somewhere to run a command, and scrollback is what the
+        // person is waiting to see.
+        const catalogue = await listCommands();
+        if (!cancelled) setCommands(catalogue);
 
         // An approval raised before this page existed. The stream replays the
         // last 500 frames, so usually the real `approval` frame arrives on its
@@ -417,8 +431,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   });
 
   const value = useMemo<SecondBrain>(
-    () => ({ status, state, resolve, say, dismissError }),
-    [status, state, resolve, say, dismissError],
+    () => ({ status, state, commands, resolve, say, dismissError }),
+    [status, state, commands, resolve, say, dismissError],
   );
 
   return (

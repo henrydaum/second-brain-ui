@@ -43,7 +43,10 @@ export const FormPanel: FC = () => {
   const answer = (text: string) => void say(text);
 
   return (
-    <div className="bg-muted/40 mx-auto w-full max-w-(--thread-max-width) rounded-xl border p-3 text-sm">
+    <div
+      data-slot="form-panel"
+      className="bg-muted/40 mx-auto w-full max-w-(--thread-max-width) rounded-xl border p-3 text-sm"
+    >
       <div className="flex items-baseline justify-between gap-3">
         <p className="font-medium">{display.prompt}</p>
         {form.name && (
