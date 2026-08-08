@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  /* This file only points at the two real configs — it compiles nothing itself.
+     The alias is repeated here because `shadcn` reads *this* file to work out
+     where to put the components it generates. */
+  "compilerOptions": {
+    "paths": { "@/*": ["./src/*"] }
+  }
+}
