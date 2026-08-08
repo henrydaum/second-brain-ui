@@ -1,0 +1,115 @@
+/**
+ * Files the agent produced.
+ *
+ * An `attachments` frame carries **filesystem paths on the host** — not URLs and
+ * not bytes. The server is a Mac Mini behind a tunnel and this is a browser, so
+ * there is nothing to link to: the only way to show the file is to ask for its
+ * contents through `fs.read_bytes` and build an object URL out of them.
+ *
+ * That is a real fetch per file, so it happens here, lazily, in the component
+ * that renders one — rather than in the store, which must stay pure and cheap.
+ */
+
+import { useEffect, useState, type FC } from "react";
+import { FileIcon } from "lucide-react";
+
+import type { DataMessagePartProps } from "@assistant-ui/react";
+import { downloadFromHost } from "@/lib/upload";
+
+type HostFiles = { paths: string[] };
+
+/** Best-effort MIME from the extension. The kernel does not tell us, and the
+ *  only thing riding on it is whether the browser will draw the image inline. */
+function mimeOf(path: string): string {
+  const extension = path.split(".").pop()?.toLowerCase() ?? "";
+  const images: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+  };
+  return images[extension] ?? "application/octet-stream";
+}
+
+const nameOf = (path: string) => path.split(/[\\/]/).pop() ?? path;
+
+const OneFile: FC<{ path: string }> = ({ path }) => {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let created: string | null = null;
+
+    void (async () => {
+      try {
+        const bytes = await downloadFromHost(path);
+        if (cancelled) return;
+        created = URL.createObjectURL(new Blob([bytes], { type: mimeOf(path) }));
+        setUrl(created);
+      } catch {
+        // A file the policy will not hand over, or one that has since moved.
+        // Naming it is more useful than an empty space where it should be.
+        if (!cancelled) setFailed(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      // Object URLs hold their blob alive until revoked, and a long
+      // conversation full of images would otherwise keep every one of them.
+      if (created) URL.revokeObjectURL(created);
+    };
+  }, [path]);
+
+  const name = nameOf(path);
+
+  if (failed) {
+    return (
+      <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+        <FileIcon className="size-3.5" />
+        {name} (could not be read)
+      </span>
+    );
+  }
+
+  if (!url) {
+    return (
+      <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+        <FileIcon className="size-3.5 animate-pulse" />
+        {name}
+      </span>
+    );
+  }
+
+  if (mimeOf(path).startsWith("image/")) {
+    return (
+      <img
+        src={url}
+        alt={name}
+        className="max-h-80 rounded-lg border object-contain"
+      />
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      download={name}
+      className="hover:bg-accent inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs"
+    >
+      <FileIcon className="size-3.5" />
+      {name}
+    </a>
+  );
+};
+
+export const HostFiles: FC<DataMessagePartProps<HostFiles>> = ({ data }) => (
+  <div className="my-2 flex flex-wrap items-start gap-2">
+    {data.paths.map((path: string) => (
+      <OneFile key={path} path={path} />
+    ))}
+  </div>
+);
