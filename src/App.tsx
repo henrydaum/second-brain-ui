@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HttpAgent } from "@ag-ui/client";
-import { AssistantRuntimeProvider } from "@assistant-ui/react";
+import {
+  AssistantRuntimeProvider,
+  ExportedMessageRepository,
+} from "@assistant-ui/react";
 import { useAgUiRuntime } from "@assistant-ui/react-ag-ui";
 import type { AgUiInterrupt } from "@assistant-ui/react-ag-ui";
 
@@ -38,15 +41,34 @@ function ConversationView({
         // One thread per conversation — this is what makes conversations
         // genuinely independent rather than one session being re-pointed.
         threadId: api.threadFor(conversationId),
-        // The past, handed over at construction. Seeding here rather than
-        // pushing messages in afterwards means there is never a moment where
-        // the thread is mounted but empty.
-        initialMessages,
       }),
-    [conversationId, initialMessages],
+    [conversationId],
   );
 
-  const runtime = useAgUiRuntime({ agent });
+  /**
+   * Past messages, put on screen.
+   *
+   * **Not `HttpAgent`'s `initialMessages`**, which was the obvious-looking
+   * option and is the wrong one: that seeds the *agent's* outgoing message
+   * list — what it sends the server — and the thread UI is never built from
+   * it, so the window came up empty while the agent quietly knew the history.
+   * assistant-ui hydrates through adapters, and `history.load()` is the one
+   * that fits here because this component is remounted per conversation, so
+   * "load once on mount" is exactly the contract.
+   *
+   * `append` is a required no-op: Second Brain is already the store of record
+   * and writes every message itself. Persisting from here would be a second
+   * writer to the same history.
+   */
+  const history = useMemo(
+    () => ({
+      load: async () => ExportedMessageRepository.fromArray(initialMessages),
+      append: async () => {},
+    }),
+    [initialMessages],
+  );
+
+  const runtime = useAgUiRuntime({ agent, adapters: { history } });
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
