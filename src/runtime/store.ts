@@ -64,6 +64,34 @@ export type ToolPart = {
 /** Host paths the agent produced. Not URLs — see `components/host-file.tsx`. */
 export type FilesPart = { kind: "files"; paths: string[] };
 
+/**
+ * A slash command being run.
+ *
+ * **Commands are administration, not conversation**, so none of this reaches
+ * the transcript. The chat is between the person and the agent; choosing a tool
+ * from a list is a different activity that happens to travel over the same wire,
+ * and letting it interleave turns the conversation into a log of button
+ * presses.
+ *
+ * The wire makes this easy to separate: a `tool_status` frame for a command
+ * carries `kind: "command"`, and its `args` accumulate the answers as they are
+ * given — so this one object is both "what is running" and "what has been
+ * collected so far", with no bookkeeping of our own.
+ */
+export type CommandRun = {
+  /** `cmd:<name>:<hash>`, stable for the whole run. */
+  callId: string;
+  name: string;
+  /** Arguments collected so far. Cumulative, straight off the wire. */
+  args: Record<string, unknown>;
+  status: "started" | "progressed" | "finished";
+  narration?: string;
+  ok?: boolean;
+  error?: string | null;
+  /** Whatever it printed — captured here rather than in the chat. */
+  outcome: string[];
+};
+
 export type Part = TextPart | ToolPart | FilesPart;
 
 export type Turn = {
@@ -88,6 +116,10 @@ export type State = {
   approval: ApprovalPayload | null;
   /** A command collecting its arguments, one step at a time. */
   form: FormFieldPayload | null;
+  /** The command that form belongs to, and everything it has produced. Lives
+   *  beside `form` rather than inside it because a command outlives its steps:
+   *  it still has an outcome to show once the last question is answered. */
+  command: CommandRun | null;
   /** Quick replies offered by a store plugin. */
   buttons: ButtonsPayload;
   error: ErrorPayload | null;
@@ -108,6 +140,7 @@ export const initialState: State = {
   typing: false,
   approval: null,
   form: null,
+  command: null,
   buttons: [],
   error: null,
   shownText: [],
@@ -123,6 +156,10 @@ export type Action =
   | { type: "history"; turns: Turn[] }
   | { type: "clearApproval" }
   | { type: "clearForm" }
+  /** Put the finished command away. Its own affordance, because a command that
+   *  has printed something is not done being read just because it is done
+   *  running. */
+  | { type: "clearCommand" }
   | { type: "clearError" };
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
@@ -173,6 +210,21 @@ export function reduce(state: State, action: Action): State {
       return { ...initialState, turns: action.turns };
 
     case "said": {
+      // **Command interaction never enters the transcript.** Two shapes of it:
+      // invoking one (`/tools`), and answering a step it asked — either by
+      // typing or by pressing one of its buttons. Both are administration, and
+      // echoing them is what turned the chat into a list of button presses.
+      //
+      // Note what is *not* here: a finished command still on screen does not
+      // suppress anything. Once its questions are answered, the next line the
+      // person types is an ordinary message again.
+      const answering = state.form !== null;
+      if (answering || action.text.startsWith("/")) {
+        // The step has been sent, so the form goes; the command itself stays,
+        // because it is about to say what it did.
+        return { ...state, form: null, buttons: [] };
+      }
+
       const parts: Part[] = [];
       if (action.files?.length) parts.push({ kind: "files", paths: action.files });
       if (action.text) {
@@ -190,15 +242,24 @@ export function reduce(state: State, action: Action): State {
         running: false,
         aborted: false,
       };
-      // Answering a form clears it: the step has been sent, and leaving the
-      // panel up would invite answering it twice.
-      return { ...state, turns: [...state.turns, turn], form: null, buttons: [] };
+      // An ordinary message also puts any finished command away — the person
+      // has moved on, and its panel would otherwise sit there catching output
+      // meant for the conversation.
+      return {
+        ...state,
+        turns: [...state.turns, turn],
+        form: null,
+        command: null,
+        buttons: [],
+      };
     }
 
     case "clearApproval":
       return { ...state, approval: null };
     case "clearForm":
       return { ...state, form: null };
+    case "clearCommand":
+      return { ...state, command: null, form: null };
     case "clearError":
       return { ...state, error: null };
 
@@ -218,17 +279,24 @@ function applyFrame(state: State, frame: Frame): State {
       // Closing: everything still open is finished, including any text part
       // whose `done` frame never arrived (a crash forces `typing` back, and a
       // message stuck mid-write would otherwise pulse forever).
-      const turns = state.turns.map((turn) =>
-        turn.running
-          ? {
-              ...turn,
-              running: false,
-              parts: turn.parts.map((part) =>
-                part.kind === "text" ? { ...part, done: true } : part,
-              ),
-            }
-          : turn,
-      );
+      const turns = state.turns
+        .map((turn) =>
+          turn.running
+            ? {
+                ...turn,
+                running: false,
+                parts: turn.parts.map((part) =>
+                  part.kind === "text" ? { ...part, done: true } : part,
+                ),
+              }
+            : turn,
+        )
+        // A turn that produced nothing at all leaves no row. `typing: true`
+        // opens one before there is anything to put in it, so a turn the agent
+        // ends without speaking — or one whose only output was a command's,
+        // which belongs to the panel — would otherwise sit in the transcript as
+        // a blank message.
+        .filter((turn) => turn.parts.length > 0 || turn.running);
       return { ...state, typing: false, turns };
     }
 
@@ -281,6 +349,20 @@ function applyFrame(state: State, frame: Frame): State {
 
     /* Whole messages, already complete. */
     case "messages": {
+      // A running command's output belongs to the command, not the chat. This
+      // is how "Cancelled." and a command's results stay out of a conversation
+      // that has nothing to do with them — and it is why the panel keeps the
+      // command after it finishes, since the output arrives just after.
+      if (state.command) {
+        return {
+          ...state,
+          command: {
+            ...state.command,
+            outcome: [...state.command.outcome, ...frame.payload],
+          },
+        };
+      }
+
       let turns = state.turns;
       let turn: Turn | null = null;
       for (const text of frame.payload) {
@@ -299,9 +381,35 @@ function applyFrame(state: State, frame: Frame): State {
       return { ...state, turns };
     }
 
-    /* Tools and slash commands, which render identically. */
+    /* Tools and slash commands, which the wire reports the same way but which
+       belong in different places. */
     case "tool_status": {
       const p = frame.payload;
+
+      // A command runs the admin panel, never the transcript. A *tool* is the
+      // agent working during a reply and stays in the message, because that is
+      // genuinely part of what it said.
+      if (p.kind === "command") {
+        const same = state.command?.callId === p.call_id;
+        return {
+          ...state,
+          command: {
+            callId: p.call_id,
+            name: p.command_name ?? state.command?.name ?? "command",
+            // Cumulative on the wire, so the latest frame is the whole answer
+            // set — this is what makes the panel update as each one is given.
+            args: p.args ?? (same ? state.command!.args : {}),
+            status: p.status,
+            narration: p.narration ?? (same ? state.command?.narration : undefined),
+            ok: p.ok,
+            error: p.error,
+            // A new command replaces the last one's output; the same command
+            // keeps accumulating it.
+            outcome: same ? state.command!.outcome : [],
+          },
+        };
+      }
+
       const { turns, turn } = openTurn(state.turns);
       const existing = turn.parts.find(
         (part): part is ToolPart =>

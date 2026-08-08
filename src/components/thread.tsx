@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The chat window.
  *
  * Structurally this is the assistant-ui starter template, with everything the
@@ -47,7 +47,7 @@ import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { ApprovalDialog } from "@/components/approval-dialog";
-import { FormPanel } from "@/components/form-panel";
+import { CommandPanel } from "@/components/command-panel";
 import { HostFiles } from "@/components/host-file";
 import { ErrorBanner } from "@/components/session-bar";
 import { describeForm } from "@/lib/commands";
@@ -136,9 +136,9 @@ export const Thread: FC = () => {
         >
           <ScrollToBottom />
           <ErrorBanner />
-          {/* Above the composer, deliberately: a form step is answered by
+          {/* Above the composer, deliberately: a step is still answered by
               submitting text, so the composer stays live beside it. */}
-          <FormPanel />
+          <CommandPanel />
           <Composer />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
@@ -162,7 +162,7 @@ const ScrollToBottom: FC = () => (
   </ThreadPrimitive.ScrollToBottom>
 );
 
-/** Category name → icon, for the palette. Falls back to a slash. */
+/** Category name â†’ icon, for the palette. Falls back to a slash. */
 const commandIcons: Record<string, FC<{ className?: string }>> = {
   System: SettingsIcon,
   Conversation: MessageSquareIcon,
@@ -179,7 +179,7 @@ const Composer: FC = () => {
    * **Running a command is submitting its text.** There is no separate
    * invocation path to write and no argument parsing to get wrong: the state
    * machine works out what the line was, and a command that needs arguments
-   * starts asking for them as `form_field` frames, which `FormPanel` already
+   * starts asking for them as `form_field` frames, which `CommandPanel` already
    * draws. `command.call` exists for structured invocation, but going through
    * the same door a typed line uses means the palette can never drift from what
    * typing would have done.

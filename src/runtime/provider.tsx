@@ -132,6 +132,8 @@ export type SecondBrain = {
    *  answered, since both are plain submissions. */
   say: (text: string) => Promise<void>;
   dismissError: () => void;
+  /** Put a finished command's panel away. */
+  dismissCommand: () => void;
 };
 
 const SecondBrainContext = createContext<SecondBrain | null>(null);
@@ -373,6 +375,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   );
 
   const dismissError = useCallback(() => dispatch({ type: "clearError" }), []);
+  const dismissCommand = useCallback(
+    () => dispatch({ type: "clearCommand" }),
+    [],
+  );
 
   /* ── Conversations ──────────────────────────────────────────────── */
 
@@ -590,6 +596,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       resolve,
       say,
       dismissError,
+      dismissCommand,
     }),
     [
       status,
@@ -603,6 +610,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       resolve,
       say,
       dismissError,
+      dismissCommand,
     ],
   );
 
