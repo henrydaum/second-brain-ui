@@ -29,7 +29,13 @@ export const ToolFallback: ToolCallMessagePartComponent = ({
 }) => {
   const running = status.type === "running";
   const failed = status.type === "incomplete" || isError === true;
-  const hasDetails = Boolean(argsText || result !== undefined);
+
+  // Emptiness is decided here, not by `result !== undefined`. The kernel sends
+  // no tool output, so on success `result` is whatever blurb the agent wrote —
+  // often nothing at all, which used to render as a heading over a blank box
+  // that read as a missing value rather than an absent one.
+  const outcome = result === undefined ? "" : printable(result).trim();
+  const hasDetails = Boolean(argsText) || outcome !== "";
 
   const icon = running ? (
     <LoaderCircleIcon className="size-3.5 animate-spin" />
@@ -81,13 +87,21 @@ export const ToolFallback: ToolCallMessagePartComponent = ({
               </pre>
             </div>
           )}
-          {result !== undefined && (
+          {outcome !== "" && (
             <div>
-              <p className="text-muted-foreground mb-1.5 text-xs font-medium">
-                Result
+              {/* "Result" would be a promise the wire cannot keep. What is in
+                  here is the failure reason, or the agent's own note about the
+                  call — never the tool's return value. */}
+              <p
+                className={cn(
+                  "mb-1.5 text-xs font-medium",
+                  failed ? "text-destructive" : "text-muted-foreground",
+                )}
+              >
+                {failed ? "Error" : "Note"}
               </p>
               <pre className="bg-muted/60 max-h-56 overflow-auto rounded-md p-2.5 text-xs whitespace-pre-wrap">
-                {printable(result)}
+                {outcome}
               </pre>
             </div>
           )}

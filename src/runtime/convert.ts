@@ -43,14 +43,20 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
           // cast is the seam between the two vocabularies, and it is safe
           // because the value came off `JSON.parse`.
           args: (part.args ?? {}) as ReadonlyJSONObject,
-          // A tool-call part with no `result` reads as still running, which is
-          // exactly what "started"/"progressed" mean. Supplying one on
-          // `finished` is what flips it to done — so the narration doubles as
-          // the result text, since the kernel repeats it on `finished`
-          // deliberately for clients that only keep one line.
+          // A tool-call part with no `result` inherits the *message's* status,
+          // so a finished tool inside a still-running turn would spin forever.
+          // Supplying one on `finished` is what flips it to done — and the
+          // empty string counts, because the test is `=== undefined`.
+          //
+          // **The protocol carries no tool output.** A `tool_status` frame has
+          // `narration`, `ok` and `error` and nothing else, so the best we can
+          // say is the error, or the blurb the agent wrote about what it was
+          // doing. `||` rather than `??` on purpose: an empty narration should
+          // fall through to nothing rather than win, which is what left the
+          // renderer drawing an empty box labelled "Result".
           ...(part.status === "finished"
             ? {
-                result: part.error ?? part.narration ?? (part.ok ? "ok" : ""),
+                result: part.error || part.narration || "",
                 isError: part.ok === false,
               }
             : {}),
