@@ -101,11 +101,15 @@ const messageComponents = {
 
 export const Thread: FC = () => {
   // A conversation with nothing in it centres the composer, the way a new chat
-  // does everywhere else. `isLoading` is included so scrollback that is still
-  // being read does not flash the welcome screen on its way in.
-  const isEmpty = useAuiState(
-    (s) => s.thread.messages.length === 0 && !s.thread.isLoading,
+  // does everywhere else. The zero-message geometry applies during loading as
+  // well, so an empty chat's composer paints where it will remain instead of
+  // jumping up from the bottom. The greeting is still separately guarded by
+  // `isLoading` below, because loaded scrollback must not flash a welcome on
+  // its way in.
+  const centerComposer = useAuiState(
+    (s) => s.thread.messages.length === 0,
   );
+  const isLoading = useAuiState((s) => s.thread.isLoading);
 
   return (
     <ThreadPrimitive.Root
@@ -121,23 +125,25 @@ export const Thread: FC = () => {
         turnAnchor="top"
         className={cn(
           "relative flex flex-1 flex-col overflow-y-scroll scroll-smooth px-4 pt-4",
-          isEmpty && "justify-center",
+          centerComposer && "justify-center",
         )}
       >
-        {/* `isLoading` matters here as much as it does for `isEmpty` above.
-            Keyed on message count alone, this greeting appeared for the moment
-            between the page opening and scrollback arriving — so every load and
-            every conversation switch flashed "What can I help with?" at
-            somebody who was mid-conversation. */}
-        <AuiIf
-          condition={(s) => s.thread.messages.length === 0 && !s.thread.isLoading}
-        >
-          <div className="mx-auto mb-6 w-full max-w-(--thread-max-width) text-center">
+        {/* Keep the greeting's exact space while history loads, but hide its
+            content. An empty conversation can then reveal it without moving
+            the composer, while loaded scrollback never flashes the greeting. */}
+        {centerComposer && (
+          <div
+            aria-hidden={isLoading || undefined}
+            className={cn(
+              "mx-auto mb-6 w-full max-w-(--thread-max-width) text-center",
+              isLoading && "invisible",
+            )}
+          >
             <h1 className="text-primary text-2xl font-semibold">
               What can I help with?
             </h1>
           </div>
-        </AuiIf>
+        )}
 
         {/* `gap-y-8` rather than `6` because the assistant's footer strip lives
             *inside* this gap rather than below the message — see
@@ -156,7 +162,8 @@ export const Thread: FC = () => {
         <ThreadPrimitive.ViewportFooter
           className={cn(
             "bg-background mx-auto flex w-full max-w-(--thread-max-width) flex-col gap-3 pb-4 md:pb-6",
-            !isEmpty && "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
+            !centerComposer &&
+              "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
           )}
         >
           <ScrollToBottom />

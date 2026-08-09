@@ -11,8 +11,16 @@
  * answers it, exactly as it does for anything else consequential.
  */
 
-import { useEffect, useState, type FC } from "react";
 import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FC,
+} from "react";
+import {
+  CheckIcon,
   MessageSquarePlusIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
@@ -23,6 +31,27 @@ import {
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { SettingsDialog } from "@/components/settings-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  ALL_CONVERSATIONS_FILTER,
+  MAIN_CONVERSATIONS_FILTER,
+  categoryHue,
+  categoryLabel,
+  conversationCategory,
+  conversationFilterOptions,
+  filterIncludes,
+  filtersEqual,
+  type ConversationFilter,
+} from "@/lib/conversation-categories";
 import { MD_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { useSecondBrain } from "@/runtime/provider";
@@ -30,6 +59,37 @@ import { useSecondBrain } from "@/runtime/provider";
 /** Remembered across reloads. A collapse that undoes itself every time the page
  *  loads is a preference the app keeps overruling. */
 const COLLAPSED_KEY = "second-brain:sidebar-collapsed";
+const FILTER_KEY = "second-brain:conversation-filter";
+
+type CategoryColorStyle = CSSProperties & {
+  "--conversation-category-hue": string;
+};
+
+function categoryColorStyle(category: string): CategoryColorStyle {
+  return { "--conversation-category-hue": String(categoryHue(category)) };
+}
+
+function readConversationFilter(): ConversationFilter {
+  try {
+    const stored = JSON.parse(localStorage.getItem(FILTER_KEY) ?? "null") as {
+      type?: unknown;
+      category?: unknown;
+    } | null;
+    if (stored?.type === "all") return ALL_CONVERSATIONS_FILTER;
+    if (stored?.type === "category") {
+      if (stored.category === null) return MAIN_CONVERSATIONS_FILTER;
+      if (typeof stored.category === "string") {
+        const category = conversationCategory(stored.category);
+        return category
+          ? { type: "category", category }
+          : MAIN_CONVERSATIONS_FILTER;
+      }
+    }
+  } catch {
+    // A malformed or unavailable preference is just the default view.
+  }
+  return MAIN_CONVERSATIONS_FILTER;
+}
 
 export type ConversationSidebarProps = {
   /** Whether the overlay drawer is showing. Only meaningful below `md`, where
@@ -57,6 +117,10 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
   // One switch at a time. Each of these is several Requests, and a second click
   // partway through would interleave two loads into one session.
   const [busy, setBusy] = useState(false);
+  const [conversationFilter, setConversationFilter] =
+    useState<ConversationFilter>(readConversationFilter);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const initialFilterChecked = useRef(false);
   const commandRunning = Boolean(
     state.command && state.command.status !== "finished",
   );
@@ -76,6 +140,59 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     localStorage.setItem(COLLAPSED_KEY, String(collapsed));
   }, [collapsed]);
 
+  const filterOptions = useMemo(
+    () => conversationFilterOptions(conversations),
+    [conversations],
+  );
+  const visibleConversations = useMemo(
+    () =>
+      conversations.filter((conversation) =>
+        filterIncludes(conversationFilter, conversation),
+      ),
+    [conversations, conversationFilter],
+  );
+  const selectedFilter =
+    filterOptions.find((option) =>
+      filtersEqual(option.filter, conversationFilter),
+    ) ?? filterOptions[1];
+  const selectedFilterLabel =
+    selectedFilter.filter.type === "all" ? "All" : selectedFilter.label;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILTER_KEY, JSON.stringify(conversationFilter));
+    } catch {
+      // Filtering still works for this visit when storage is unavailable.
+    }
+  }, [conversationFilter]);
+
+  useEffect(() => {
+    if (conversations.length === 0) return;
+
+    let next = conversationFilter;
+    const savedCategoryExists = filterOptions.some((option) =>
+      filtersEqual(option.filter, next),
+    );
+    if (!savedCategoryExists) next = MAIN_CONVERSATIONS_FILTER;
+
+    if (!initialFilterChecked.current) {
+      const active = conversations.find(
+        (conversation) => conversation.id === conversationId,
+      );
+      if (active && !filterIncludes(next, active)) {
+        next = {
+          type: "category",
+          category: conversationCategory(active.category),
+        };
+      }
+      initialFilterChecked.current = true;
+    }
+
+    if (!filtersEqual(next, conversationFilter)) {
+      setConversationFilter(next);
+    }
+  }, [conversationFilter, conversationId, conversations, filterOptions]);
+
   /**
    * Two different components sharing one file.
    *
@@ -93,6 +210,10 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
    */
   const isDesktop = useMediaQuery(MD_QUERY);
   const railCollapsed = isDesktop && collapsed;
+
+  useEffect(() => {
+    if (railCollapsed) setFilterOpen(false);
+  }, [railCollapsed]);
 
   // Picking a conversation on a phone means you are done with the drawer.
   const closeDrawer = () => onOpenChange(false);
@@ -119,6 +240,16 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     } finally {
       setBusy(false);
     }
+  };
+
+  const selectConversationFilter = (filter: ConversationFilter) => {
+    initialFilterChecked.current = true;
+    setConversationFilter(filter);
+  };
+
+  const startNewConversation = () => {
+    selectConversationFilter(MAIN_CONVERSATIONS_FILTER);
+    void run(newConversation).then(closeDrawer);
   };
 
   return (
@@ -151,7 +282,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
       {/* New chat remains pinned to the rail while its label is revealed. The
           drawer toggle follows the moving outer edge, matching the panel it
           opens and closes. */}
-      <div className="relative grid grid-cols-[2rem_1fr] gap-x-1 p-2 pt-11">
+      <div className="relative grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-x-1 p-2 pt-11">
         {/* Two buttons, not one with a media query in JavaScript: on a phone
             this closes an overlay, on a laptop it collapses a rail, and those
             are different verbs with different icons and different labels. */}
@@ -182,7 +313,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           side="right"
           className="col-start-1 size-8"
           disabled={locked}
-          onClick={() => void run(newConversation).then(closeDrawer)}
+          onClick={startNewConversation}
         >
           <MessageSquarePlusIcon className="size-4" />
         </TooltipIconButton>
@@ -191,7 +322,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           disabled={locked}
           tabIndex={railCollapsed ? -1 : undefined}
           aria-hidden={railCollapsed || undefined}
-          onClick={() => void run(newConversation).then(closeDrawer)}
+          onClick={startNewConversation}
           className={cn(
             "text-muted-foreground hover:text-foreground col-start-2 min-w-0 truncate px-1 text-start text-sm transition-opacity disabled:opacity-50",
             railCollapsed ? "pointer-events-none opacity-0" : "opacity-100",
@@ -199,6 +330,106 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
         >
           New chat
         </button>
+
+        {!railCollapsed && (
+          <Popover open={filterOpen} onOpenChange={setFilterOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+              aria-label={`Filter conversations: ${selectedFilter.label}`}
+              className={cn(
+                "col-start-3 flex h-6 min-w-0 max-w-28 self-center items-center rounded-full px-2 text-xs font-medium transition-colors",
+                conversationFilter.type === "all"
+                  ? "bg-primary/10 text-primary"
+                  : conversationFilter.category === null
+                    ? "bg-muted text-muted-foreground hover:text-foreground"
+                    : "conversation-category-pill",
+                )}
+                style={
+                  conversationFilter.type === "category" &&
+                  conversationFilter.category !== null
+                    ? categoryColorStyle(conversationFilter.category)
+                    : undefined
+                }
+            >
+              <span className="truncate">{selectedFilterLabel}</span>
+            </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              sideOffset={6}
+              className="w-60 p-1.5"
+            >
+              <div
+                role="radiogroup"
+                aria-label="Conversation category"
+                className="space-y-0.5"
+              >
+                {filterOptions.map((option) => {
+                const selected = filtersEqual(
+                  option.filter,
+                  conversationFilter,
+                );
+                const category =
+                  option.filter.type === "category"
+                    ? option.filter.category
+                    : null;
+                return (
+                  <button
+                    key={
+                      option.filter.type === "all"
+                        ? "all"
+                        : `category:${JSON.stringify(option.filter.category)}`
+                    }
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    aria-label={`${option.label}, ${option.count} conversations`}
+                    title={option.label}
+                    onClick={() => {
+                      selectConversationFilter(option.filter);
+                      setFilterOpen(false);
+                    }}
+                    className={cn(
+                      "hover:bg-accent focus-visible:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm outline-none",
+                      selected && "bg-accent/70",
+                    )}
+                  >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "size-2.5 shrink-0 rounded-full",
+                        option.filter.type === "all"
+                          ? "bg-primary"
+                          : category === null
+                            ? "bg-muted-foreground/60"
+                            : "conversation-category-dot",
+                      )}
+                      style={
+                        category === null
+                          ? undefined
+                          : categoryColorStyle(category)
+                      }
+                    />
+                    <span className="min-w-0 flex-1 truncate">
+                      {option.label}
+                    </span>
+                    <span className="text-muted-foreground text-xs tabular-nums">
+                      {option.count}
+                    </span>
+                    <CheckIcon
+                      className={cn(
+                        "size-3.5 shrink-0",
+                        selected ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                  </button>
+                );
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
       </div>
 
       {/* The list itself is the only thing that actually goes away. Unmounted
@@ -206,14 +437,19 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           a 48px rail. */}
       {railCollapsed ? null : (
       <nav className="flex-1 overflow-y-auto p-2 pt-0">
-        {conversations.length === 0 && (
+        {visibleConversations.length === 0 && (
           <p className="text-muted-foreground px-2 py-4 text-xs">
-            No conversations yet.
+            {conversations.length === 0
+              ? "No conversations yet."
+              : `No ${selectedFilter.label} conversations.`}
           </p>
         )}
 
-        {conversations.map((conversation) => {
+        {visibleConversations.map((conversation) => {
           const active = conversation.id === conversationId;
+          const category = conversationCategory(conversation.category);
+          const showCategory =
+            conversationFilter.type === "all" && category !== null;
           return (
             <div
               key={conversation.id}
@@ -237,13 +473,32 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
                 <span className="block truncate text-sm">
                   {conversation.title || "Untitled"}
                 </span>
-                {conversation.updated_ago && (
+                {(conversation.updated_ago || showCategory) && (
                   // The server's own wording, rather than a second notion of
                   // "recent" computed here that could disagree with it — and
                   // relative wording rather than a date, because a list read by
                   // recency wants "how recent" answered without arithmetic.
-                  <span className="text-muted-foreground block truncate text-xs">
-                    {conversation.updated_ago}
+                  <span className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs">
+                    {conversation.updated_ago && (
+                      <span className="truncate">
+                        {conversation.updated_ago}
+                      </span>
+                    )}
+                    {showCategory && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            role="img"
+                            aria-label={`Category: ${categoryLabel(category)}`}
+                            className="conversation-category-dot size-2 shrink-0 rounded-full"
+                            style={categoryColorStyle(category)}
+                          />
+                        </TooltipTrigger>
+                        <TooltipContent variant="subtle" side="right">
+                          {categoryLabel(category)}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                   </span>
                 )}
               </button>
