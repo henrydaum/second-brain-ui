@@ -47,12 +47,23 @@ import {
   DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { choicesOf } from "@/lib/input-requests";
+import { cn } from "@/lib/utils";
 import { useSecondBrain } from "@/runtime/provider";
+
+/**
+ * Past this, options are prose rather than labels and want a column.
+ *
+ * A permission gate offers "Allow" / "Deny" / "Always allow api.brave.com" and
+ * reads best as a row. `ui.ask` and `tool_ask_question` offer whole sentences —
+ * "Notes from one of my conversations, you'll tell me which one" — and a row of
+ * those runs off the side of the dialog, taking the options at the end of it
+ * out of reach entirely.
+ */
+const LONG_ENOUGH_TO_STACK = 32;
 
 export const InputRequestDialog: FC = () => {
   const { inputRequests, resolve, cancelInputRequest } = useSecondBrain();
@@ -76,6 +87,9 @@ export const InputRequestDialog: FC = () => {
   if (!request) return null;
 
   const choices = choicesOf(request);
+  const stacked = choices.some(
+    (choice) => choice.label.length > LONG_ENOUGH_TO_STACK,
+  );
 
   const answer = (value: unknown) => {
     setAnswering(true);
@@ -133,7 +147,10 @@ export const InputRequestDialog: FC = () => {
               {/* `whitespace-pre-wrap` because the body is laid out by the
                   kernel — argument lists and command lines depend on their
                   newlines surviving. */}
-              <pre className="text-muted-foreground max-h-64 overflow-y-auto rounded-md border p-3 font-mono text-xs whitespace-pre-wrap">
+              {/* `break-words` as well as `pre-wrap`: a path or a URL with no
+                  spaces in it has nowhere to wrap, and would run past the edge
+                  the same way the buttons used to. */}
+              <pre className="text-muted-foreground max-h-64 overflow-y-auto rounded-md border p-3 font-mono text-xs break-words whitespace-pre-wrap">
                 {request.body}
               </pre>
             </DialogDescription>
@@ -159,7 +176,13 @@ export const InputRequestDialog: FC = () => {
             </Button>
           </form>
         ) : (
-          <DialogFooter className="sm:justify-start">
+          <div
+            // Not `DialogFooter`: that lays its children out in a row that
+            // neither wraps nor shrinks, which is fine for two short verbs and
+            // silently unusable for anything longer.
+            data-layout={stacked ? "stacked" : "row"}
+            className={cn("flex gap-2", stacked ? "flex-col" : "flex-wrap")}
+          >
             {choices.map((choice, index) => (
               <Button
                 key={index}
@@ -169,11 +192,20 @@ export const InputRequestDialog: FC = () => {
                 variant="outline"
                 disabled={answering}
                 onClick={() => answer(choice.value)}
+                // `whitespace-normal` and an automatic height undo the button's
+                // own defaults, which assume a label rather than a sentence and
+                // would otherwise hold one line and let it overflow. `min-w-0`
+                // lets a flex child actually shrink; without it the row's items
+                // refuse to give ground and push each other off the edge.
+                className={cn(
+                  "h-auto min-h-9 min-w-0 py-2 text-start break-words whitespace-normal",
+                  stacked && "w-full justify-start",
+                )}
               >
                 {choice.label}
               </Button>
             ))}
-          </DialogFooter>
+          </div>
         )}
 
         {/* Said quietly, but said: two gated calls in one turn each raise their

@@ -23,11 +23,16 @@
  *
  * ## Where the truth is
  *
- * The stream says a question *appeared*; it never says one went away. Nothing
- * is sent when a dialog times out at 300s, or when somebody answers it from
- * Telegram. So `reconciled` — the answer to `frontend.pending {details: true}`
- * — is the authority, and the only thing that can close a dialog nobody here
- * answered.
+ * Two frames, and between them the whole life of a question: `approval` says
+ * one appeared, `approval_settled` says one stopped waiting — because it was
+ * answered somewhere else, or because the kernel denied it by name after 300
+ * seconds. Neither of those is something this client did, and before the second
+ * frame existed neither was something it could learn except by asking on a
+ * timer.
+ *
+ * `reconciled` — the answer to `frontend.pending {details: true}` — covers the
+ * gap a stream cannot: what happened while nobody was connected. It runs when
+ * the stream opens and not otherwise, because from then on the frames say it.
  */
 
 import type { FormFieldPayload } from "@/lib/events";
@@ -49,33 +54,21 @@ export type ReconciledInput =
 export type InputRequestState = {
   /** Head first, which is the order `resolve_next_approval` works down. */
   queue: InputRequest[];
-  /**
-   * Answered from here, and not yet confirmed gone by the server.
-   *
-   * Answering is optimistic — the dialog closes before the POST lands, because
-   * that POST only completes once the *original* blocked Request finishes and
-   * a dialog left up meanwhile invites a second click. But the server keeps
-   * reporting the question as pending across that window, so a reconciliation
-   * landing inside it would put the dialog straight back up.
-   *
-   * **Suppressed exactly once**, not indefinitely. If the answer failed to
-   * land, the question really is still waiting, and a dialog hidden forever is
-   * the bug this whole file exists to fix — worse, by some distance, than a
-   * dialog that reappears and closes on a second press.
-   */
-  answered: string[];
 };
 
-export const initialInputRequests: InputRequestState = {
-  queue: [],
-  answered: [],
-};
+export const initialInputRequests: InputRequestState = { queue: [] };
 
 export type InputRequestAction =
   /** An `approval` frame off the event stream. */
   | { type: "raised"; request: InputRequest }
-  /** Answered from here. `null` answers the head, which is what a question
-   *  with no id means. */
+  /** An `approval_settled` frame: this question stopped waiting, whoever
+   *  ended it. Also how an answer from here comes back, so there is one way a
+   *  question leaves the queue rather than two that can disagree. */
+  | { type: "settled"; id: string }
+  /** Answered from here, optimistically — the dialog closes before the POST
+   *  lands, because that POST only completes once the *original* blocked
+   *  Request finishes and a dialog left up meanwhile invites a second click.
+   *  `null` answers the head, which is what a question with no id means. */
   | { type: "answered"; id: string | null }
   /** What `frontend.pending {details: true}` said.
    *
@@ -103,36 +96,30 @@ export function reduceInputRequests(
       // `Last-Event-ID` after a reconnect, so the same frame arrives twice; a
       // second copy in the queue would be a dialog that outlives its answer.
       const at = indexOf(state.queue, action.request.id);
-      if (at === -1) return { ...state, queue: [...state.queue, action.request] };
+      if (at === -1) return { queue: [...state.queue, action.request] };
       const queue = [...state.queue];
       queue[at] = action.request;
-      return { ...state, queue };
+      return { queue };
     }
 
+    case "settled":
     case "answered": {
-      if (action.id === null) {
-        return { ...state, queue: state.queue.slice(1) };
-      }
+      // A settled frame for a question we never held is ordinary: another
+      // client answered it, or it expired while this page was elsewhere.
+      if (action.id === null) return { queue: state.queue.slice(1) };
       const at = indexOf(state.queue, action.id);
       if (at === -1) return state;
-      return {
-        queue: state.queue.filter((_, index) => index !== at),
-        answered: [...state.answered, action.id],
-      };
+      return { queue: state.queue.filter((_, index) => index !== at) };
     }
 
     case "reconciled": {
       const pending = action.pending;
 
-      // Nothing is waiting. Anything still on screen is stale — it timed out,
-      // or another frontend answered it — and it must come down, because a
-      // dialog the kernel has forgotten cannot be answered and says nothing
-      // about that when you try. Every answer is settled too, by the same
-      // statement.
+      // Nothing is waiting. Anything still on screen was settled while this
+      // page was not listening, and must come down: a question the kernel has
+      // forgotten cannot be answered and says nothing about that when you try.
       if (pending === null) {
-        return state.queue.length || state.answered.length
-          ? initialInputRequests
-          : state;
+        return state.queue.length ? initialInputRequests : state;
       }
 
       // A form is a different surface with its own panel. It is reported here
@@ -141,19 +128,6 @@ export function reduceInputRequests(
       if (pending.kind === "form_field") return state;
 
       const request = pending.payload;
-
-      // Answered here a moment ago, and the server has not caught up: it
-      // settles the answer on another thread, so it keeps reporting the
-      // question through a window we would otherwise redraw it in. Forgetting
-      // the id as we skip it is what keeps this a one-time grace rather than a
-      // permanently hidden question.
-      const settling = request.id !== null && state.answered.includes(request.id);
-      if (settling) {
-        return {
-          ...state,
-          answered: state.answered.filter((id) => id !== request.id),
-        };
-      }
 
       // Already held: the stream got there first, which is the common case and
       // the reason this is an identity check rather than a boot-scoped "did a
@@ -166,7 +140,7 @@ export function reduceInputRequests(
       // front of the kernel's queue, so a non-null answer is no evidence about
       // anything behind it — appending rather than replacing is what keeps a
       // second question from being dropped.
-      return { ...state, queue: [...state.queue, request] };
+      return { queue: [...state.queue, request] };
     }
   }
 }

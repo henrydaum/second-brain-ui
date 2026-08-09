@@ -329,6 +329,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         askDispatch({ type: "raised", request: frame.payload });
         return;
       }
+      if (frame.kind === "approval_settled") {
+        askDispatch({ type: "settled", id: frame.payload.request_id });
+        return;
+      }
       dispatch({ type: "frame", frame });
     }, setStatus);
 
@@ -423,17 +427,17 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   /**
    * Ask the server what it is still waiting for.
    *
-   * **The stream says a question appeared; it never says one went away.** There
-   * is no "withdrawn" frame — a dialog that expires after 300s, or that
-   * somebody answers from Telegram, simply stops existing — so this is the only
-   * thing that can take one off the screen, and a `null` answer is as much of a
-   * result as a question is.
+   * **This covers the gap a stream cannot: what happened while nobody was
+   * connected.** A render is an event, and events are not re-sent because you
+   * asked, so a question raised before this page existed — or settled while it
+   * was away — has no frame coming. `details` makes the server hand back the
+   * question itself rather than its id, which is the difference between the
+   * real dialog and a stand-in that can only say "something was asked".
    *
-   * It is also the only route back to a question raised while the page was
-   * closed: a render is an event, and events are not re-sent because you asked.
-   * `details` makes the server hand back the question itself rather than its
-   * id, which is the difference between the real dialog and a stand-in that can
-   * only say "something was asked".
+   * Once the stream is up, `approval` and `approval_settled` say the rest, so
+   * this runs on connect and not on a timer. It used to poll every minute,
+   * which was this client working around a protocol that could announce a
+   * question and not its end.
    */
   const reconcile = useCallback(async () => {
     try {
@@ -476,20 +480,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     void reconcile();
   }, [status, reconcile]);
 
-  /**
-   * And keep asking while a dialog is up.
-   *
-   * A question can stop existing without anything being sent about it. Once a
-   * minute is far below the kernel's 300s expiry — the dialog closes well
-   * before somebody has had time to wonder why answering it does nothing — and
-   * it costs one read-only Request, only while something is actually waiting.
-   */
   const waiting = inputRequests.queue.length > 0;
-  useEffect(() => {
-    if (!waiting || status !== "open") return;
-    const timer = setInterval(() => void reconcile(), 60_000);
-    return () => clearInterval(timer);
-  }, [waiting, status, reconcile]);
 
   /* ── What the person can do ─────────────────────────────────────── */
 

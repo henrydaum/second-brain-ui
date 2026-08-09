@@ -13,6 +13,19 @@ export default defineConfig(({ mode }) => {
   return {
   plugins: [react(), tailwindcss()],
 
+  /**
+   * No DOM unless a file asks for one.
+   *
+   * The reducers are pure and want none — that is the whole reason they are
+   * reducers, and running them in a jsdom would be slower for nothing. The
+   * dialog is the opposite: what needs pinning about it is that Escape and its
+   * corner button reach a real *cancel*, which is a fact about Radix's
+   * dismissal wiring rather than about any function written here, and nothing
+   * but a DOM can answer it. Those files say `@vitest-environment jsdom` at the
+   * top, which keeps the requirement next to the code that has it.
+   */
+  test: { environment: "node" },
+
   resolve: {
     // Components import each other as "@/components/...", so the alias is not a
     // convenience here — without it those files do not resolve at all.

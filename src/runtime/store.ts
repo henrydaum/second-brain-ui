@@ -1,7 +1,7 @@
 /**
  * Frames in, conversation out.
  *
- * This is the only place that knows what the nine render kinds mean. Everything
+ * This is the only place that knows what the render kinds mean. Everything
  * above it works on `Turn[]`, and everything below it works on wire frames.
  *
  * ## Why turns and not messages
@@ -531,13 +531,22 @@ function applyFrame(state: State, frame: Frame): State {
       return { ...state, turns: replace(turns, turn.id, { ...turn, parts }) };
     }
 
-    /* A question the kernel is blocking a turn on. **Session state, not
-       conversation state**, so it is routed past this reducer entirely — see
-       the fan-out in `runtime/provider.tsx` and the queue in
-       `runtime/input-requests.ts`. Handled here only so the switch stays
-       exhaustive over the nine kinds, which is what makes a tenth a compile
-       error rather than a silently ignored frame. */
+    /* ── Handled elsewhere, on purpose ──────────────────────────────────
+     *
+     * A question the kernel is blocking a turn on, and the frame saying one
+     * stopped waiting. **Session state, not conversation state**: the kernel
+     * holds a pending question on the session's phase stack and persists it
+     * there, so it outlives any one conversation and must survive everything
+     * `history` above resets. The provider fans both straight into
+     * `runtime/input-requests.ts` and they never reach this reducer.
+     *
+     * They are listed anyway rather than left to a `default`, because an
+     * unhandled kind here is a *compile* error — which is how the eleventh
+     * kind gets noticed instead of being silently dropped. This case firing at
+     * all would mean the fan-out in `provider.tsx` had been removed.
+     */
     case "approval":
+    case "approval_settled":
       return state;
 
     case "form_field":

@@ -2,8 +2,8 @@
  * The inbound half of the bridge: `GET /events`.
  *
  * Every frame is one `render` call the kernel made, verbatim. There is no
- * translation layer — these are the same nine payloads a native Python frontend
- * receives, which is why a client that handles all nine can do what the REPL
+ * translation layer — these are the same ten payloads a native Python frontend
+ * receives, which is why a client that handles all ten can do what the REPL
  * can.
  *
  * **Opening this stream is the attendance signal.** It declares that a person is
@@ -14,7 +14,7 @@
 
 import { serverUrl } from "@/lib/client";
 
-/* ── The nine kinds ──────────────────────────────────────────────────────
+/* ── The ten kinds ───────────────────────────────────────────────────────
  *
  * Handle what you can show and ignore the rest; a client that only renders
  * `messages` is a working client. These types are transcriptions of the
@@ -76,10 +76,18 @@ export type ToolStatusPayload = {
 };
 
 /**
- * The agent (or a plugin) wants permission.
+ * A question the kernel is blocking a turn on.
  *
  * **A turn is blocked until this is answered**, so a client that ignores this
  * kind will appear to hang.
+ *
+ * **Not only permission.** One kernel primitive — `runtime.request_input` —
+ * raises a sandbox permission gate, a `ui.ask`, and a tool asking the person
+ * something, and all three arrive here. `type` may be any of `boolean`,
+ * `string`, `integer`, `number`, `array` or `object`. A client that words this
+ * as a permission grant will mislabel an ordinary question as one; everything
+ * above the wire in this app therefore calls it an *input request*, and only
+ * the wire spells it `approval`.
  */
 export type ApprovalPayload = {
   /** Answer with this, via `frontend.resolve`. */
@@ -94,6 +102,23 @@ export type ApprovalPayload = {
   /** **Paired with `enum` by index.** May be null even when `enum` is not. */
   enum_labels?: string[] | null;
   default?: unknown;
+};
+
+/**
+ * A question stopped waiting: answered, cancelled, or denied by timeout.
+ *
+ * **The counterpart to `approval`, and the only thing that says a dialog may
+ * come down.** Another client can answer the same question, and the kernel
+ * denies by name after 300s — neither is something this client did, and
+ * without this frame neither is something it could learn except by polling.
+ *
+ * `reason` says how the question ended, not what the answer was: the answer
+ * went to whoever was blocked on it and is deliberately not repeated here.
+ */
+export type ApprovalSettledPayload = {
+  /** The `id` of the `approval` this settles. */
+  request_id: string;
+  reason?: "answered" | "cancelled";
 };
 
 /** One step of a command collecting its arguments. */
@@ -153,6 +178,7 @@ export type Frame =
   | { kind: "typing"; payload: boolean }
   | { kind: "tool_status"; payload: ToolStatusPayload }
   | { kind: "approval"; payload: ApprovalPayload }
+  | { kind: "approval_settled"; payload: ApprovalSettledPayload }
   | { kind: "form_field"; payload: FormFieldPayload }
   | { kind: "buttons"; payload: ButtonsPayload }
   | { kind: "error"; payload: ErrorPayload }

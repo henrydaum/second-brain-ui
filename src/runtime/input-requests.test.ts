@@ -122,11 +122,60 @@ describe("the queue", () => {
   });
 });
 
+describe("a question that stops waiting", () => {
+  it("comes down when the server says it settled", () => {
+    // The half `approval` was missing. Another client can answer the same
+    // question and the kernel denies by name after 300s; neither is something
+    // this client did, and without this frame the dialog would sit there
+    // unanswerable, saying nothing about it when tried.
+    const state = run(
+      { type: "raised", request: ask("approve_1") },
+      { type: "settled", id: "approve_1" },
+    );
+
+    expect(held(state)).toEqual([]);
+  });
+
+  it("takes only the one that settled", () => {
+    const state = run(
+      { type: "raised", request: ask("approve_1") },
+      { type: "raised", request: ask("approve_2") },
+      { type: "settled", id: "approve_2" },
+    );
+
+    expect(held(state)).toEqual(["approve_1"]);
+  });
+
+  it("shrugs at one it never held", () => {
+    // Ordinary: another client answered it, or it expired while this page was
+    // somewhere else entirely.
+    const before = run({ type: "raised", request: ask("approve_1") });
+    const after = reduceInputRequests(before, {
+      type: "settled",
+      id: "approve_other",
+    });
+
+    expect(after).toBe(before);
+  });
+
+  it("is not put back by a reconcile that raced it", () => {
+    // The settled frame and a reconcile can cross. Whichever lands second must
+    // not resurrect the dialog, which is what the old suppress-once heuristic
+    // existed to arrange and what a real settlement now does outright.
+    const state = run(
+      { type: "raised", request: ask("approve_1") },
+      { type: "settled", id: "approve_1" },
+      { type: "reconciled", pending: null },
+    );
+
+    expect(state).toEqual(initialInputRequests);
+  });
+});
+
 describe("reconciling against the server", () => {
-  it("closes a dialog the server has forgotten", () => {
-    // The stream says a question appeared; it never says one went away. A
-    // dialog that expired at 300s, or that somebody answered from Telegram,
-    // otherwise sits there unanswerable and says nothing about it when tried.
+  it("closes a dialog settled while the page was away", () => {
+    // Frames cover the connected case; this covers the gap a stream cannot —
+    // what happened while nobody was listening.
     const state = run(
       { type: "raised", request: ask("approve_1") },
       { type: "reconciled", pending: null },
@@ -189,51 +238,6 @@ describe("reconciling against the server", () => {
     );
 
     expect(held(state)).toEqual(["approve_1"]);
-  });
-
-  it("does not redraw a question answered a moment ago", () => {
-    // Answering is optimistic, and the server settles it on another thread —
-    // so it keeps reporting the question through a window a poll can land in.
-    const state = run(
-      { type: "raised", request: ask("approve_1") },
-      { type: "answered", id: "approve_1" },
-      {
-        type: "reconciled",
-        pending: { kind: "approval", payload: ask("approve_1") },
-      },
-    );
-
-    expect(held(state)).toEqual([]);
-  });
-
-  it("gives up suppressing it if the server keeps insisting", () => {
-    // Once, not indefinitely. If the answer never landed the question really
-    // is still waiting, and a dialog hidden forever is the bug this whole file
-    // exists to fix.
-    const state = run(
-      { type: "raised", request: ask("approve_1") },
-      { type: "answered", id: "approve_1" },
-      {
-        type: "reconciled",
-        pending: { kind: "approval", payload: ask("approve_1") },
-      },
-      {
-        type: "reconciled",
-        pending: { kind: "approval", payload: ask("approve_1") },
-      },
-    );
-
-    expect(held(state)).toEqual(["approve_1"]);
-  });
-
-  it("settles every outstanding answer when the server says nothing is left", () => {
-    const state = run(
-      { type: "raised", request: ask("approve_1") },
-      { type: "answered", id: "approve_1" },
-      { type: "reconciled", pending: null },
-    );
-
-    expect(state).toEqual(initialInputRequests);
   });
 
   it("draws a stand-in for a question an old kernel cannot describe", () => {
