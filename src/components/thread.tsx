@@ -452,7 +452,10 @@ const MessageTime: FC = () => {
           // what assistive technology should hear — it cannot hover, and this
           // is not a control it can focus either.
           aria-label={full}
-          className="text-muted-foreground text-[11px] tabular-nums"
+          // Not text you would ever want to select, and the I-beam over it
+          // reads as an invitation to try. `select-none` also keeps it out of
+          // a drag-selection that started in the reply above.
+          className="text-muted-foreground cursor-default text-[11px] tabular-nums select-none"
         >
           {shortTimestamp(moment)}
         </time>
