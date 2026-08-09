@@ -94,7 +94,11 @@ export const ApprovalDialog: FC = () => {
         onEscapeKeyDown={(event) => event.preventDefault()}
         onPointerDownOutside={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
-        className="sm:max-w-xl"
+        // Settings is itself a modal. Permission prompts are a nested safety
+        // surface, so give both their backdrop and panel an explicit higher
+        // layer instead of depending on portal insertion order.
+        overlayClassName="z-[70]"
+        className="z-[70] sm:max-w-xl"
       >
         <DialogHeader>
           <DialogTitle>{approval.title || "Allow this?"}</DialogTitle>
