@@ -48,6 +48,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     openConversation,
     newConversation,
     deleteConversation,
+    inputRequests,
     state,
     settingsOpen,
     setSettingsOpen,
@@ -63,7 +64,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     busy ||
     state.typing ||
     state.form !== null ||
-    state.approval !== null ||
+    inputRequests.length > 0 ||
     commandRunning;
 
   // Read lazily so the stored preference applies on the first paint rather than

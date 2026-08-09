@@ -29,7 +29,8 @@ const MODES = [
 ];
 
 export const SecurityModePicker: FC = () => {
-  const { securityMode, setSecurityMode, state } = useSecondBrain();
+  const { securityMode, setSecurityMode, state, inputRequests } =
+    useSecondBrain();
   const [open, setOpen] = useState(false);
   const [changing, setChanging] = useState(false);
   const selected = MODES.find((mode) => mode.id === securityMode) ?? MODES[1];
@@ -37,7 +38,7 @@ export const SecurityModePicker: FC = () => {
     changing ||
     state.typing ||
     state.form !== null ||
-    state.approval !== null;
+    inputRequests.length > 0;
 
   const choose = async (mode: (typeof MODES)[number]["id"]) => {
     setOpen(false);

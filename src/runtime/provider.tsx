@@ -8,9 +8,16 @@
  * stream is the only thing that moves it, and this app is a projection. The
  * other runtimes all want to own a request/response cycle we do not have.
  *
- * Everything the chat window itself cannot express — the approval modal, the
- * form panel, the connection status — is published through `SecondBrainContext`
- * rather than through the runtime, because assistant-ui has no concept of them.
+ * Everything the chat window itself cannot express — the dialog for a question
+ * the kernel is blocking on, the form panel, the connection status — is
+ * published through `SecondBrainContext` rather than through the runtime,
+ * because assistant-ui has no concept of them.
+ *
+ * Those questions get their own reducer rather than a slot on the conversation
+ * store, and that is the point rather than tidiness: they belong to the
+ * *session*, which outlives any one conversation, and living in the
+ * conversation store meant a history read threw a live one away. See
+ * `runtime/input-requests.ts`.
  */
 
 import {
@@ -41,8 +48,14 @@ import {
 } from "@/lib/conversations";
 import { connect, type StreamStatus } from "@/lib/events";
 import { readConversation } from "@/lib/history";
+import { isPendingInput, type InputRequest } from "@/lib/input-requests";
 import { extensionOf, uploadToHost } from "@/lib/upload";
 import { convertMessage } from "@/runtime/convert";
+import {
+  initialInputRequests,
+  reduceInputRequests,
+  unseenRequest,
+} from "@/runtime/input-requests";
 import { initialState, reduce, type State } from "@/runtime/store";
 
 /* ── Attachments ────────────────────────────────────────────────────────
@@ -145,9 +158,32 @@ export type SecondBrain = {
   /** Delete one. **Unsafe** — the server raises an approval dialog, which
    *  arrives on the event stream while this is still in flight. */
   deleteConversation: (id: number) => Promise<void>;
-  /** Answer an approval. The value goes to the server; the label is the
-   *  person's business. */
-  resolve: (value: unknown) => Promise<void>;
+  /**
+   * Questions the kernel is blocking on, head first.
+   *
+   * Not part of `state`: a pending question belongs to the *session*, which
+   * outlives any one conversation, and living in the conversation store is
+   * what used to make a page reload throw one away.
+   */
+  inputRequests: InputRequest[];
+  /** Answer one, by the id it was asked under. The value goes to the server;
+   *  the label is the person's business.
+   *
+   *  **The id is passed rather than read**, because between drawing a dialog
+   *  and pressing a button another question can arrive, and "the current one"
+   *  is then a different question than the one on screen. */
+  resolve: (id: string | null, value: unknown) => Promise<void>;
+  /**
+   * Back out of one without answering it.
+   *
+   * **Still an answer, and the conservative one.** `frontend.cancel` in the
+   * approving phase pops the question's own phase frame and settles the request
+   * as cancelled, which every asker reads as the safe outcome: a sandbox
+   * permission gate refuses, `ui.ask` comes back a refusal, a gated command is
+   * dropped without running. So this unblocks the turn rather than walking away
+   * from it — the distinction the dialog's "no dismissal" rule is really about.
+   */
+  cancelInputRequest: (id: string | null) => Promise<void>;
   /** Send a line of text as if typed — how form steps and quick replies are
    *  answered, since both are plain submissions. */
   say: (text: string) => Promise<boolean>;
@@ -175,6 +211,10 @@ export function useSecondBrain(): SecondBrain {
 
 export function SecondBrainProvider({ children }: PropsWithChildren) {
   const [state, dispatch] = useReducer(reduce, initialState);
+  const [inputRequests, askDispatch] = useReducer(
+    reduceInputRequests,
+    initialInputRequests,
+  );
   const [status, setStatus] = useState<StreamStatus>("connecting");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [securityMode, setSecurityModeState] = useState<
@@ -222,6 +262,12 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    */
   const report = useCallback((error: unknown) => {
     const failed = error instanceof RequestFailed;
+    // **Saying no is not an error.** A declined Request is the answer the
+    // person just gave in the dialog; putting "denied: conv.delete" in a banner
+    // afterwards is approval fallout escaping the popup — the one thing this
+    // surface is supposed to keep contained — and it reads as a malfunction
+    // rather than as their own decision being carried out.
+    if (failed && error.isDeclined) return;
     dispatch({
       type: "frame",
       frame: {
@@ -274,12 +320,15 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    * effect would quietly steal the connection from itself.
    */
   useEffect(() => {
-    // The replay usually carries the real approval frame, and a real one beats
-    // the reconstruction below. This records whether one arrived.
-    let sawApproval = false;
-
     const close = connect((frame) => {
-      if (frame.kind === "approval") sawApproval = true;
+      // **Fanned out here, not inside the reducer.** A question the kernel is
+      // blocking on belongs to the session; routing it through the
+      // conversation store is what let a history read discard one. Keeping the
+      // split at the doorway means nothing downstream has to remember it.
+      if (frame.kind === "approval") {
+        askDispatch({ type: "raised", request: frame.payload });
+        return;
+      }
       dispatch({ type: "frame", frame });
     }, setStatus);
 
@@ -331,28 +380,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         // is what the person is actually waiting to see.
         if (!cancelled) await loadCatalogue();
 
-        // An approval raised before this page existed. The stream replays the
-        // last 500 frames, so usually the real `approval` frame arrives on its
-        // own and this finds nothing left to do. When it does find something,
-        // all the server offers is the id — so the dialog is drawn from the
-        // little we have. Worse than the real one, and far better than a turn
-        // blocked on a question with nothing on screen.
-        const pending = await sdk<string | null>("frontend.pending", {});
-        if (pending && !cancelled && !sawApproval) {
-          dispatch({
-            type: "frame",
-            frame: {
-              kind: "approval",
-              payload: {
-                id: pending,
-                title: "The agent is waiting on a question",
-                body:
-                  "This was asked before the page was open, so its details are " +
-                  "no longer available. Denying is the safe answer.",
-              },
-            },
-          });
-        }
+        // Pending questions are reconciled by the effect below, which runs on
+        // every stream open rather than once here — see `reconcile`.
       } catch (error) {
         // A boot that cannot read history is still a usable chat window, so
         // this reports and carries on rather than refusing to start.
@@ -389,6 +418,79 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     void loadCatalogue();
   }, [status, loadCatalogue]);
 
+  /* ── Questions the kernel is blocking on ────────────────────────── */
+
+  /**
+   * Ask the server what it is still waiting for.
+   *
+   * **The stream says a question appeared; it never says one went away.** There
+   * is no "withdrawn" frame — a dialog that expires after 300s, or that
+   * somebody answers from Telegram, simply stops existing — so this is the only
+   * thing that can take one off the screen, and a `null` answer is as much of a
+   * result as a question is.
+   *
+   * It is also the only route back to a question raised while the page was
+   * closed: a render is an event, and events are not re-sent because you asked.
+   * `details` makes the server hand back the question itself rather than its
+   * id, which is the difference between the real dialog and a stand-in that can
+   * only say "something was asked".
+   */
+  const reconcile = useCallback(async () => {
+    try {
+      const pending = await sdk<unknown>("frontend.pending", { details: true });
+      if (pending === null || pending === undefined) {
+        askDispatch({ type: "reconciled", pending: null });
+        return;
+      }
+      if (isPendingInput(pending)) {
+        askDispatch({ type: "reconciled", pending });
+        return;
+      }
+      // A kernel older than `details` answers the bare id, or `true` for "one
+      // exists but I cannot name it". Neither describes the question, so all
+      // that can be drawn is a stand-in — and `true` must never be used as an
+      // id, which the server would stringify into one that matches nothing and
+      // then report as already answered.
+      askDispatch({
+        type: "reconciled",
+        pending: {
+          kind: "approval",
+          payload: unseenRequest(
+            typeof pending === "string" && pending ? pending : null,
+          ),
+        },
+      });
+    } catch (error) {
+      // Reported rather than thrown: this runs from an effect and on a timer,
+      // and a failed poll is not worth tearing anything down over.
+      report(error);
+    }
+  }, [report]);
+
+  /** On **every** open, not just reconnections — unlike `loadCatalogue` above,
+   *  whose first run boot covers. Boot cannot cover this one: the answer to
+   *  "what is pending" is only meaningful once the stream is up, because the
+   *  stream is what declares somebody is watching. */
+  useEffect(() => {
+    if (status !== "open") return;
+    void reconcile();
+  }, [status, reconcile]);
+
+  /**
+   * And keep asking while a dialog is up.
+   *
+   * A question can stop existing without anything being sent about it. Once a
+   * minute is far below the kernel's 300s expiry — the dialog closes well
+   * before somebody has had time to wonder why answering it does nothing — and
+   * it costs one read-only Request, only while something is actually waiting.
+   */
+  const waiting = inputRequests.queue.length > 0;
+  useEffect(() => {
+    if (!waiting || status !== "open") return;
+    const timer = setInterval(() => void reconcile(), 60_000);
+    return () => clearInterval(timer);
+  }, [waiting, status, reconcile]);
+
   /* ── What the person can do ─────────────────────────────────────── */
 
   const say = useCallback(
@@ -410,14 +512,18 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   );
 
   const resolve = useCallback(
-    async (value: unknown) => {
-      const id = state.approval?.id;
+    async (id: string | null, value: unknown) => {
       // Closed before the answer lands, deliberately: the POST completes only
       // once the *original* blocked Request finishes, which can be a while, and
       // leaving the dialog up in the meantime invites a second click.
-      dispatch({ type: "clearApproval" });
+      askDispatch({ type: "answered", id });
       try {
-        await sdk("frontend.resolve", { value, request_id: id });
+        // **Only a real id travels.** With none, the server answers whatever is
+        // next in its own queue, which is exactly what a question we could not
+        // name means. Sending a placeholder instead gets it stringified into an
+        // id that matches nothing, and the answer comes back "already
+        // answered" while the turn stays blocked.
+        await sdk("frontend.resolve", id ? { value, request_id: id } : { value });
         // A `false` answer means there was nothing left to answer — already
         // resolved elsewhere, or timed out after 300s. That is a stale dialog,
         // not an error, and closing it is the whole response.
@@ -425,7 +531,30 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         report(error);
       }
     },
-    [state.approval?.id, report],
+    [report],
+  );
+
+  const cancelInputRequest = useCallback(
+    async (id: string | null) => {
+      // Closed first, for the same reason `resolve` closes first: cancelling
+      // drives the state machine, and the POST does not come back until it has.
+      askDispatch({ type: "answered", id });
+      try {
+        // **Not `resolve` with a falsy value.** That would be answering "no" to
+        // a yes/no question and nonsense to a free-text one; a sandbox gate
+        // typed `string` would reject `false` against its enum outright and
+        // leave the frame standing. Cancelling is its own action, and the only
+        // one that means "back out" regardless of what was asked.
+        //
+        // It names no request: the kernel cancels the frame on top of the
+        // stack, which is the one being shown. If a second question arrived in
+        // between, reconciliation is what corrects the drift.
+        await sdk("frontend.cancel", {});
+      } catch (error) {
+        report(error);
+      }
+    },
+    [report],
   );
 
   const dismissError = useCallback(() => dispatch({ type: "clearError" }), []);
@@ -689,10 +818,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     // directly rather than being inferred from the last message's status.
     isRunning: state.typing,
 
-    // A pending approval blocks the turn on the server side. Blocking the
-    // composer here as well makes that visible instead of letting someone type
-    // into a session that cannot hear them.
-    isSendDisabled: state.approval !== null,
+    // A pending question blocks the turn on the server side — and worse, the
+    // state machine coerces plain text in that phase into the *answer*, so a
+    // message typed now would be eaten by the dialog rather than reaching the
+    // agent. Blocking the composer makes that visible instead of surprising.
+    isSendDisabled: waiting,
 
     onNew,
     onCancel,
@@ -731,7 +861,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       openConversation,
       newConversation,
       deleteConversation,
+      inputRequests: inputRequests.queue,
       resolve,
+      cancelInputRequest,
       say,
       report,
       dismissError,
@@ -750,7 +882,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       openConversation,
       newConversation,
       deleteConversation,
+      inputRequests.queue,
       resolve,
+      cancelInputRequest,
       say,
       report,
       dismissError,

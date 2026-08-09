@@ -24,7 +24,7 @@ function humanize(value?: string) {
 }
 
 export const CommandPanel: FC = () => {
-  const { state, say, dismissCommand } = useSecondBrain();
+  const { state, inputRequests, say, dismissCommand } = useSecondBrain();
   const { command, form } = state;
   const display = form?.display;
   const fieldId = useId();
@@ -52,12 +52,28 @@ export const CommandPanel: FC = () => {
   const collected = Object.entries(form?.collected ?? command?.args ?? {});
   const finished = command?.status === "finished";
   const failed = finished && command?.ok === false;
+
+  /**
+   * A question is up, so this form must not send anything.
+   *
+   * **Not cosmetic.** While the session sits in `approving_request` the state
+   * machine coerces plain text into the *answer* to that question, so a form
+   * step submitted now would be eaten by the dialog instead of filling in the
+   * field — and the person would have silently answered a question they were
+   * looking at a different form for. The dialog's own backdrop happens to block
+   * the pointer today; that is a side effect of where it renders, not a rule,
+   * and this is the rule.
+   */
+  const blocked = inputRequests.length > 0;
+
   const advance = async (text: string) => {
+    if (blocked) return;
     setAdvancing(true);
     const submitted = await say(text);
     if (!submitted) setAdvancing(false);
   };
   const cancel = async () => {
+    if (blocked) return;
     setCancelling(true);
     const submitted = await say("/cancel");
     if (submitted) dismissCommand();
@@ -66,9 +82,12 @@ export const CommandPanel: FC = () => {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (choices.length > 0 || advancing) return;
+    if (choices.length > 0 || advancing || blocked) return;
     void advance(typed);
   };
+  // One name for "this control cannot act", so a control added later cannot
+  // pick up only half the reasons.
+  const busy = advancing || blocked;
 
   return (
     <div data-slot="command-panel" className="w-full text-sm">
@@ -136,7 +155,7 @@ export const CommandPanel: FC = () => {
                         name={`${fieldId}-choice`}
                         value={index}
                         checked={selected}
-                        disabled={advancing}
+                        disabled={busy}
                         onChange={() => {
                           setSelectedChoice(index);
                           void advance(String(choice.value));
@@ -178,7 +197,7 @@ export const CommandPanel: FC = () => {
                   <textarea
                     id={fieldId}
                   autoFocus
-                    disabled={advancing}
+                    disabled={busy}
                     required={form.field?.required !== false}
                     rows={6}
                     value={typed}
@@ -189,7 +208,7 @@ export const CommandPanel: FC = () => {
                   <input
                     id={fieldId}
                     autoFocus
-                    disabled={advancing}
+                    disabled={busy}
                     required={form.field?.required !== false}
                     type={mode === "number" ? "number" : "text"}
                     step={
@@ -213,7 +232,7 @@ export const CommandPanel: FC = () => {
                 <Button
                   type="button"
                   variant="ghost"
-                  disabled={cancelling}
+                  disabled={cancelling || blocked}
                   onClick={() => void cancel()}
                 >
                   Cancel
@@ -223,7 +242,7 @@ export const CommandPanel: FC = () => {
                 <Button
                   type="button"
                   variant="ghost"
-                  disabled={advancing}
+                  disabled={busy}
                   onClick={() => void advance("/back")}
                 >
                   Back
@@ -235,14 +254,14 @@ export const CommandPanel: FC = () => {
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={advancing}
+                  disabled={busy}
                   onClick={() => void advance("/skip")}
                 >
                   Skip
                 </Button>
               )}
               {choices.length === 0 && (
-                <Button type="submit" disabled={advancing}>
+                <Button type="submit" disabled={busy}>
                   Continue
                 </Button>
               )}

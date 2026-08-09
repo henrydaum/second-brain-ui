@@ -52,7 +52,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ApprovalDialog } from "@/components/approval-dialog";
 import { HostFiles, HostFilesDataUI } from "@/components/host-file";
 import { ErrorBanner } from "@/components/session-bar";
 import { SecurityModePicker } from "@/components/security-mode-picker";
@@ -166,10 +165,6 @@ export const Thread: FC = () => {
           <Composer />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
-
-      {/* Outside the viewport — it is a modal over everything, and it is the one
-          thing in this app that must not be scrolled past. */}
-      <ApprovalDialog />
 
       {/* Draws nothing. It registers the renderer for the agent's own files
           with the assistant-wide registry that `GroupedParts` reads — see

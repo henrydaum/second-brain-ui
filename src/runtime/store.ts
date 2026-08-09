@@ -28,7 +28,6 @@
  */
 
 import type {
-  ApprovalPayload,
   ButtonsPayload,
   ErrorPayload,
   Frame,
@@ -135,10 +134,14 @@ export type State = {
    *  `false` means the *logical* turn ended, not each internal drive, and a
    *  crash forces it back too. */
   typing: boolean;
-  /** A question blocking a turn. Rendered as a modal; nothing else can proceed
-   *  until it is answered. */
-  approval: ApprovalPayload | null;
-  /** A command collecting its arguments, one step at a time. */
+  /**
+   * A command collecting its arguments, one step at a time.
+   *
+   * Note what is *not* beside it: a pending approval. That is session state,
+   * not conversation state — the kernel holds it on the session's phase stack
+   * and persists it there — and keeping it here meant `history` below threw it
+   * away. See `runtime/input-requests.ts`.
+   */
   form: FormFieldPayload | null;
   /** The command that form belongs to, and everything it has produced. Lives
    *  beside `form` rather than inside it because a command outlives its steps:
@@ -166,7 +169,6 @@ export type State = {
 export const initialState: State = {
   turns: [],
   typing: false,
-  approval: null,
   form: null,
   command: null,
   suppressedCommand: null,
@@ -188,7 +190,6 @@ export type Action =
   | { type: "said"; text: string; files?: string[]; isCommand?: boolean }
   /** Scrollback, read from `conv.read` at boot. Replaces everything. */
   | { type: "history"; turns: Turn[] }
-  | { type: "clearApproval" }
   | { type: "clearForm" }
   /** Put the finished command away. Its own affordance, because a command that
    *  has printed something is not done being read just because it is done
@@ -242,8 +243,14 @@ export function reduce(state: State, action: Action): State {
   switch (action.type) {
     case "history":
       // A conversation switch or a cold boot. Everything transient goes with
-      // it — a form or approval belonging to the previous conversation is not
-      // answerable any more.
+      // it — a form belonging to the previous conversation is not answerable
+      // any more.
+      //
+      // **A pending question does not live here, and that is load-bearing.**
+      // This clause used to take one with it, which meant boot raced itself:
+      // the stream replays the real question within a round trip, this read
+      // takes two or three, and the later dispatch threw away what had just
+      // arrived. See `runtime/input-requests.ts`.
       return { ...initialState, turns: action.turns };
 
     case "said": {
@@ -319,8 +326,6 @@ export function reduce(state: State, action: Action): State {
       };
     }
 
-    case "clearApproval":
-      return { ...state, approval: null };
     case "clearForm":
       return { ...state, form: null };
     case "clearCommand":
@@ -526,9 +531,15 @@ function applyFrame(state: State, frame: Frame): State {
       return { ...state, turns: replace(turns, turn.id, { ...turn, parts }) };
     }
 
-    /* The three that need an answer. */
+    /* A question the kernel is blocking a turn on. **Session state, not
+       conversation state**, so it is routed past this reducer entirely — see
+       the fan-out in `runtime/provider.tsx` and the queue in
+       `runtime/input-requests.ts`. Handled here only so the switch stays
+       exhaustive over the nine kinds, which is what makes a tenth a compile
+       error rather than a silently ignored frame. */
     case "approval":
-      return { ...state, approval: frame.payload };
+      return state;
+
     case "form_field":
       if (
         state.suppressedCommand?.name &&

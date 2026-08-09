@@ -11,6 +11,7 @@ import { useState, type FC } from "react";
 
 import { ConversationSidebar } from "@/components/conversation-sidebar";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { InputRequestDialog } from "@/components/input-request-dialog";
 import { SessionBar } from "@/components/session-bar";
 import { Thread } from "@/components/thread";
 import { SecondBrainProvider } from "@/runtime/provider";
@@ -40,6 +41,12 @@ export const App: FC = () => {
             </main>
           </div>
         </div>
+
+        {/* Directly under the provider, above everything. A blocked question
+            belongs to the *session*, not to the thread it happened during —
+            Settings raises them too — so it is a sibling of the whole layout
+            rather than something nested inside one part of it. */}
+        <InputRequestDialog />
       </SecondBrainProvider>
     </ErrorBoundary>
   );
