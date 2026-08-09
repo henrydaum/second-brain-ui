@@ -18,6 +18,10 @@ import type { Turn } from "@/runtime/store";
  *  name to the component that fetches and renders them. */
 export const HOST_FILES = "host-files";
 
+/** Key under `metadata.custom` holding the turn's time in epoch milliseconds.
+ *  Only present when the time is actually known — see `timing` below. */
+export const SENT_AT = "sentAt";
+
 /** The element type of a message's content, named so the map below can be
  *  annotated — without it TypeScript widens the three branches into a union
  *  full of `undefined` members that no longer matches. */
@@ -69,14 +73,34 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
   // person already sent has no run to be in — but it means the field cannot be
   // set unconditionally, which is easy to miss because a user turn is always
   // `running: false` and looks harmless.
+  /**
+   * The turn's time, said twice, because assistant-ui cannot say "unknown".
+   *
+   * `fromThreadMessageLike` fills a missing `createdAt` with `new Date()`, so
+   * reading `message.createdAt` back can never distinguish a message that
+   * genuinely arrived now from one that was read out of the database with no
+   * stored time — and the second would be dated to the page load. The real
+   * value therefore also travels in `metadata.custom`, where nothing defaults
+   * it, and that is the one the UI renders. `createdAt` is still set when known
+   * so the library's own view of the message is correct.
+   */
+  const timing =
+    turn.createdAt === undefined
+      ? {}
+      : {
+          createdAt: new Date(turn.createdAt),
+          metadata: { custom: { [SENT_AT]: turn.createdAt } },
+        };
+
   if (turn.role !== "assistant") {
-    return { id: turn.id, role: turn.role, content };
+    return { id: turn.id, role: turn.role, content, ...timing };
   }
 
   return {
     id: turn.id,
     role: turn.role,
     content,
+    ...timing,
     status: turn.running
       ? { type: "running" }
       : turn.aborted

@@ -53,7 +53,7 @@ import { ErrorBanner } from "@/components/session-bar";
 import { SecurityModePicker } from "@/components/security-mode-picker";
 import { VoiceNoteButton } from "@/components/voice-note";
 import { cn } from "@/lib/utils";
-import { HOST_FILES } from "@/runtime/convert";
+import { HOST_FILES, SENT_AT } from "@/runtime/convert";
 
 /**
  * Shown while the agent has the turn but has not said anything yet.
@@ -308,47 +308,118 @@ const AssistantMessage: FC = () => (
           <ErrorPrimitive.Message />
         </ErrorPrimitive.Root>
       </MessagePrimitive.Error>
-      <AssistantActionBar />
+      <AssistantMessageFooter />
     </div>
   </MessagePrimitive.Root>
 );
 
+/** Reserved height of the footer strip under every assistant message. Matches
+ *  the button inside it, so the row is exactly as tall as its contents whether
+ *  or not those contents are currently visible. */
+const FOOTER_HEIGHT = "h-7";
+
 /**
- * Copy, and only copy.
+ * The strip under an assistant message: actions on the left, the time beside
+ * them.
  *
- * The other three buttons that live here in every other chat app — regenerate,
- * edit, thumbs — all need a backend that can do the thing, and this one cannot:
- * there is no regenerate and no message tree, which is why the runtime declares
- * no `onReload`, `onEdit` or branch adapter. Copying is different. It is
- * entirely local, it is the affordance people actually reach for, and its
- * absence was conspicuous.
+ * **The space is reserved whether or not anything is showing.**
+ * `ActionBarPrimitive.Root` returns `null` when its own `autohide` decides to
+ * hide — it does not hide, it *unmounts* — so keying visibility on that made
+ * the row enter and leave the layout, and every message below it jumped as the
+ * pointer crossed. Hovering a transcript should not move the transcript. So the
+ * primitive is told `autohide="never"`, this component decides visibility
+ * itself, and it does it with opacity inside a fixed-height row that is always
+ * in the flow.
  *
- * `hideWhenRunning` keeps it off a message that is still being written, where
- * copying would take half a sentence.
+ * That fixed row is also the reason this is worth having as its own component:
+ * it is the place anything else per-message goes later — a retry, a token
+ * count, feedback — and none of that will shift the layout either.
+ *
+ * Visibility follows the rule people expect from a chat app: the latest reply
+ * keeps its actions on show, older ones reveal them on hover. Nothing shows
+ * while a reply is still being written, where copying would take half a
+ * sentence — but the row is still there, so finishing does not make the page
+ * jump either.
  */
-const AssistantActionBar: FC = () => (
-  <ActionBarPrimitive.Root
-    hideWhenRunning
-    autohide="not-last"
-    className="text-muted-foreground mt-2 flex items-center gap-1 data-[floating]:absolute"
-  >
-    <ActionBarPrimitive.Copy asChild>
-      <TooltipIconButton
-        tooltip="Copy"
-        side="bottom"
-        // `group/copy` names *this* element: assistant-ui puts `data-copied` on
-        // the button itself, so the icons below can only see it as a group.
-        className="group/copy size-8"
+const AssistantMessageFooter: FC = () => {
+  const visible = useAuiState(
+    (s) =>
+      s.message.status?.type !== "running" &&
+      (s.message.isLast || s.message.isHovering),
+  );
+
+  return (
+    <div
+      data-slot="assistant-message-footer"
+      className={cn("mt-1 flex items-center gap-2", FOOTER_HEIGHT)}
+    >
+      <div
+        className={cn(
+          "flex items-center gap-2 transition-opacity duration-150",
+          visible ? "opacity-100" : "pointer-events-none opacity-0",
+          // Keyboard users get it back, since an invisible control is still in
+          // the tab order and focusing it has to show what was focused.
+          "focus-within:pointer-events-auto focus-within:opacity-100",
+        )}
       >
-        {/* assistant-ui flips `data-copied` on for a few seconds after a
-            successful copy; these two siblings are what turn that into the
-            tick-then-back feedback every one of these buttons gives. */}
-        <CopyIcon className="size-4 group-data-[copied]/copy:hidden" />
-        <CheckIcon className="hidden size-4 group-data-[copied]/copy:block" />
-      </TooltipIconButton>
-    </ActionBarPrimitive.Copy>
-  </ActionBarPrimitive.Root>
-);
+        <ActionBarPrimitive.Root
+          autohide="never"
+          className="text-muted-foreground flex items-center gap-1"
+        >
+          <ActionBarPrimitive.Copy asChild>
+            <TooltipIconButton
+              tooltip="Copy"
+              side="bottom"
+              // `group/copy` names *this* element: assistant-ui puts
+              // `data-copied` on the button itself, so the icons below can only
+              // see it as a group.
+              className="group/copy size-7"
+            >
+              {/* assistant-ui flips `data-copied` on for a few seconds after a
+                  successful copy; these two siblings are what turn that into
+                  the tick-then-back feedback every one of these buttons
+                  gives. */}
+              <CopyIcon className="size-3.5 group-data-[copied]/copy:hidden" />
+              <CheckIcon className="hidden size-3.5 group-data-[copied]/copy:block" />
+            </TooltipIconButton>
+          </ActionBarPrimitive.Copy>
+        </ActionBarPrimitive.Root>
+
+        <MessageTime />
+      </div>
+    </div>
+  );
+};
+
+/**
+ * When the message was sent.
+ *
+ * Read from `metadata.custom`, not from assistant-ui's own `createdAt`, because
+ * that field is defaulted to the present when a message arrives without one —
+ * which would date every message of a re-read conversation to the page load.
+ * See `runtime/convert.ts`. A turn with no known time simply shows nothing.
+ */
+const MessageTime: FC = () => {
+  const sentAt = useAuiState((s) => {
+    const value = s.message.metadata?.custom?.[SENT_AT];
+    return typeof value === "number" ? value : undefined;
+  });
+
+  if (sentAt === undefined) return null;
+  const moment = new Date(sentAt);
+
+  return (
+    <time
+      dateTime={moment.toISOString()}
+      // The full date on hover: the line itself is a clock time, which is
+      // ambiguous the moment a conversation is more than a day old.
+      title={moment.toLocaleString()}
+      className="text-muted-foreground text-[11px] tabular-nums"
+    >
+      {moment.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+    </time>
+  );
+};
 
 const UserMessage: FC = () => (
   <MessagePrimitive.Root

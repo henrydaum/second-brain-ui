@@ -27,7 +27,28 @@ export type StoredMessage = {
   content: string;
   tool_call_id: string | null;
   tool_name: string | null;
+  /**
+   * When the row was stored, as **fractional epoch seconds** — e.g.
+   * `1786158850.6803284`.
+   *
+   * Confirmed against a live `conv.read`, which is worth saying because the
+   * protocol document specifies that call's envelope but not its columns, and
+   * because the units are the trap here: the conversation rows `conv.list`
+   * returns spell their times `created_at`/`updated_at` while message rows
+   * spell theirs `timestamp`. Reading seconds as milliseconds dates every
+   * message to January 1970.
+   */
+  timestamp?: number | null;
 };
+
+/** A stored row's time as epoch milliseconds, which is what `Date` wants. */
+function momentOf(message: StoredMessage): number | undefined {
+  const seconds = message.timestamp;
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+    return undefined;
+  }
+  return seconds * 1000;
+}
 
 /**
  * The text of one stored row, or null if it holds no prose.
@@ -76,6 +97,7 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
       parts: [{ kind: "text", streamId: `stored-${message.id}`, text, done: true }],
       running: false,
       aborted: false,
+      createdAt: momentOf(message),
     });
   }
   return turns;

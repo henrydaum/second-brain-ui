@@ -106,6 +106,17 @@ export type Turn = {
   id: string;
   role: "user" | "assistant";
   parts: Part[];
+  /**
+   * When this turn began, as epoch milliseconds.
+   *
+   * **Optional, and the absence is meaningful.** A turn that happens while the
+   * page is open is stamped as it opens, which is accurate to the second. A
+   * turn read back from `conv.read` is only stamped if the stored row carried a
+   * time — see `history.ts`. Defaulting a historical message to "now" would put
+   * a confident, wrong time under every message in the scrollback, so nothing
+   * is shown instead.
+   */
+  createdAt?: number;
   /** Still being written. Drives the message's `running` status, and with it
    *  the working indicator. */
   running: boolean;
@@ -205,6 +216,9 @@ function openTurn(turns: Turn[]): { turns: Turn[]; turn: Turn } {
     parts: [],
     running: true,
     aborted: false,
+    // Stamped when the turn opens rather than when it finishes: this is when
+    // the agent started answering, which is what a reader means by "when".
+    createdAt: Date.now(),
   };
   return { turns: [...turns, turn], turn };
 }
@@ -285,6 +299,7 @@ export function reduce(state: State, action: Action): State {
         parts,
         running: false,
         aborted: false,
+        createdAt: Date.now(),
       };
       // An ordinary message also puts any finished command away — the person
       // has moved on, and its panel would otherwise sit there catching output
