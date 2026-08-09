@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* The keyframes and utilities every `animate-in` / `animate-out` /
+ * `animate-collapsible-*` class in this app depends on. The package was in
+ * `package.json` from the start but never imported, which left dialogs,
+ * popovers, tooltips, message entrances and tool-group expansion silently
+ * un-animated — the classes were there, the definitions were not. */
+@import "tw-animate-css";
+
+/* The blinking cursor at the end of a message that is still streaming. Ships
+ * with the markdown package and does nothing until it is imported. */
+@import "@assistant-ui/react-markdown/styles/dot.css";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -41,6 +52,11 @@
 }
 
 :root {
+  /* Native scrollbars, form controls and the canvas behind the app follow the
+   * palette. Without it a dark page keeps white scrollbars and white select
+   * dropdowns, which is the detail that makes a theme look half-applied. */
+  color-scheme: light;
+
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -71,6 +87,8 @@
 }
 
 .dark {
+  color-scheme: dark;
+
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -179,4 +197,211 @@
 
 :focus-visible {
   box-shadow: none;
+}
+
+/**
+ * Markdown, which is every word the agent says.
+ *
+ * `MarkdownTextPrimitive` tags its output `.aui-md` and stops there — the class
+ * is a hook, not a stylesheet, and nothing in the package or the starter ever
+ * filled it in. Tailwind's Preflight meanwhile flattens headings to body size,
+ * strips list markers, and zeroes every margin, so an unstyled `.aui-md` turns
+ * a structured reply into one undifferentiated block. This is that stylesheet.
+ *
+ * Two rules keep it out of the way of everything else:
+ *
+ * - **`@layer components`**, so ordinary utility classes still win. Unlayered
+ *   CSS beats every Tailwind layer, which would make these rules unoverridable.
+ * - **`:where()` around the element selectors**, which drops their specificity
+ *   to zero. Without it `.aui-md table` would outrank the `w-full` on a table
+ *   that `command-renderers.tsx` styles deliberately.
+ */
+@layer components {
+  .aui-md {
+    line-height: 1.7;
+  }
+
+  /* Vertical rhythm is stated once, as the gap between blocks, rather than as a
+   * margin on each element — that way a heading following a list and a
+   * paragraph following a heading cannot disagree. */
+  .aui-md > :where(* + *) {
+    margin-top: 1rem;
+  }
+
+  .aui-md :where(h1, h2, h3, h4, h5, h6) {
+    font-weight: 600;
+    line-height: 1.3;
+    text-wrap: balance;
+  }
+  .aui-md > :where(h1, h2, h3, h4, h5, h6) + * {
+    margin-top: 0.5rem;
+  }
+  .aui-md > :where(* + h1, * + h2, * + h3) {
+    margin-top: 1.75rem;
+  }
+
+  .aui-md :where(h1) {
+    font-size: 1.5rem;
+  }
+  .aui-md :where(h2) {
+    font-size: 1.25rem;
+  }
+  .aui-md :where(h3) {
+    font-size: 1.125rem;
+  }
+  .aui-md :where(h4, h5, h6) {
+    font-size: 1rem;
+  }
+
+  .aui-md :where(ul, ol) {
+    padding-inline-start: 1.5rem;
+  }
+  .aui-md :where(ul) {
+    list-style: disc;
+  }
+  .aui-md :where(ul ul) {
+    list-style: circle;
+  }
+  .aui-md :where(ol) {
+    list-style: decimal;
+  }
+  .aui-md :where(li) {
+    margin-top: 0.375rem;
+  }
+  .aui-md :where(li)::marker {
+    color: var(--muted-foreground);
+  }
+  /* A nested list belongs to the bullet above it, not to the block before it,
+   * so it does not take the full inter-block gap. */
+  .aui-md :where(li) > :where(ul, ol) {
+    margin-top: 0.375rem;
+  }
+
+  .aui-md :where(a) {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .aui-md :where(a):hover {
+    text-decoration-thickness: 2px;
+  }
+
+  .aui-md :where(strong) {
+    font-weight: 600;
+  }
+  .aui-md :where(em) {
+    font-style: italic;
+  }
+
+  /* Inline code only. The descendant rule below undoes this inside `pre`, where
+   * a second background and border would draw a box inside a box. */
+  .aui-md :where(code) {
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+    background-color: color-mix(in oklab, var(--muted) 70%, transparent);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.125em 0.35em;
+  }
+
+  .aui-md :where(pre) {
+    background-color: color-mix(in oklab, var(--muted) 70%, transparent);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.875rem 1rem;
+    overflow-x: auto;
+    line-height: 1.6;
+  }
+  .aui-md :where(pre) :where(code) {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-size: 0.8125rem;
+  }
+
+  .aui-md :where(blockquote) {
+    border-inline-start: 3px solid var(--border);
+    padding-inline-start: 1rem;
+    color: var(--muted-foreground);
+  }
+
+  /* Wide tables scroll inside themselves; the message column must never gain a
+   * horizontal scrollbar of its own. */
+  .aui-md :where(table) {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+  .aui-md :where(th, td) {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: start;
+    vertical-align: top;
+  }
+  .aui-md :where(th) {
+    background-color: color-mix(in oklab, var(--muted) 60%, transparent);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .aui-md :where(hr) {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin-block: 1.5rem;
+  }
+
+  .aui-md :where(img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-md);
+  }
+
+  /* The first and last block sit flush against the message box, which is what
+   * gives the bubble its own padding rather than two stacked ones. */
+  .aui-md > :where(:first-child) {
+    margin-top: 0;
+  }
+  .aui-md > :where(:last-child) {
+    margin-bottom: 0;
+  }
+
+  /**
+   * The travelling highlight over a label that is still working.
+   *
+   * `tool-group.tsx` and `reasoning.tsx` stack a copy of their label under this
+   * class on top of the original. Undefined, that copy is simply opaque text
+   * drawn over identical text — the defect this replaces, not just a missing
+   * animation. Here it is clipped to the glyphs and swept across.
+   */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--foreground) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    animation: aui-shimmer 2s linear infinite;
+  }
+
+  @keyframes aui-shimmer {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -50% 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .shimmer {
+      animation: none;
+    }
+  }
 }

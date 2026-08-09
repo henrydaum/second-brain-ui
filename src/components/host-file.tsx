@@ -13,8 +13,12 @@
 import { useEffect, useState, type FC } from "react";
 import { FileIcon, PaperclipIcon } from "lucide-react";
 
-import type { DataMessagePartProps } from "@assistant-ui/react";
+import {
+  makeAssistantDataUI,
+  type DataMessagePartProps,
+} from "@assistant-ui/react";
 import { downloadFromHost } from "@/lib/upload";
+import { HOST_FILES } from "@/runtime/convert";
 
 type HostFiles = {
   paths: string[];
@@ -131,3 +135,25 @@ export const HostFiles: FC<DataMessagePartProps<HostFiles>> = ({ data }) => (
     )}
   </div>
 );
+
+/**
+ * Register the renderer above with assistant-ui, for the duration of the mount.
+ *
+ * **There are two different registries and they are not interchangeable.**
+ * Passing `components={{ data: { by_name } }}` to `MessagePrimitive.Parts`
+ * registers a renderer for *that* subtree, which is how a person's own
+ * attachments render inside `UserMessage`. `MessagePrimitive.GroupedParts` —
+ * what assistant messages use, because they interleave text and tool calls —
+ * takes no `components` prop at all: it hands the render function a
+ * `dataRendererUI` looked up in the assistant-wide registry, and returns `null`
+ * when nothing is registered there.
+ *
+ * So the assistant side was rendering `null` for every `attachments` frame: a
+ * file the agent produced simply never appeared, with no error anywhere. This
+ * component is the assistant-wide half. Render it once, anywhere inside the
+ * runtime provider; it draws nothing itself.
+ */
+export const HostFilesDataUI = makeAssistantDataUI<HostFiles>({
+  name: HOST_FILES,
+  render: HostFiles,
+});

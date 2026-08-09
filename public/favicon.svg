@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!--
+    Referenced by index.html since the first commit, but `public/` did not
+    exist — so every page load took a 404 and the tab showed the browser's
+    default page icon.
+
+    `currentColor` is not available to a favicon, so the two themes are handled
+    the only way an SVG icon can: a media query inside the document.
+  -->
+  <style>
+    .mark { fill: #171717; }
+    @media (prefers-color-scheme: dark) { .mark { fill: #fafafa; } }
+  </style>
+  <path class="mark" d="M16 3.5c-4.2 0-7.7 2.9-8.6 6.8A6.4 6.4 0 0 0 4 16.1c0 2.3 1.2 4.3 3 5.4-.1.5-.2 1-.2 1.5 0 3.3 2.7 6 6 6 1.5 0 2.9-.6 3.9-1.5v-19c0-2.8-.3-5-.7-5Z"/>
+  <path class="mark" d="M17.8 3.5c-.4 0-.7 2.2-.7 5v19c1 .9 2.4 1.5 3.9 1.5 3.3 0 6-2.7 6-6 0-.5-.1-1-.2-1.5 1.8-1.1 3-3.1 3-5.4a6.4 6.4 0 0 0-3.4-5.8c-.9-3.9-4.4-6.8-8.6-6.8Z" opacity=".55"/>
+</svg>

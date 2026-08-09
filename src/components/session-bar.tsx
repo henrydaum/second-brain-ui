@@ -9,8 +9,10 @@
  */
 
 import type { FC } from "react";
-import { XIcon } from "lucide-react";
+import { PanelLeftOpenIcon, XIcon } from "lucide-react";
 
+import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { ThemePicker } from "@/components/theme-picker";
 import { cn } from "@/lib/utils";
 import { useSecondBrain } from "@/runtime/provider";
 
@@ -20,14 +22,44 @@ const LABELS = {
   reconnecting: "Reconnecting…",
 } as const;
 
-export const SessionBar: FC = () => {
-  const { status } = useSecondBrain();
+export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
+  const { status, conversations, conversationId } = useSecondBrain();
   const label = LABELS[status];
 
+  // Which conversation you are in, where every other chat app puts it. The
+  // sidebar says it too, but the sidebar collapses — and on a narrow screen it
+  // is not on the page at all.
+  const title =
+    conversations.find((conversation) => conversation.id === conversationId)
+      ?.title || "New chat";
+
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-      <span className="text-sm font-medium">Second Brain</span>
-      <span className="text-muted-foreground ml-auto flex items-center gap-2 text-xs">
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2 sm:px-4">
+      {/* Below `md` the sidebar is an off-canvas drawer, so the only way back
+          to it is from out here. */}
+      <TooltipIconButton
+        tooltip="Show conversations"
+        side="bottom"
+        className="size-8 md:hidden"
+        onClick={onOpenNav}
+      >
+        <PanelLeftOpenIcon className="size-4" />
+      </TooltipIconButton>
+
+      <span
+        className="min-w-0 flex-1 truncate px-1 text-sm font-medium"
+        title={title}
+      >
+        {title}
+      </span>
+
+      <span
+        className="text-muted-foreground flex shrink-0 items-center gap-2 text-xs"
+        // The transport's state, announced when it changes: a dropped stream
+        // looks exactly like a thinking agent, and only this tells them apart.
+        role="status"
+        aria-live="polite"
+      >
         <span
           aria-hidden
           className={cn(
@@ -36,8 +68,12 @@ export const SessionBar: FC = () => {
             status !== "open" && "animate-pulse",
           )}
         />
-        {label}
+        {/* The dot alone carries this below `sm`, where the header is tight. */}
+        <span className="hidden sm:inline">{label}</span>
+        <span className="sr-only sm:hidden">{label}</span>
       </span>
+
+      <ThemePicker />
     </header>
   );
 };

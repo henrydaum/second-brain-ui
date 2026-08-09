@@ -3,8 +3,11 @@ import { Tooltip as TooltipPrimitive } from "radix-ui";
 
 import { cn } from "@/lib/utils";
 
+/** Long enough that crossing the toolbar does not fire a row of tooltips,
+ *  short enough that pausing on a control answers you. Zero — the value this
+ *  shipped with — makes every pointer sweep flash labels. */
 function TooltipProvider({
-  delayDuration = 0,
+  delayDuration = 500,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return (

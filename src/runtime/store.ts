@@ -163,8 +163,13 @@ export type Action =
   /** One frame off the event stream. */
   | { type: "frame"; frame: Frame }
   /** The person sent something. Echoed locally because `frontend.submit` does
-   *  not send the user's own line back down the stream. */
-  | { type: "said"; text: string; files?: string[] }
+   *  not send the user's own line back down the stream.
+   *
+   *  `isCommand` is decided by the caller against the server's own catalogue —
+   *  see `looksLikeCommand` in `lib/commands.ts`. The reducer cannot work it
+   *  out alone, and the guess it used to make was wrong in a way that lost
+   *  people's messages. */
+  | { type: "said"; text: string; files?: string[]; isCommand?: boolean }
   /** Scrollback, read from `conv.read` at boot. Replaces everything. */
   | { type: "history"; turns: Turn[] }
   | { type: "clearApproval" }
@@ -231,6 +236,13 @@ export function reduce(state: State, action: Action): State {
       // Note what is *not* here: a finished command still on screen does not
       // suppress anything. Once its questions are answered, the next line the
       // person types is an ordinary message again.
+      //
+      // **What counts as a command is the server's list, not the leading
+      // slash.** Suppressing anything starting with "/" swallowed ordinary
+      // messages: "/Users/henry/notes is where I keep this" went to the agent,
+      // got a reply, and never appeared in the transcript — a conversation
+      // answering a question nobody could see it asked. `isCommand` is checked
+      // against `command.list` before the dispatch.
       const answering = state.form !== null;
       if (action.text.trim().toLowerCase() === "/cancel" && state.command) {
         return {
@@ -243,7 +255,7 @@ export function reduce(state: State, action: Action): State {
           },
         };
       }
-      if (answering || action.text.startsWith("/")) {
+      if (answering || action.isCommand) {
         // The step has been sent, so the form goes; the command itself stays,
         // because it is about to say what it did.
         return {

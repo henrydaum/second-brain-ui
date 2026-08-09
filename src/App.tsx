@@ -7,7 +7,7 @@
  * `command.list` — is an ordinary Request, so neither changes anything here.
  */
 
-import type { FC } from "react";
+import { useState, type FC } from "react";
 
 import { ConversationSidebar } from "@/components/conversation-sidebar";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -15,20 +15,32 @@ import { SessionBar } from "@/components/session-bar";
 import { Thread } from "@/components/thread";
 import { SecondBrainProvider } from "@/runtime/provider";
 
-export const App: FC = () => (
-  // Outside the provider: a crash while *setting up* the connection is exactly
-  // the case a boundary inside it would miss.
-  <ErrorBoundary>
-    <SecondBrainProvider>
-      <div className="flex h-dvh w-full overflow-hidden">
-        <ConversationSidebar />
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <SessionBar />
-          <main className="flex-1 overflow-hidden">
-            <Thread />
-          </main>
+export const App: FC = () => {
+  /**
+   * Whether the conversations drawer is showing on a narrow screen.
+   *
+   * It lives here because the two components that need it are siblings: below
+   * `md` the sidebar is an overlay that starts off-screen, so the control that
+   * opens it cannot be inside it. Above `md` the sidebar is an inline rail and
+   * this is simply unused.
+   */
+  const [navOpen, setNavOpen] = useState(false);
+
+  return (
+    // Outside the provider: a crash while *setting up* the connection is
+    // exactly the case a boundary inside it would miss.
+    <ErrorBoundary>
+      <SecondBrainProvider>
+        <div className="flex h-dvh w-full overflow-hidden">
+          <ConversationSidebar open={navOpen} onOpenChange={setNavOpen} />
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <SessionBar onOpenNav={() => setNavOpen(true)} />
+            <main className="flex-1 overflow-hidden">
+              <Thread />
+            </main>
+          </div>
         </div>
-      </div>
-    </SecondBrainProvider>
-  </ErrorBoundary>
-);
+      </SecondBrainProvider>
+    </ErrorBoundary>
+  );
+};

@@ -97,7 +97,7 @@ export const SettingsDialog: FC<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }> = ({ open, onOpenChange }) => {
-  const { commands, say, state } = useSecondBrain();
+  const { commands, say, state, dismissCommand } = useSecondBrain();
   const [page, setPage] = useState<SettingsPageId>("agents");
   const activeName = state.form?.name ?? state.command?.name;
   const commandActive = Boolean(activeName);
@@ -128,6 +128,12 @@ export const SettingsDialog: FC<{
     // A server-owned form must be cancelled through its own Cancel action.
     // Hiding it would leave the session waiting on an invisible question.
     if (!next && workflowBlocking) return;
+    // **Closing on a finished command puts it away.** Leaving it set had two
+    // consequences, both invisible from here: reopening Settings landed on the
+    // old command's output instead of the section list, and — worse — the store
+    // routes every `messages` frame into a live command's panel, so anything
+    // the agent said next was captured by a dialog nobody had open.
+    if (!next && state.command?.status === "finished") dismissCommand();
     onOpenChange(next);
   };
 

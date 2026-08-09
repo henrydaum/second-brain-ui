@@ -33,7 +33,7 @@ import {
 } from "@assistant-ui/react";
 
 import { RequestFailed, sdk } from "@/lib/client";
-import { listCommands, type Command } from "@/lib/commands";
+import { listCommands, looksLikeCommand, type Command } from "@/lib/commands";
 import {
   listConversations,
   type Conversation,
@@ -193,6 +193,19 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationId, setConversationId] = useState<number | null>(null);
+
+  /**
+   * The catalogue, readable from a callback without becoming a dependency of
+   * one.
+   *
+   * `say` and `onNew` need it to tell a slash command from a message that
+   * merely opens with a slash, but every callback the runtime adapter is built
+   * from is deliberately dependency-free so the adapter keeps one identity for
+   * the life of the page. A ref is how a value can be current without being a
+   * reason to rebuild.
+   */
+  const commandsRef = useRef<Command[]>([]);
+  commandsRef.current = commands;
 
   /**
    * Turn a thrown Request into the error banner.
@@ -380,7 +393,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
   const say = useCallback(
     async (text: string) => {
-      dispatch({ type: "said", text });
+      dispatch({
+        type: "said",
+        text,
+        isCommand: looksLikeCommand(text, commandsRef.current),
+      });
       try {
         await sdk("frontend.submit", { input_kind: "text", text });
         return true;
@@ -471,6 +488,28 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       report(error);
     }
   }, [report]);
+
+  /**
+   * Re-read the list when the agent hands the turn back.
+   *
+   * The sidebar was only ever refreshed by opening, creating or deleting a
+   * conversation — so a list read at boot stayed frozen for the rest of the
+   * session: the conversation you were actively talking in never moved to the
+   * top, `updated_ago` still claimed "15 seconds ago" an hour later, and a
+   * title the kernel assigned after the first exchange never arrived. Once per
+   * completed turn is the right cadence: it is when any of that can have
+   * changed, and it is far rarer than a frame.
+   */
+  const wasTyping = useRef(false);
+  useEffect(() => {
+    if (state.typing) {
+      wasTyping.current = true;
+      return;
+    }
+    if (!wasTyping.current) return;
+    wasTyping.current = false;
+    void refreshConversations();
+  }, [state.typing, refreshConversations]);
 
   /**
    * Point the session at another conversation.
@@ -577,7 +616,15 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
           Boolean(file.path),
         );
 
-      dispatch({ type: "said", text, files: files.map((file) => file.name) });
+      dispatch({
+        type: "said",
+        text,
+        files: files.map((file) => file.name),
+        // A message carrying files is a message, whatever it starts with —
+        // there is no such thing as a slash command with an attachment.
+        isCommand:
+          files.length === 0 && looksLikeCommand(text, commandsRef.current),
+      });
 
       try {
         if (files.length) {
@@ -653,11 +700,15 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
     // Quick replies from a store plugin. `buttons` carries {value, label} and
     // the value is submitted as text, same as a form choice.
+    // `label` is the field assistant-ui exposes as `SuggestionState.label` and
+    // therefore the one a chip can render; `text` — what this used to emit —
+    // is not part of that shape and arrived as `undefined` on the other side.
+    // `prompt` is what gets submitted, which is the wire's `value`.
     suggestions: useMemo(
       () =>
         state.buttons.map((button) => ({
           prompt: String(button.value),
-          text: button.label ?? String(button.value),
+          label: button.label ?? String(button.value),
         })),
       [state.buttons],
     ),

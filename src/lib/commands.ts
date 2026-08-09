@@ -39,3 +39,26 @@ export async function listCommands(): Promise<Command[]> {
   const commands = Array.isArray(data) ? data : (data?.items ?? []);
   return [...commands].sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/**
+ * Is this line an invocation of a command the server actually has?
+ *
+ * **A leading slash is not the test.** The store used to suppress every message
+ * beginning with "/" — because command interaction belongs in the Settings
+ * panel rather than the transcript — and that quietly ate real messages: a path
+ * (`/Users/henry/notes`), a fraction, a closing tag. They still reached the
+ * agent and the agent still answered; only the person's own line was missing,
+ * which reads as the chat replying to nothing.
+ *
+ * Checking the first word against `command.list` is the same judgement the
+ * server's own state machine makes, so the two cannot disagree about what a
+ * command is. An empty catalogue answers `false` for everything, which is the
+ * right way to be wrong: a command shown in the chat is untidy, a message
+ * deleted from it is a bug.
+ */
+export function looksLikeCommand(text: string, commands: Command[]): boolean {
+  const first = text.trim().split(/\s/, 1)[0];
+  if (!first?.startsWith("/")) return false;
+  const name = first.slice(1).toLowerCase();
+  return commands.some((command) => command.name.toLowerCase() === name);
+}

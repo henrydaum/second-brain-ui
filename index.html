@@ -4,7 +4,32 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>Second Brain</title>
+    <!--
+      The theme, before anything is painted.
+
+      React's first render is far too late: on a dark desktop the page would
+      show a full white frame and then repaint, and that flash is the single
+      most noticeable thing about a theme that is otherwise correct. So the
+      class goes on here, synchronously, ahead of the stylesheet.
+
+      Kept in sync with `src/lib/theme.ts`, which owns the same key.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("second-brain:theme");
+          var wantsDark =
+            stored === "dark" ||
+            ((stored === "system" || !stored) &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (wantsDark) document.documentElement.classList.add("dark");
+        } catch (e) {
+          /* Storage disabled. Light is a fine place to start. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

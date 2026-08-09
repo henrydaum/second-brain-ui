@@ -12,7 +12,12 @@ type MarkdownElementProps<Tag extends keyof React.JSX.IntrinsicElements> =
  * data, not prose, and should scan like an ordinary application table. */
 const CommandTable: FC<MarkdownElementProps<"table">> = ({ node: _node, ...props }) => (
   <div className="my-4 w-full overflow-x-auto rounded-lg border">
-    <table className="w-full border-collapse text-sm" {...props} />
+    {/* `table` is Tailwind's `display: table` utility, and it is here on
+        purpose. The chat's `.aui-md` stylesheet makes bare tables `display:
+        block` so a wide one scrolls inside itself; this table already has a
+        scrolling wrapper, so it needs to stay a real table. Utilities outrank
+        that stylesheet's layer, which is what lets one word say so. */}
+    <table className="table w-full border-collapse text-sm" {...props} />
   </div>
 );
 

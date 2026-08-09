@@ -18,10 +18,12 @@ import {
   PanelLeftOpenIcon,
   SettingsIcon,
   Trash2Icon,
+  XIcon,
 } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { SettingsDialog } from "@/components/settings-dialog";
+import { MD_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { useSecondBrain } from "@/runtime/provider";
 
@@ -29,7 +31,17 @@ import { useSecondBrain } from "@/runtime/provider";
  *  loads is a preference the app keeps overruling. */
 const COLLAPSED_KEY = "second-brain:sidebar-collapsed";
 
-export const ConversationSidebar: FC = () => {
+export type ConversationSidebarProps = {
+  /** Whether the overlay drawer is showing. Only meaningful below `md`, where
+   *  this is a drawer rather than an inline rail. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export const ConversationSidebar: FC<ConversationSidebarProps> = ({
+  open,
+  onOpenChange,
+}) => {
   const {
     conversations,
     conversationId,
@@ -63,6 +75,37 @@ export const ConversationSidebar: FC = () => {
     localStorage.setItem(COLLAPSED_KEY, String(collapsed));
   }, [collapsed]);
 
+  /**
+   * Two different components sharing one file.
+   *
+   * Above `md` this is an inline rail that collapses to 48px, which is the
+   * behaviour it always had. Below `md` it was *also* that — a fixed 256px
+   * column on a 375px phone, leaving about 119px of chat, with no way to get it
+   * back except finding and pressing a collapse button inside the thing that
+   * was in the way. Below `md` it is now an overlay drawer, which is what every
+   * app this one is imitating does.
+   *
+   * `collapsed` is a rail concept and must not leak into the drawer: a person
+   * who collapsed the rail on a laptop should not find an empty drawer on their
+   * phone. Hence the media query — the list is unmounted rather than hidden, so
+   * this is a genuine behavioural fork that CSS cannot express.
+   */
+  const isDesktop = useMediaQuery(MD_QUERY);
+  const railCollapsed = isDesktop && collapsed;
+
+  // Picking a conversation on a phone means you are done with the drawer.
+  const closeDrawer = () => onOpenChange(false);
+
+  // Escape closes it, as it does for every other overlay here.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onOpenChange(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onOpenChange]);
+
   useEffect(() => {
     const name = state.form?.name ?? state.command?.name;
     if (name) setSettingsOpen(true);
@@ -78,27 +121,55 @@ export const ConversationSidebar: FC = () => {
   };
 
   return (
-    <aside
-      data-slot="conversation-sidebar"
-      data-collapsed={collapsed || undefined}
-      className={cn(
-        "bg-sidebar flex h-full shrink-0 flex-col overflow-hidden border-e transition-[width] duration-200",
-        collapsed ? "w-12" : "w-64",
+    <>
+      {/* The scrim, below `md` only. It is what makes the drawer dismissible by
+          pressing the conversation you were reading — the gesture everybody
+          tries first. */}
+      {open && (
+        <div
+          aria-hidden
+          onClick={closeDrawer}
+          className="animate-in fade-in-0 fixed inset-0 z-40 bg-black/50 md:hidden"
+        />
       )}
-    >
+
+      <aside
+        data-slot="conversation-sidebar"
+        data-collapsed={railCollapsed || undefined}
+        className={cn(
+          "bg-sidebar flex h-full flex-col overflow-hidden border-e",
+          // Below `md`: an overlay drawer, off-canvas until asked for.
+          "fixed inset-y-0 start-0 z-50 w-64 transition-transform duration-200",
+          open ? "translate-x-0" : "-translate-x-full rtl:translate-x-full",
+          // From `md`: back in the flow, and the transition moves to width so
+          // collapsing the rail animates rather than sliding the whole panel.
+          "md:relative md:z-auto md:shrink-0 md:translate-x-0 md:transition-[width] rtl:md:translate-x-0",
+          railCollapsed ? "md:w-12" : "md:w-64",
+        )}
+      >
       {/* New chat remains pinned to the rail while its label is revealed. The
           drawer toggle follows the moving outer edge, matching the panel it
           opens and closes. */}
       <div className="relative grid grid-cols-[2rem_1fr] gap-x-1 p-2 pt-11">
+        {/* Two buttons, not one with a media query in JavaScript: on a phone
+            this closes an overlay, on a laptop it collapses a rail, and those
+            are different verbs with different icons and different labels. */}
         <TooltipIconButton
-          tooltip={collapsed ? "Show conversations" : "Hide conversations"}
+          tooltip="Close conversations"
           side="right"
-          variant="ghost"
-          className="absolute top-2 right-2 size-8 shrink-0"
-          aria-expanded={!collapsed}
+          className="absolute top-2 right-2 size-8 md:hidden"
+          onClick={closeDrawer}
+        >
+          <XIcon className="size-4" />
+        </TooltipIconButton>
+        <TooltipIconButton
+          tooltip={railCollapsed ? "Show conversations" : "Hide conversations"}
+          side="right"
+          className="absolute top-2 right-2 hidden size-8 md:inline-flex"
+          aria-expanded={!railCollapsed}
           onClick={() => setCollapsed((value) => !value)}
         >
-          {collapsed ? (
+          {railCollapsed ? (
             <PanelLeftOpenIcon className="size-4 translate-x-[0.5px]" />
           ) : (
             <PanelLeftCloseIcon className="size-4 translate-x-[0.5px]" />
@@ -108,22 +179,21 @@ export const ConversationSidebar: FC = () => {
         <TooltipIconButton
           tooltip="New chat"
           side="right"
-          variant="ghost"
-          className="col-start-1 size-8 shrink-0"
+          className="col-start-1 size-8"
           disabled={locked}
-          onClick={() => void run(newConversation)}
+          onClick={() => void run(newConversation).then(closeDrawer)}
         >
           <MessageSquarePlusIcon className="size-4" />
         </TooltipIconButton>
         <button
           type="button"
           disabled={locked}
-          tabIndex={collapsed ? -1 : undefined}
-          aria-hidden={collapsed || undefined}
-          onClick={() => void run(newConversation)}
+          tabIndex={railCollapsed ? -1 : undefined}
+          aria-hidden={railCollapsed || undefined}
+          onClick={() => void run(newConversation).then(closeDrawer)}
           className={cn(
             "text-muted-foreground hover:text-foreground col-start-2 min-w-0 truncate px-1 text-start text-sm transition-opacity disabled:opacity-50",
-            collapsed ? "pointer-events-none opacity-0" : "opacity-100",
+            railCollapsed ? "pointer-events-none opacity-0" : "opacity-100",
           )}
         >
           New chat
@@ -133,7 +203,7 @@ export const ConversationSidebar: FC = () => {
       {/* The list itself is the only thing that actually goes away. Unmounted
           rather than hidden, so a long list is not still being laid out behind
           a 48px rail. */}
-      {collapsed ? null : (
+      {railCollapsed ? null : (
       <nav className="flex-1 overflow-y-auto p-2 pt-0">
         {conversations.length === 0 && (
           <p className="text-muted-foreground px-2 py-4 text-xs">
@@ -156,7 +226,11 @@ export const ConversationSidebar: FC = () => {
               <button
                 type="button"
                 disabled={locked}
-                onClick={() => void run(() => openConversation(conversation.id))}
+                onClick={() =>
+                  void run(() => openConversation(conversation.id)).then(
+                    closeDrawer,
+                  )
+                }
                 className="min-w-0 flex-1 px-2 py-1.5 text-start disabled:opacity-50"
               >
                 <span className="block truncate text-sm">
@@ -174,9 +248,8 @@ export const ConversationSidebar: FC = () => {
               <TooltipIconButton
                 tooltip="Delete"
                 side="right"
-                variant="ghost"
                 className={cn(
-                  "mr-1 size-7 shrink-0",
+                  "me-1 size-7",
                   // Present on hover or focus only — a destructive control
                   // sitting permanently beside every row is one that gets hit
                   // by accident. It stays keyboard-reachable.
@@ -200,27 +273,27 @@ export const ConversationSidebar: FC = () => {
         <TooltipIconButton
           tooltip="Settings"
           side="right"
-          variant="ghost"
-          className="size-8 shrink-0"
+          className="size-8"
           onClick={() => setSettingsOpen(true)}
         >
           <SettingsIcon className="size-4" />
         </TooltipIconButton>
         <button
           type="button"
-          tabIndex={collapsed ? -1 : undefined}
-          aria-hidden={collapsed || undefined}
+          tabIndex={railCollapsed ? -1 : undefined}
+          aria-hidden={railCollapsed || undefined}
           onClick={() => setSettingsOpen(true)}
           className={cn(
             "text-muted-foreground hover:text-foreground min-w-0 truncate px-1 text-start text-sm transition-opacity",
-            collapsed ? "pointer-events-none opacity-0" : "opacity-100",
+            railCollapsed ? "pointer-events-none opacity-0" : "opacity-100",
           )}
         >
           Settings
         </button>
       </div>
 
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-    </aside>
+        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      </aside>
+    </>
   );
 };

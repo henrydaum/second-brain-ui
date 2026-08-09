@@ -17,9 +17,12 @@ import type { FC } from "react";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  CheckIcon,
+  CopyIcon,
   SquareIcon,
 } from "lucide-react";
 import {
+  ActionBarPrimitive,
   AuiIf,
   ComposerPrimitive,
   ErrorPrimitive,
@@ -45,7 +48,7 @@ import {
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { ApprovalDialog } from "@/components/approval-dialog";
-import { HostFiles } from "@/components/host-file";
+import { HostFiles, HostFilesDataUI } from "@/components/host-file";
 import { ErrorBanner } from "@/components/session-bar";
 import { SecurityModePicker } from "@/components/security-mode-picker";
 import { VoiceNoteButton } from "@/components/voice-note";
@@ -116,7 +119,14 @@ export const Thread: FC = () => {
           isEmpty && "justify-center",
         )}
       >
-        <AuiIf condition={(s) => s.thread.messages.length === 0}>
+        {/* `isLoading` matters here as much as it does for `isEmpty` above.
+            Keyed on message count alone, this greeting appeared for the moment
+            between the page opening and scrollback arriving — so every load and
+            every conversation switch flashed "What can I help with?" at
+            somebody who was mid-conversation. */}
+        <AuiIf
+          condition={(s) => s.thread.messages.length === 0 && !s.thread.isLoading}
+        >
           <div className="mx-auto mb-6 w-full max-w-(--thread-max-width) text-center">
             <h1 className="text-primary text-2xl font-semibold">
               What can I help with?
@@ -139,6 +149,7 @@ export const Thread: FC = () => {
           )}
         >
           <ScrollToBottom />
+          <Suggestions />
           <ErrorBanner />
           <Composer />
         </ThreadPrimitive.ViewportFooter>
@@ -147,16 +158,51 @@ export const Thread: FC = () => {
       {/* Outside the viewport — it is a modal over everything, and it is the one
           thing in this app that must not be scrolled past. */}
       <ApprovalDialog />
+
+      {/* Draws nothing. It registers the renderer for the agent's own files
+          with the assistant-wide registry that `GroupedParts` reads — see
+          `components/host-file.tsx`. */}
+      <HostFilesDataUI />
     </ThreadPrimitive.Root>
   );
 };
+
+/**
+ * Quick replies offered by a store plugin.
+ *
+ * `buttons` frames have been carried all the way from the wire, through the
+ * store, into the runtime's `suggestions` — and then nothing rendered them, so
+ * the whole path was inert. Nothing in the kernel emits `buttons` today, which
+ * is exactly why this was easy to leave unfinished and hard to notice.
+ */
+const Suggestions: FC = () => (
+  <AuiIf condition={(s) => s.thread.suggestions.length > 0}>
+    <div className="flex flex-wrap gap-2">
+      <ThreadPrimitive.Suggestions>
+        {/* `send`, not the deprecated `autoSend`: a quick reply is an answer,
+            so pressing it submits rather than filling the composer in. */}
+        {({ suggestion }) => (
+          <ThreadPrimitive.Suggestion asChild prompt={suggestion.prompt} send>
+            <Button variant="outline" size="sm" className="rounded-full">
+              {suggestion.label || suggestion.prompt}
+            </Button>
+          </ThreadPrimitive.Suggestion>
+        )}
+      </ThreadPrimitive.Suggestions>
+    </div>
+  </AuiIf>
+);
 
 const ScrollToBottom: FC = () => (
   <ThreadPrimitive.ScrollToBottom asChild>
     <TooltipIconButton
       tooltip="Scroll to bottom"
       variant="outline"
-      className="dark:bg-background absolute -top-12 z-10 self-center rounded-full p-4 disabled:invisible"
+      // `p-4` used to sit here alongside the icon size, which with a working
+      // `size` variant would crush the arrow into a 36px button. The variant
+      // supplies the border and background now, so the class list only has to
+      // say where it floats.
+      className="bg-background absolute -top-12 z-10 size-9 self-center rounded-full shadow-md disabled:invisible"
     >
       <ArrowDownIcon />
     </TooltipIconButton>
@@ -262,8 +308,46 @@ const AssistantMessage: FC = () => (
           <ErrorPrimitive.Message />
         </ErrorPrimitive.Root>
       </MessagePrimitive.Error>
+      <AssistantActionBar />
     </div>
   </MessagePrimitive.Root>
+);
+
+/**
+ * Copy, and only copy.
+ *
+ * The other three buttons that live here in every other chat app — regenerate,
+ * edit, thumbs — all need a backend that can do the thing, and this one cannot:
+ * there is no regenerate and no message tree, which is why the runtime declares
+ * no `onReload`, `onEdit` or branch adapter. Copying is different. It is
+ * entirely local, it is the affordance people actually reach for, and its
+ * absence was conspicuous.
+ *
+ * `hideWhenRunning` keeps it off a message that is still being written, where
+ * copying would take half a sentence.
+ */
+const AssistantActionBar: FC = () => (
+  <ActionBarPrimitive.Root
+    hideWhenRunning
+    autohide="not-last"
+    className="text-muted-foreground mt-2 flex items-center gap-1 data-[floating]:absolute"
+  >
+    <ActionBarPrimitive.Copy asChild>
+      <TooltipIconButton
+        tooltip="Copy"
+        side="bottom"
+        // `group/copy` names *this* element: assistant-ui puts `data-copied` on
+        // the button itself, so the icons below can only see it as a group.
+        className="group/copy size-8"
+      >
+        {/* assistant-ui flips `data-copied` on for a few seconds after a
+            successful copy; these two siblings are what turn that into the
+            tick-then-back feedback every one of these buttons gives. */}
+        <CopyIcon className="size-4 group-data-[copied]/copy:hidden" />
+        <CheckIcon className="hidden size-4 group-data-[copied]/copy:block" />
+      </TooltipIconButton>
+    </ActionBarPrimitive.Copy>
+  </ActionBarPrimitive.Root>
 );
 
 const UserMessage: FC = () => (
