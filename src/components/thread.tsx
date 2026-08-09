@@ -52,6 +52,7 @@ import { HostFiles, HostFilesDataUI } from "@/components/host-file";
 import { ErrorBanner } from "@/components/session-bar";
 import { SecurityModePicker } from "@/components/security-mode-picker";
 import { VoiceNoteButton } from "@/components/voice-note";
+import { fullTimestamp, shortTimestamp } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { HOST_FILES, SENT_AT } from "@/runtime/convert";
 
@@ -439,12 +440,13 @@ const MessageTime: FC = () => {
   return (
     <time
       dateTime={moment.toISOString()}
-      // The full date on hover: the line itself is a clock time, which is
-      // ambiguous the moment a conversation is more than a day old.
-      title={moment.toLocaleString()}
+      // The short form drops whatever the reader can infer, so the full one
+      // has to be reachable — this is the only place the year ever appears for
+      // a message sent this year.
+      title={fullTimestamp(moment)}
       className="text-muted-foreground text-[11px] tabular-nums"
     >
-      {moment.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+      {shortTimestamp(moment)}
     </time>
   );
 };

@@ -15,10 +15,16 @@ export type Conversation = {
   /** "user" for a person's conversations; subagents get their own kinds. */
   kind?: string;
   category?: string | null;
+  /** **Fractional epoch seconds**, e.g. `1786239258.642228` — not milliseconds.
+   *  Confirmed against a live `conv.list`. Note that message rows spell the
+   *  same idea `timestamp` (see `lib/history.ts`); the two tables disagree
+   *  about the name but not the units. */
   created_at?: number;
   updated_at?: number;
   /** Pre-formatted by the server, e.g. "15 seconds ago". Rendering the server's
-   *  own wording avoids a second, disagreeing notion of "recent". */
+   *  own wording avoids a second, disagreeing notion of "recent" — and relative
+   *  wording is the right idiom for a list read by recency, which is why this
+   *  is shown rather than a date. The date is on the row's `title`. */
   updated_ago?: string;
 };
 

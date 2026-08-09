@@ -24,6 +24,7 @@ import {
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { MD_QUERY, useMediaQuery } from "@/lib/media";
+import { fullTimestamp } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { useSecondBrain } from "@/runtime/provider";
 
@@ -232,6 +233,16 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
                   )
                 }
                 className="min-w-0 flex-1 px-2 py-1.5 text-start disabled:opacity-50"
+                // The exact moment, for when "2 months ago" is not precise
+                // enough. On the row rather than on the relative line, so it
+                // answers from anywhere in the row — and the visible wording
+                // stays relative, which is what a list ordered by recency
+                // wants. `updated_at` is epoch *seconds*.
+                title={
+                  conversation.updated_at
+                    ? fullTimestamp(new Date(conversation.updated_at * 1000))
+                    : undefined
+                }
               >
                 <span className="block truncate text-sm">
                   {conversation.title || "Untitled"}
