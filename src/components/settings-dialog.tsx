@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FC } from "react";
+import { useEffect, useMemo, useRef, useState, type FC } from "react";
 import { ChevronRightIcon, Settings2Icon } from "lucide-react";
 
 import { CommandPanel } from "@/components/command-panel";
@@ -99,9 +99,12 @@ export const SettingsDialog: FC<{
 }> = ({ open, onOpenChange }) => {
   const { commands, say, state, dismissCommand } = useSecondBrain();
   const [page, setPage] = useState<SettingsPageId>("agents");
+  const [commandActionPending, setCommandActionPending] = useState(false);
+  const commandActionPendingRef = useRef(false);
   const activeName = state.form?.name ?? state.command?.name;
   const commandActive = Boolean(activeName);
-  const workflowBlocking = state.form !== null;
+  const commandRunning =
+    commandActive && state.command?.status !== "finished";
 
   useEffect(() => {
     if (activeName) setPage(pageForCommand(activeName));
@@ -119,21 +122,47 @@ export const SettingsDialog: FC<{
     [commands, page],
   );
 
+  const afterCurrentCommand = async (action: () => void | Promise<void>) => {
+    if (!commandActive) {
+      await action();
+      return;
+    }
+    if (commandActionPendingRef.current) return;
+
+    commandActionPendingRef.current = true;
+    setCommandActionPending(true);
+    try {
+      if (commandRunning) {
+        const submitted = await say("/cancel");
+        if (!submitted) return;
+      }
+      dismissCommand();
+      await action();
+    } finally {
+      commandActionPendingRef.current = false;
+      setCommandActionPending(false);
+    }
+  };
+
   const run = (name: string) => {
-    setPage(pageForCommand(name));
-    void say(`/${name}`);
+    void afterCurrentCommand(async () => {
+      setPage(pageForCommand(name));
+      await say(`/${name}`);
+    });
+  };
+
+  const navigateTo = (nextPage: SettingsPageId) => {
+    void afterCurrentCommand(() => setPage(nextPage));
   };
 
   const handleOpenChange = (next: boolean) => {
-    // A server-owned form must be cancelled through its own Cancel action.
-    // Hiding it would leave the session waiting on an invisible question.
-    if (!next && workflowBlocking) return;
-    // **Closing on a finished command puts it away.** Leaving it set had two
-    // consequences, both invisible from here: reopening Settings landed on the
-    // old command's output instead of the section list, and — worse — the store
-    // routes every `messages` frame into a live command's panel, so anything
-    // the agent said next was captured by a dialog nobody had open.
-    if (!next && state.command?.status === "finished") dismissCommand();
+    // Closing while a command is active is also a cancellation. Wait for the
+    // server to accept it before hiding Settings so a failed submission does
+    // not leave the session waiting on an invisible question.
+    if (!next && commandActive) {
+      void afterCurrentCommand(() => onOpenChange(false));
+      return;
+    }
     onOpenChange(next);
   };
 
@@ -142,7 +171,7 @@ export const SettingsDialog: FC<{
       <DialogContent
         className="flex h-[min(88vh,54rem)] w-[min(94vw,70rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
         overlayClassName="bg-black/40 backdrop-blur-sm"
-        showCloseButton={!workflowBlocking}
+        closeButtonDisabled={commandActionPending}
       >
         <header className="flex h-16 shrink-0 items-center gap-3 border-b px-5 sm:px-6">
           <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg">
@@ -166,8 +195,8 @@ export const SettingsDialog: FC<{
                 <button
                   key={id}
                   type="button"
-                  disabled={commandActive}
-                  onClick={() => setPage(id)}
+                  disabled={commandActionPending}
+                  onClick={() => navigateTo(id)}
                   className={cn(
                     "mb-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors disabled:pointer-events-none disabled:opacity-50",
                     page === id
@@ -183,7 +212,9 @@ export const SettingsDialog: FC<{
             <div className="mt-auto border-t pt-3">
               <SystemActions
                 commands={commands}
-                disabled={commandActive || state.typing}
+                disabled={
+                  commandActionPending || (!commandActive && state.typing)
+                }
                 onRun={run}
               />
             </div>
@@ -194,9 +225,9 @@ export const SettingsDialog: FC<{
               <span className="sr-only">Settings section</span>
               <select
                 value={page}
-                disabled={commandActive}
+                disabled={commandActionPending}
                 onChange={(event) =>
-                  setPage(event.target.value as SettingsPageId)
+                  navigateTo(event.target.value as SettingsPageId)
                 }
                 className="border-input bg-background h-10 w-full rounded-md border px-3 text-sm"
               >
