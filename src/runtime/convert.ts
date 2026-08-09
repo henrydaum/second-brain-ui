@@ -48,15 +48,13 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
           // Supplying one on `finished` is what flips it to done — and the
           // empty string counts, because the test is `=== undefined`.
           //
-          // **The protocol carries no tool output.** A `tool_status` frame has
-          // `narration`, `ok` and `error` and nothing else, so the best we can
-          // say is the error, or the blurb the agent wrote about what it was
-          // doing. `||` rather than `??` on purpose: an empty narration should
-          // fall through to nothing rather than win, which is what left the
-          // renderer drawing an empty box labelled "Result".
+          // The failure reason or the outcome, never both: the kernel leaves
+          // `summary` empty when a call fails, precisely so that one of these
+          // is the answer. `narration` is deliberately not in this chain — it
+          // is what the agent set out to do, which is not a result.
           ...(part.status === "finished"
             ? {
-                result: part.error || part.narration || "",
+                result: part.error || part.summary || "",
                 isError: part.ok === false,
               }
             : {}),

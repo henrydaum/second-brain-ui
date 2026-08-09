@@ -54,7 +54,12 @@ export type ToolPart = {
   name: string;
   /** True when this was a slash command rather than a tool. */
   isCommand: boolean;
+  /** What the agent said it was doing, from `started`. */
   narration: string;
+  /** What came back, from `finished`. A different fact from `narration` — see
+   *  `ToolStatusPayload`. Empty until the call finishes, and empty after it if
+   *  it failed, where `error` is the outcome. */
+  summary: string;
   status: "started" | "progressed" | "finished";
   args?: Record<string, unknown>;
   ok?: boolean;
@@ -492,6 +497,10 @@ function applyFrame(state: State, frame: Frame): State {
         // `narration` is repeated on `finished` deliberately, but keep the last
         // one we had if a frame omits it.
         narration: p.narration ?? existing?.narration ?? "",
+        // Only `finished` carries this, so the earlier frames must not blank
+        // out what a later one brought — and a kernel older than the field
+        // simply leaves it empty forever, which renders as it did before.
+        summary: p.summary ?? existing?.summary ?? "",
         status: p.status,
         args: p.args ?? existing?.args,
         ok: p.ok ?? existing?.ok,

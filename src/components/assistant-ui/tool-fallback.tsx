@@ -30,10 +30,9 @@ export const ToolFallback: ToolCallMessagePartComponent = ({
   const running = status.type === "running";
   const failed = status.type === "incomplete" || isError === true;
 
-  // Emptiness is decided here, not by `result !== undefined`. The kernel sends
-  // no tool output, so on success `result` is whatever blurb the agent wrote —
-  // often nothing at all, which used to render as a heading over a blank box
-  // that read as a missing value rather than an absent one.
+  // Emptiness is decided here, not by `result !== undefined`. A tool is free to
+  // report nothing at all, and a heading over a blank box reads as a value that
+  // went missing rather than one that was never sent.
   const outcome = result === undefined ? "" : printable(result).trim();
   const hasDetails = Boolean(argsText) || outcome !== "";
 
@@ -89,16 +88,15 @@ export const ToolFallback: ToolCallMessagePartComponent = ({
           )}
           {outcome !== "" && (
             <div>
-              {/* "Result" would be a promise the wire cannot keep. What is in
-                  here is the failure reason, or the agent's own note about the
-                  call — never the tool's return value. */}
+              {/* One or the other, never both: the kernel leaves the summary
+                  empty on a failure so that the error is the whole answer. */}
               <p
                 className={cn(
                   "mb-1.5 text-xs font-medium",
                   failed ? "text-destructive" : "text-muted-foreground",
                 )}
               >
-                {failed ? "Error" : "Note"}
+                {failed ? "Error" : "Result"}
               </p>
               <pre className="bg-muted/60 max-h-56 overflow-auto rounded-md p-2.5 text-xs whitespace-pre-wrap">
                 {outcome}

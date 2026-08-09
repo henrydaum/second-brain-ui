@@ -7,18 +7,23 @@
  * stored in the same table, not anything a person said or was told. Rendering
  * those would put the kernel's internals in the chat window.
  *
- * Tool rows are dropped too, for a different reason: a `tool` message is only
- * valid next to the assistant message whose `tool_calls` it answers, and
- * reconstructing that pairing from flat rows is more than history rendering
- * needs to do. The consequence is honest — past tool activity is not shown when
- * scrolling back, though it streams live in the turn that produces it.
+ * **Tool calls are rebuilt, not dropped.** A `tool` row is only meaningful
+ * beside the assistant row whose `tool_calls` it answers, so the pairing has to
+ * be reconstructed from flat rows — done below, because the alternative is a
+ * scrollback that quietly disagrees with what you watched happen: tools appear
+ * while a turn runs and vanish when the page reloads.
+ *
+ * That pairing is also why consecutive assistant and tool rows are merged into
+ * one turn. The kernel writes an agent turn as several rows — the call, its
+ * result, the reply that follows — and the live stream renders exactly that as a
+ * single message. One turn per row would split it into two or three.
  *
  * Ported from the AG-UI draft, where this logic was arrived at the hard way. The
  * only thing that changed is where the rows come from.
  */
 
 import { sdk } from "@/lib/client";
-import type { Turn } from "@/runtime/store";
+import type { ToolPart, Turn } from "@/runtime/store";
 
 /** One row of the `messages` table, as `conv.read` hands it over. */
 export type StoredMessage = {
@@ -50,6 +55,26 @@ function momentOf(message: StoredMessage): number | undefined {
   return seconds * 1000;
 }
 
+/** One entry of an assistant row's `tool_calls`, in the provider's shape. */
+type StoredToolCall = {
+  id?: string;
+  function?: { name?: string; arguments?: string };
+};
+
+/** A JSON object a row's `content` might be, or null when it is not one. */
+function asObject(raw: string): Record<string, unknown> | null {
+  if (!raw.trimStart().startsWith("{")) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed !== null && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    // Not JSON after all — a message that merely opens with a brace.
+    return null;
+  }
+}
+
 /**
  * The text of one stored row, or null if it holds no prose.
  *
@@ -62,14 +87,10 @@ function momentOf(message: StoredMessage): number | undefined {
  */
 function prose(raw: string): string | null {
   let text = raw;
-  if (raw.trimStart().startsWith("{")) {
-    try {
-      const parsed = JSON.parse(raw) as { content?: unknown };
-      if (typeof parsed.content !== "string") return null;
-      text = parsed.content;
-    } catch {
-      // Not JSON after all — a message that merely opens with a brace.
-    }
+  const parsed = asObject(raw);
+  if (parsed) {
+    if (typeof parsed.content !== "string") return null;
+    text = parsed.content;
   }
   // Reasoning is stripped rather than shown. The live stream does not render it
   // inline either, so leaving it in would make scrollback disagree with what you
@@ -78,27 +99,140 @@ function prose(raw: string): string | null {
   return text === "" ? null : text;
 }
 
-/** Stored rows → turns. One row is one turn; scrollback has no tool parts, so
- *  the interleaving `store.ts` cares about does not arise here. */
+/** The calls an assistant row announces, as parts waiting for their answers. */
+function toolParts(raw: string): ToolPart[] {
+  const calls = asObject(raw)?.tool_calls;
+  if (!Array.isArray(calls)) return [];
+
+  const parts: ToolPart[] = [];
+  for (const call of calls as StoredToolCall[]) {
+    const callId = call?.id;
+    if (typeof callId !== "string") continue;
+    // Arguments are a *string* of JSON inside the row's JSON — the provider's
+    // own double encoding, not a quirk of this table.
+    let args: Record<string, unknown> | undefined;
+    const raw_args = call.function?.arguments;
+    if (typeof raw_args === "string") args = asObject(raw_args) ?? undefined;
+    parts.push({
+      kind: "tool",
+      callId,
+      name: call.function?.name ?? "tool",
+      isCommand: false,
+      // Not stored. The narration lives in `args` regardless, which is where
+      // the live path shows it too.
+      narration: "",
+      summary: "",
+      // A stored call is over by definition; whether it worked is decided by
+      // the answering row below.
+      status: "finished",
+      args,
+      ok: true,
+    });
+  }
+  return parts;
+}
+
+/**
+ * Fold one `tool` row into the call it answers.
+ *
+ * The inverse of the kernel's `_format_tool_result`: a failure is stored as
+ * `{"error": "…"}` and anything else is the summary verbatim. Reading a failure
+ * as prose would print a JSON object at people, which is the one shape that
+ * must not survive the trip.
+ */
+function answer(part: ToolPart, content: string): void {
+  const parsed = asObject(content);
+  const error = parsed?.error;
+  if (typeof error === "string") {
+    part.ok = false;
+    part.error = error;
+    return;
+  }
+  part.summary = content;
+}
+
+/**
+ * Stored rows → turns.
+ *
+ * A user row always starts a fresh turn. Assistant and tool rows accumulate
+ * into the one that is open, because the kernel spreads a single agent turn
+ * across several of them — see the note at the top of this file.
+ */
 export function toTurns(stored: StoredMessage[]): Turn[] {
   const turns: Turn[] = [];
+  // The assistant turn being assembled, and the calls inside it still waiting
+  // for their result rows. Both are cleared together: a call whose answer never
+  // arrives is not going to be answered by the next turn's rows.
+  let open: Turn | null = null;
+  let pending = new Map<string, ToolPart>();
+
   for (const message of stored) {
-    if (message.role !== "user" && message.role !== "assistant") continue;
-    // An assistant row carrying a tool_call_id is half of a tool exchange.
-    if (message.tool_call_id) continue;
     if (typeof message.content !== "string") continue;
+
+    if (message.role === "tool") {
+      const part = message.tool_call_id
+        ? pending.get(message.tool_call_id)
+        : undefined;
+      if (part) answer(part, message.content);
+      continue;
+    }
+
+    if (message.role === "user") {
+      open = null;
+      pending = new Map();
+      const text = prose(message.content);
+      if (text === null) continue;
+      turns.push({
+        // Row ids are the database's own and unique within a conversation,
+        // which is exactly the stability assistant-ui wants from a message key.
+        id: `stored-${message.id}`,
+        role: "user",
+        parts: [
+          { kind: "text", streamId: `stored-${message.id}`, text, done: true },
+        ],
+        running: false,
+        aborted: false,
+        createdAt: momentOf(message),
+      });
+      continue;
+    }
+
+    // Everything else is kernel bookkeeping — `role: "system"` state snapshots
+    // above all — and belongs nowhere near the chat window.
+    if (message.role !== "assistant") continue;
+
+    const calls = toolParts(message.content);
     const text = prose(message.content);
-    if (text === null) continue;
-    turns.push({
-      // Row ids are the database's own and unique within a conversation, which
-      // is exactly the stability assistant-ui wants from a message key.
-      id: `stored-${message.id}`,
-      role: message.role,
-      parts: [{ kind: "text", streamId: `stored-${message.id}`, text, done: true }],
-      running: false,
-      aborted: false,
-      createdAt: momentOf(message),
-    });
+    if (text === null && calls.length === 0) continue;
+
+    if (open === null) {
+      open = {
+        id: `stored-${message.id}`,
+        role: "assistant",
+        parts: [],
+        running: false,
+        aborted: false,
+        // The moment the turn *started*, which is this first row — matching the
+        // live path, where a turn is stamped as it opens.
+        createdAt: momentOf(message),
+      };
+      turns.push(open);
+    }
+
+    // Text first: a row carrying both is the model saying what it is about to
+    // do and then doing it, which is the order the live stream shows too.
+    if (text !== null) {
+      open.parts.push({
+        kind: "text",
+        streamId: `stored-${message.id}`,
+        text,
+        done: true,
+      });
+    }
+    for (const part of calls) {
+      open.parts.push(part);
+      pending.set(part.callId, part);
+    }
   }
   return turns;
 }

@@ -61,6 +61,18 @@ export type ToolStatusPayload = {
   narration?: string;
   ok?: boolean;
   error?: string | null;
+  /**
+   * **On `finished` only: what the call amounted to.**
+   *
+   * The tool's own account of its result — prose, since it is written for the
+   * model — capped exactly as the copy the kernel stores, so this and the row
+   * `conv.read` hands back are the same bytes.
+   *
+   * Empty on failure, where `error` is the outcome, and empty for a tool that
+   * reported nothing. **Not interchangeable with `narration`**: that is what
+   * the agent set out to do, this is what came back.
+   */
+  summary?: string;
 };
 
 /**
