@@ -47,6 +47,11 @@ import {
 } from "@/components/assistant-ui/tool-group";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ApprovalDialog } from "@/components/approval-dialog";
 import { HostFiles, HostFilesDataUI } from "@/components/host-file";
 import { ErrorBanner } from "@/components/session-bar";
@@ -436,18 +441,29 @@ const MessageTime: FC = () => {
 
   if (sentAt === undefined) return null;
   const moment = new Date(sentAt);
+  const full = fullTimestamp(moment);
 
   return (
-    <time
-      dateTime={moment.toISOString()}
-      // The short form drops whatever the reader can infer, so the full one
-      // has to be reachable — this is the only place the year ever appears for
-      // a message sent this year.
-      title={fullTimestamp(moment)}
-      className="text-muted-foreground text-[11px] tabular-nums"
-    >
-      {shortTimestamp(moment)}
-    </time>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <time
+          dateTime={moment.toISOString()}
+          // The visible text is abbreviated by design, so the full moment is
+          // what assistive technology should hear — it cannot hover, and this
+          // is not a control it can focus either.
+          aria-label={full}
+          className="text-muted-foreground text-[11px] tabular-nums"
+        >
+          {shortTimestamp(moment)}
+        </time>
+      </TooltipTrigger>
+      {/* `subtle`, and above rather than below: this is a footnote on text
+          already on screen, not a control announcing what it does, and the
+          buttons beside it own the louder treatment. */}
+      <TooltipContent side="top" variant="subtle">
+        {full}
+      </TooltipContent>
+    </Tooltip>
   );
 };
 
