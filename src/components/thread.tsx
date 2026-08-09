@@ -134,7 +134,13 @@ export const Thread: FC = () => {
           </div>
         </AuiIf>
 
-        <div className="mb-14 flex flex-col gap-y-6 empty:hidden">
+        {/* `gap-y-8` rather than `6` because the assistant's footer strip lives
+            *inside* this gap rather than below the message — see
+            `AssistantMessageFooter`. The gap therefore has to be at least as
+            tall as the strip, or a copy button would sit on top of the next
+            message. Everything else about the rhythm is unchanged: one spacing
+            between every pair of messages, whoever they are from. */}
+        <div className="mb-14 flex flex-col gap-y-8 empty:hidden">
           <ThreadPrimitive.Messages>
             {({ message }) =>
               message.role === "user" ? <UserMessage /> : <AssistantMessage />
@@ -269,7 +275,9 @@ const AssistantMessage: FC = () => (
     data-role="assistant"
     className="fade-in animate-in relative mx-auto w-full max-w-(--thread-max-width) duration-150"
   >
-    <div className="text-foreground px-2 leading-relaxed wrap-break-word">
+    {/* `relative` so the footer below can be positioned against the *content*,
+        putting its top edge exactly at the last line of the reply. */}
+    <div className="text-foreground relative px-2 leading-relaxed wrap-break-word">
       {/* `unstable_showEmptyOnNonTextEnd` defaults to true, which puts the
           working indicator after any message not ending in text — a command
           turn ends on its tool-call part, so it would sit beside a finished
@@ -313,33 +321,47 @@ const AssistantMessage: FC = () => (
   </MessagePrimitive.Root>
 );
 
-/** Reserved height of the footer strip under every assistant message. Matches
- *  the button inside it, so the row is exactly as tall as its contents whether
- *  or not those contents are currently visible. */
+/**
+ * Height of the footer strip under an assistant message.
+ *
+ * Must stay **no taller than the `gap-y` between messages**, which is where it
+ * sits. At `h-7` (28px) inside a `gap-y-8` (32px) it clears the next message by
+ * four pixels.
+ */
 const FOOTER_HEIGHT = "h-7";
 
 /**
  * The strip under an assistant message: actions on the left, the time beside
  * them.
  *
- * **The space is reserved whether or not anything is showing.**
- * `ActionBarPrimitive.Root` returns `null` when its own `autohide` decides to
- * hide — it does not hide, it *unmounts* — so keying visibility on that made
- * the row enter and leave the layout, and every message below it jumped as the
- * pointer crossed. Hovering a transcript should not move the transcript. So the
- * primitive is told `autohide="never"`, this component decides visibility
- * itself, and it does it with opacity inside a fixed-height row that is always
- * in the flow.
+ * **It never occupies layout, and it never moves anything.** Two separate
+ * problems, with one shape that solves both.
  *
- * That fixed row is also the reason this is worth having as its own component:
- * it is the place anything else per-message goes later — a retry, a token
- * count, feedback — and none of that will shift the layout either.
+ * The first: `ActionBarPrimitive.Root` does not hide when its own `autohide`
+ * decides to, it returns `null` — so keying visibility on that made the row
+ * enter and leave the flow, and every message below jumped as the pointer
+ * crossed. Hovering a transcript should not move the transcript. So the
+ * primitive is told `autohide="never"` and this component decides visibility
+ * itself, with opacity.
+ *
+ * The second: reserving that space in the flow *also* pushed the following
+ * message down, so the gap under a reply was the strip plus the gap — more
+ * than twice the gap above it, and the transcript read as lopsided. Hence
+ * `absolute`: the strip is parented to the message but takes no height, and
+ * lands in the gap that was already there. The spacing above and below a reply
+ * is then the same single `gap-y`, whether or not any of this is on screen.
+ *
+ * The constraint that buys is that the strip must not be taller than that gap,
+ * or a copy button would sit on top of the next message. See `FOOTER_HEIGHT`.
+ *
+ * Being its own component is also the point: this is where anything else
+ * per-message goes later — a retry, a token count, feedback — and none of it
+ * will shift the layout either.
  *
  * Visibility follows the rule people expect from a chat app: the latest reply
  * keeps its actions on show, older ones reveal them on hover. Nothing shows
  * while a reply is still being written, where copying would take half a
- * sentence — but the row is still there, so finishing does not make the page
- * jump either.
+ * sentence.
  */
 const AssistantMessageFooter: FC = () => {
   const visible = useAuiState(
@@ -351,7 +373,13 @@ const AssistantMessageFooter: FC = () => {
   return (
     <div
       data-slot="assistant-message-footer"
-      className={cn("mt-1 flex items-center gap-2", FOOTER_HEIGHT)}
+      className={cn(
+        // `top-full` is the bottom of the reply; `start-2` matches the padding
+        // the text itself sits behind, so the button lines up with the prose
+        // rather than with the column edge.
+        "absolute start-2 top-full flex items-center gap-2",
+        FOOTER_HEIGHT,
+      )}
     >
       <div
         className={cn(
