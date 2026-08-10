@@ -15,7 +15,7 @@ import {
 } from "@/components/command-renderers";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useSecondBrain } from "@/runtime/provider";
+import { useApprovals, useSession } from "@/runtime/provider";
 
 function humanize(value?: string) {
   return (value || "Value")
@@ -24,7 +24,8 @@ function humanize(value?: string) {
 }
 
 export const CommandPanel: FC = () => {
-  const { state, inputRequests, say, dismissCommand } = useSecondBrain();
+  const { state, say, dismissCommand } = useSession();
+  const { inputRequests } = useApprovals();
   const { command, form } = state;
   const display = form?.display;
   const fieldId = useId();
@@ -52,6 +53,12 @@ export const CommandPanel: FC = () => {
   const collected = Object.entries(form?.collected ?? command?.args ?? {});
   const finished = command?.status === "finished";
   const failed = finished && command?.ok === false;
+  // The command state machine emits a short acknowledgement for navigation
+  // submissions. It is transport feedback, not command output; showing it
+  // beneath the newly restored form produces the stray "Back." line that the
+  // actual Back button already communicated.
+  const visibleOutcome =
+    command?.outcome.filter((text) => !/^back\.?$/i.test(text.trim())) ?? [];
 
   /**
    * A question is up, so this form must not send anything.
@@ -270,14 +277,14 @@ export const CommandPanel: FC = () => {
         </form>
       )}
 
-      {!cancelling && command && command.outcome.length > 0 && (
-        <CommandOutput output={command.outcome} />
+      {!cancelling && command && visibleOutcome.length > 0 && (
+        <CommandOutput output={visibleOutcome} />
       )}
 
       {!cancelling &&
         command &&
         !display &&
-        command.outcome.length === 0 &&
+        visibleOutcome.length === 0 &&
         !finished && (
         <div className="text-muted-foreground flex items-center gap-2 py-8">
           <LoaderCircleIcon className="size-4 animate-spin" />

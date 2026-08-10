@@ -37,3 +37,7 @@ export function useMediaQuery(query: string): boolean {
 /** Tailwind's `md`. Named so the value lives beside the query that uses it
  *  rather than being repeated as a magic number. */
 export const MD_QUERY = "(min-width: 48rem)";
+/** Tailwind's `xl`. Files remain an overlay below this width so the files
+ * panel and conversation rail cannot squeeze the thread on tablets. */
+export const XL_QUERY = "(min-width: 80rem)";
+export const FINE_POINTER_QUERY = "(pointer: fine)";

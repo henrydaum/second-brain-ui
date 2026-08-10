@@ -40,7 +40,12 @@ import {
 } from "@/lib/notifications";
 import { fullTimestamp, shortTimestamp } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { useSecondBrain } from "@/runtime/provider";
+import {
+  useConversations,
+  useNotifications,
+  useSession,
+  useSettings,
+} from "@/runtime/provider";
 
 export const NotificationPanel: FC = () => {
   const {
@@ -50,7 +55,7 @@ export const NotificationPanel: FC = () => {
     notificationsOpen,
     setNotificationsOpen,
     markNotificationsRead,
-  } = useSecondBrain();
+  } = useNotifications();
 
   /**
    * Opening the panel settles what is in it.
@@ -133,8 +138,9 @@ export const NotificationPanel: FC = () => {
 
 const Row: FC<{ row: Notification }> = ({ row }) => {
   // Closing the popover is `LinkOut`'s business, not each row's.
-  const { conversationId, openConversation, openSettings, say } =
-    useSecondBrain();
+  const { conversationId, openConversation } = useConversations();
+  const { openSettings } = useSettings();
+  const { say } = useSession();
   const level = levelOf(row.level);
   const at = atOf(row.ts);
 
@@ -209,7 +215,7 @@ const Row: FC<{ row: Notification }> = ({ row }) => {
             <time
               dateTime={at.toISOString()}
               title={fullTimestamp(at)}
-              className="text-muted-foreground shrink-0 text-[10px] tabular-nums"
+              className="text-muted-foreground shrink-0 text-[11px] tabular-nums"
             >
               {shortTimestamp(at)}
             </time>
@@ -244,7 +250,7 @@ const Row: FC<{ row: Notification }> = ({ row }) => {
 
                 `truncate` rather than shrink-proof: with three setting links
                 beside it, the source is the half worth giving up first. */}
-            <span className="text-muted-foreground/70 truncate font-mono text-[10px]">
+            <span className="text-muted-foreground/70 truncate font-mono text-[11px]">
               {row.source}
             </span>
 
@@ -296,7 +302,7 @@ const LinkOut: FC<{
   label: string;
   onClick: () => void;
 }> = ({ icon: Icon, label, onClick }) => {
-  const { setNotificationsOpen } = useSecondBrain();
+  const { setNotificationsOpen } = useNotifications();
   return (
     <button
       type="button"
@@ -306,7 +312,7 @@ const LinkOut: FC<{
       }}
       // `shrink-0` and `whitespace-nowrap`: the row gives up the source's width
       // before a link's, and a link that wrapped mid-label would read as two.
-      className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] underline underline-offset-2"
+      className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex shrink-0 items-center gap-1 rounded whitespace-nowrap text-xs underline underline-offset-2 outline-none focus-visible:ring-2"
     >
       <Icon className="size-3 shrink-0" aria-hidden />
       {label}

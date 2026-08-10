@@ -62,8 +62,8 @@ export const FileViewerDialog: FC = () => {
   return (
     <Dialog open onOpenChange={(open) => !open && closeView()}>
       <DialogContent
-        className="max-h-[90vh] gap-3 overflow-hidden p-4 sm:max-w-4xl"
-        overlayClassName="backdrop-blur-sm"
+        className="h-[min(92dvh,52rem)] w-[calc(100vw-1rem)] max-w-none gap-3 overflow-hidden p-3 sm:w-full sm:max-w-4xl sm:p-4"
+        overlayClassName="bg-black/50"
       >
         <DialogHeader className="pe-8">
           <DialogTitle className="truncate text-base" title={path}>
@@ -98,7 +98,7 @@ export const FileViewerDialog: FC = () => {
            * around a small image and buys a viewer that never moves: the
            * spinner is already in the middle of the box the picture will fill.
            */}
-          <div className="flex h-[70vh] min-w-0 flex-1 items-center justify-center overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 self-stretch items-center justify-center overflow-hidden">
             {/* Keyed on the path so switching files remounts rather than
                 showing the previous file's bytes under the new one's name. */}
             <FileView key={path} path={path} size="full" />

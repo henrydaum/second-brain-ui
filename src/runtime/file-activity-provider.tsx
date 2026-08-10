@@ -47,7 +47,7 @@ import {
   withStoreAttachments,
   type FileSection,
 } from "@/runtime/file-activity";
-import { useSecondBrain } from "@/runtime/provider";
+import { useConversations, useSession } from "@/runtime/provider";
 import type { Turn } from "@/runtime/store";
 
 /** How often to ask, while there is a turn in flight. Slow enough that an idle
@@ -113,7 +113,8 @@ const highestId = (rows: { id: number }[], from: number) =>
   rows.reduce((max, row) => Math.max(max, row.id), from);
 
 export function FileActivityProvider({ children }: PropsWithChildren) {
-  const { conversationId, state } = useSecondBrain();
+  const { conversationId } = useConversations();
+  const { state } = useSession();
 
   /** Everything read in one go when the conversation opened. Left unbound to
    *  turns, because the turns may not have arrived yet — see the memo below. */

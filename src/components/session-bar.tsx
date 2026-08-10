@@ -8,16 +8,17 @@
  * line of its own.
  */
 
-import type { FC } from "react";
+import { useEffect, type FC } from "react";
 import { FilesIcon, PanelLeftOpenIcon, XIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { NotificationPanel } from "@/components/notification-panel";
+import { preloadFilesDrawer } from "@/components/lazy-files-drawer";
 import { ThemePicker } from "@/components/theme-picker";
 import { conversationTitle } from "@/lib/conversations";
 import { cn } from "@/lib/utils";
 import { useFileActivity } from "@/runtime/file-activity-provider";
-import { useSecondBrain } from "@/runtime/provider";
+import { useConversations, useSession } from "@/runtime/provider";
 
 const LABELS = {
   connecting: "Connecting…",
@@ -26,7 +27,8 @@ const LABELS = {
 } as const;
 
 export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
-  const { status, conversations, conversationId } = useSecondBrain();
+  const { status } = useSession();
+  const { conversations, conversationId } = useConversations();
   const { filesOpen, setFilesOpen, total } = useFileActivity();
   const label = LABELS[status];
 
@@ -37,6 +39,11 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
     (conversation) => conversation.id === conversationId,
   );
   const title = open ? conversationTitle(open) : "New chat";
+
+  useEffect(() => {
+    const timer = window.setTimeout(preloadFilesDrawer, 900);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2 sm:px-4">
@@ -94,6 +101,8 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
         side="bottom"
         className="relative size-8"
         aria-expanded={filesOpen}
+        onPointerEnter={preloadFilesDrawer}
+        onFocus={preloadFilesDrawer}
         onClick={() => setFilesOpen(!filesOpen)}
       >
         <FilesIcon className="size-4" />
@@ -120,7 +129,7 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
  * which message it belonged to.
  */
 export const ErrorBanner: FC = () => {
-  const { state, dismissError } = useSecondBrain();
+  const { state, dismissError } = useSession();
   if (!state.error) return null;
 
   /**
@@ -188,7 +197,7 @@ export const ErrorBanner: FC = () => {
       <button
         onClick={dismissError}
         aria-label="Dismiss"
-        className="shrink-0 opacity-70 hover:opacity-100"
+        className="focus-visible:ring-ring shrink-0 rounded-md opacity-70 outline-none hover:opacity-100 focus-visible:ring-2"
       >
         <XIcon className="size-4" />
       </button>

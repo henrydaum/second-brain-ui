@@ -29,6 +29,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type Context,
   type PropsWithChildren,
 } from "react";
 import {
@@ -264,6 +265,71 @@ export type SecondBrain = {
 };
 
 const SecondBrainContext = createContext<SecondBrain | null>(null);
+
+type SessionDomain = Pick<
+  SecondBrain,
+  | "status"
+  | "state"
+  | "say"
+  | "report"
+  | "dismissError"
+  | "dismissCommand"
+>;
+type ConversationDomain = Pick<
+  SecondBrain,
+  | "conversations"
+  | "conversationId"
+  | "openConversation"
+  | "newConversation"
+  | "deleteConversation"
+>;
+type ApprovalDomain = Pick<
+  SecondBrain,
+  "inputRequests" | "resolve" | "cancelInputRequest"
+>;
+type NotificationDomain = Pick<
+  SecondBrain,
+  | "banners"
+  | "notifications"
+  | "unread"
+  | "notificationsFailure"
+  | "dismissBanner"
+  | "markNotificationsRead"
+  | "notificationsOpen"
+  | "setNotificationsOpen"
+>;
+type SettingsDomain = Pick<
+  SecondBrain,
+  | "commands"
+  | "settingsOpen"
+  | "setSettingsOpen"
+  | "openSettings"
+  | "settingsRequest"
+  | "clearSettingsRequest"
+>;
+type SecurityDomain = Pick<SecondBrain, "securityMode" | "setSecurityMode">;
+
+const SessionContext = createContext<SessionDomain | null>(null);
+const ConversationContext = createContext<ConversationDomain | null>(null);
+const ApprovalContext = createContext<ApprovalDomain | null>(null);
+const NotificationContext = createContext<NotificationDomain | null>(null);
+const SettingsContext = createContext<SettingsDomain | null>(null);
+const SecurityContext = createContext<SecurityDomain | null>(null);
+
+function useDomain<T>(context: Context<T | null>, name: string): T {
+  const value = use(context);
+  if (!value) throw new Error(`${name} outside SecondBrainProvider`);
+  return value;
+}
+
+export const useSession = () => useDomain(SessionContext, "useSession");
+export const useConversations = () =>
+  useDomain(ConversationContext, "useConversations");
+export const useApprovals = () => useDomain(ApprovalContext, "useApprovals");
+export const useNotifications = () =>
+  useDomain(NotificationContext, "useNotifications");
+export const useSettings = () => useDomain(SettingsContext, "useSettings");
+export const useSecurity = () => useDomain(SecurityContext, "useSecurity");
 
 export function useSecondBrain(): SecondBrain {
   const value = use(SecondBrainContext);
@@ -1186,9 +1252,91 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     ],
   );
 
+  const sessionValue = useMemo<SessionDomain>(
+    () => ({ status, state, say, report, dismissError, dismissCommand }),
+    [status, state, say, report, dismissError, dismissCommand],
+  );
+  const conversationValue = useMemo<ConversationDomain>(
+    () => ({
+      conversations,
+      conversationId,
+      openConversation,
+      newConversation,
+      deleteConversation,
+    }),
+    [
+      conversations,
+      conversationId,
+      openConversation,
+      newConversation,
+      deleteConversation,
+    ],
+  );
+  const approvalValue = useMemo<ApprovalDomain>(
+    () => ({
+      inputRequests: inputRequests.queue,
+      resolve,
+      cancelInputRequest,
+    }),
+    [inputRequests.queue, resolve, cancelInputRequest],
+  );
+  const notificationValue = useMemo<NotificationDomain>(
+    () => ({
+      banners: notifications.banners,
+      notifications: notifications.rows,
+      unread: unreadCount(notifications),
+      notificationsFailure: notifications.failure,
+      dismissBanner,
+      markNotificationsRead,
+      notificationsOpen,
+      setNotificationsOpen,
+    }),
+    [
+      notifications,
+      dismissBanner,
+      markNotificationsRead,
+      notificationsOpen,
+    ],
+  );
+  const settingsValue = useMemo<SettingsDomain>(
+    () => ({
+      commands,
+      settingsOpen,
+      setSettingsOpen,
+      openSettings,
+      settingsRequest,
+      clearSettingsRequest,
+    }),
+    [
+      commands,
+      settingsOpen,
+      openSettings,
+      settingsRequest,
+      clearSettingsRequest,
+    ],
+  );
+  const securityValue = useMemo<SecurityDomain>(
+    () => ({ securityMode, setSecurityMode }),
+    [securityMode, setSecurityMode],
+  );
+
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <SecondBrainContext value={value}>{children}</SecondBrainContext>
+      <SecondBrainContext value={value}>
+        <SessionContext value={sessionValue}>
+          <ConversationContext value={conversationValue}>
+            <ApprovalContext value={approvalValue}>
+              <NotificationContext value={notificationValue}>
+                <SettingsContext value={settingsValue}>
+                  <SecurityContext value={securityValue}>
+                    {children}
+                  </SecurityContext>
+                </SettingsContext>
+              </NotificationContext>
+            </ApprovalContext>
+          </ConversationContext>
+        </SessionContext>
+      </SecondBrainContext>
     </AssistantRuntimeProvider>
   );
 }

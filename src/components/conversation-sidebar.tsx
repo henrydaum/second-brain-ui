@@ -12,6 +12,7 @@
  */
 
 import {
+  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -20,7 +21,6 @@ import {
   type FC,
 } from "react";
 import {
-  CheckIcon,
   MessageSquarePlusIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
@@ -30,12 +30,19 @@ import {
 } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { SettingsDialog } from "@/components/settings-dialog";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  LazySettingsDialog,
+  preloadSettings,
+  SettingsFallback,
+} from "@/components/lazy-settings";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   Tooltip,
   TooltipContent,
@@ -57,7 +64,12 @@ import {
 import { conversationTitle } from "@/lib/conversations";
 import { MD_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
-import { useSecondBrain } from "@/runtime/provider";
+import {
+  useApprovals,
+  useConversations,
+  useSession,
+  useSettings,
+} from "@/runtime/provider";
 
 /** Remembered across reloads. A collapse that undoes itself every time the page
  *  loads is a preference the app keeps overruling. */
@@ -117,11 +129,11 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     openConversation,
     newConversation,
     deleteConversation,
-    inputRequests,
-    state,
-    settingsOpen,
-    setSettingsOpen,
-  } = useSecondBrain();
+  } = useConversations();
+  const { inputRequests } = useApprovals();
+  const { state } = useSession();
+  const { settingsOpen, setSettingsOpen } = useSettings();
+  const [settingsMounted, setSettingsMounted] = useState(settingsOpen);
 
   // One switch at a time. Each of these is several Requests, and a second click
   // partway through would interleave two loads into one session.
@@ -172,6 +184,8 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     ) ?? filterOptions[1];
   const selectedFilterLabel =
     selectedFilter.filter.type === "all" ? "All" : selectedFilter.label;
+  const filterValue = (filter: ConversationFilter) =>
+    filter.type === "all" ? "all" : `category:${filter.category ?? "main"}`;
 
   useEffect(() => {
     try {
@@ -233,15 +247,23 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
   // Picking a conversation on a phone means you are done with the drawer.
   const closeDrawer = () => onOpenChange(false);
 
-  // Escape closes it, as it does for every other overlay here.
+  // Settings is a secondary chunk. Warm it after the first paint, and again on
+  // intent below, so code-splitting does not turn the familiar gear into a
+  // delayed first interaction.
   useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onOpenChange(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onOpenChange]);
+    const timer = window.setTimeout(preloadSettings, 700);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (settingsOpen) setSettingsMounted(true);
+  }, [settingsOpen]);
+
+  const showSettings = () => {
+    preloadSettings();
+    if (!isDesktop) closeDrawer();
+    setSettingsOpen(true);
+  };
 
   useEffect(() => {
     const name = state.form?.name ?? state.command?.name;
@@ -267,19 +289,11 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     void run(newConversation).then(closeDrawer);
   };
 
-  return (
+  const sidebar = (
     <>
       {/* The scrim, below `md` only. It is what makes the drawer dismissible by
           pressing the conversation you were reading — the gesture everybody
           tries first. */}
-      {open && (
-        <div
-          aria-hidden
-          onClick={closeDrawer}
-          className="animate-in fade-in-0 fixed inset-0 z-40 bg-black/50 md:hidden"
-        />
-      )}
-
       <aside
         data-slot="conversation-sidebar"
         data-collapsed={railCollapsed || undefined}
@@ -294,6 +308,9 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           railCollapsed ? "md:w-12" : "md:w-64",
         )}
       >
+      {!isDesktop && (
+        <SheetTitle className="sr-only">Conversations</SheetTitle>
+      )}
       {/* New chat remains pinned to the rail while its label is revealed. The
           drawer toggle follows the moving outer edge, matching the panel it
           opens and closes. */}
@@ -347,8 +364,8 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
         </button>
 
         {!railCollapsed && (
-          <Popover open={filterOpen} onOpenChange={setFilterOpen}>
-            <PopoverTrigger asChild>
+          <DropdownMenu open={filterOpen} onOpenChange={setFilterOpen}>
+            <DropdownMenuTrigger asChild>
               <button
                 type="button"
               aria-label={`Filter conversations: ${selectedFilter.label}`}
@@ -369,46 +386,34 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
             >
               <span className="truncate">{selectedFilterLabel}</span>
             </button>
-            </PopoverTrigger>
-            <PopoverContent
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
               align="end"
               sideOffset={6}
-              className="w-60 p-1.5"
+              className="w-60"
             >
-              <div
-                role="radiogroup"
+              <DropdownMenuRadioGroup
                 aria-label="Conversation category"
-                className="space-y-0.5"
+                value={filterValue(conversationFilter)}
+                onValueChange={(value) => {
+                  const option = filterOptions.find(
+                    (candidate) => filterValue(candidate.filter) === value,
+                  );
+                  if (option) selectConversationFilter(option.filter);
+                }}
               >
                 {filterOptions.map((option) => {
-                const selected = filtersEqual(
-                  option.filter,
-                  conversationFilter,
-                );
                 const category =
                   option.filter.type === "category"
                     ? option.filter.category
                     : null;
                 return (
-                  <button
-                    key={
-                      option.filter.type === "all"
-                        ? "all"
-                        : `category:${JSON.stringify(option.filter.category)}`
-                    }
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
+                  <DropdownMenuRadioItem
+                    key={filterValue(option.filter)}
+                    value={filterValue(option.filter)}
                     aria-label={`${option.label}, ${option.count} conversations`}
                     title={option.label}
-                    onClick={() => {
-                      selectConversationFilter(option.filter);
-                      setFilterOpen(false);
-                    }}
-                    className={cn(
-                      "hover:bg-accent focus-visible:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm outline-none",
-                      selected && "bg-accent/70",
-                    )}
+                    className="gap-2"
                   >
                     <span
                       aria-hidden
@@ -432,18 +437,12 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
                     <span className="text-muted-foreground text-xs tabular-nums">
                       {option.count}
                     </span>
-                    <CheckIcon
-                      className={cn(
-                        "size-3.5 shrink-0",
-                        selected ? "opacity-100" : "opacity-0",
-                      )}
-                    />
-                  </button>
+                  </DropdownMenuRadioItem>
                 );
                 })}
-              </div>
-            </PopoverContent>
-          </Popover>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
 
@@ -547,7 +546,9 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           tooltip="Settings"
           side="right"
           className="size-8"
-          onClick={() => setSettingsOpen(true)}
+          onPointerEnter={preloadSettings}
+          onFocus={preloadSettings}
+          onClick={showSettings}
         >
           <SettingsIcon className="size-4" />
         </TooltipIconButton>
@@ -555,7 +556,9 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           type="button"
           tabIndex={railCollapsed ? -1 : undefined}
           aria-hidden={railCollapsed || undefined}
-          onClick={() => setSettingsOpen(true)}
+          onPointerEnter={preloadSettings}
+          onFocus={preloadSettings}
+          onClick={showSettings}
           className={cn(
             "text-muted-foreground hover:text-foreground min-w-0 truncate px-1 text-start text-sm transition-opacity",
             railCollapsed ? "pointer-events-none opacity-0" : "opacity-100",
@@ -565,8 +568,43 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
         </button>
       </div>
 
-        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       </aside>
+    </>
+  );
+
+  const settingsDialog = settingsMounted ? (
+    <Suspense
+      fallback={
+        <SettingsFallback
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+        />
+      }
+    >
+      <LazySettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+      />
+    </Suspense>
+  ) : null;
+
+  if (isDesktop) {
+    return (
+      <>
+        {sidebar}
+        {settingsDialog}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent side="left" className="w-64 max-w-[85vw]">
+          {sidebar}
+        </SheetContent>
+      </Sheet>
+      {settingsDialog}
     </>
   );
 };

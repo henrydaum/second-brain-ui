@@ -7,17 +7,21 @@
  * `command.list` — is an ordinary Request, so neither changes anything here.
  */
 
-import { useState, type FC } from "react";
+import { Suspense, useEffect, useState, type FC } from "react";
 
 import { ConversationSidebar } from "@/components/conversation-sidebar";
+import { ConversationDocumentTitle } from "@/components/conversation-document-title";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { FilesDrawer } from "@/components/files-drawer";
-import { FileViewerDialog } from "@/components/file-viewer-dialog";
+import { LazyFilesDrawer } from "@/components/lazy-files-drawer";
 import { InputRequestDialog } from "@/components/input-request-dialog";
+import { LazyFileViewerDialog } from "@/components/lazy-file-viewer";
 import { NotificationBanners } from "@/components/notification-banners";
 import { SessionBar } from "@/components/session-bar";
 import { Thread } from "@/components/thread";
-import { FileActivityProvider } from "@/runtime/file-activity-provider";
+import {
+  FileActivityProvider,
+  useFileActivity,
+} from "@/runtime/file-activity-provider";
 import { SecondBrainProvider } from "@/runtime/provider";
 
 export const App: FC = () => {
@@ -36,6 +40,7 @@ export const App: FC = () => {
     // exactly the case a boundary inside it would miss.
     <ErrorBoundary>
       <SecondBrainProvider>
+        <ConversationDocumentTitle />
         {/* Inside the runtime provider, because it reads which conversation is
             open and whether a turn is running; outside the layout, because all
             three of the surfaces that draw files — the header button, the
@@ -53,7 +58,7 @@ export const App: FC = () => {
             {/* The far edge, opposite the conversations. Above `md` it takes
                 width from the thread rather than covering it, which is what
                 makes it usable while reading. */}
-            <FilesDrawer />
+            <FilesDrawerMount />
           </div>
 
           {/* Directly under the provider, above everything. A blocked question
@@ -61,7 +66,7 @@ export const App: FC = () => {
               Settings raises them too — so it is a sibling of the whole layout
               rather than something nested inside one part of it. */}
           <InputRequestDialog />
-          <FileViewerDialog />
+          <FileViewerMount />
 
           {/* Beside the dialog and for the same reason: a notification is the
               system speaking to the *session*, and most of them are not about
@@ -71,5 +76,32 @@ export const App: FC = () => {
         </FileActivityProvider>
       </SecondBrainProvider>
     </ErrorBoundary>
+  );
+};
+
+/** Keep the viewer and its file parsers out of the initial bundle. */
+const FileViewerMount: FC = () => {
+  const { viewing } = useFileActivity();
+  if (!viewing) return null;
+  return (
+    <Suspense fallback={null}>
+      <LazyFileViewerDialog />
+    </Suspense>
+  );
+};
+
+const FilesDrawerMount: FC = () => {
+  const { filesOpen } = useFileActivity();
+  const [hasOpened, setHasOpened] = useState(filesOpen);
+
+  useEffect(() => {
+    if (filesOpen) setHasOpened(true);
+  }, [filesOpen]);
+
+  if (!hasOpened) return null;
+  return (
+    <Suspense fallback={null}>
+      <LazyFilesDrawer />
+    </Suspense>
   );
 };

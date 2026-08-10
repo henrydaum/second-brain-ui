@@ -26,11 +26,7 @@ import { useEffect, useState, type FC, type ReactNode } from "react";
 import {
   DownloadIcon,
   FileIcon,
-  FileTextIcon,
-  ImageIcon,
   MusicIcon,
-  SheetIcon,
-  VideoIcon,
 } from "lucide-react";
 
 import { DotMatrix } from "@/components/assistant-ui/dot-matrix";
@@ -40,7 +36,6 @@ import {
   describeStatus,
   FileUnavailable,
   formatBytes,
-  guessKind,
   kindOf,
   nameOf,
   probeStatus,
@@ -55,26 +50,6 @@ import { cn } from "@/lib/utils";
 const ROW_CAP = 200;
 
 export type FileViewSize = "inline" | "full";
-
-/** The icon for a kind, for lists that cannot wait to be told. */
-const KIND_ICONS: Record<FileKind, typeof FileIcon> = {
-  image: ImageIcon,
-  video: VideoIcon,
-  audio: MusicIcon,
-  table: SheetIcon,
-  text: FileTextIcon,
-  embed: FileTextIcon,
-  download: FileIcon,
-};
-
-/** The icon a path should wear, guessed from its extension. */
-export const FileKindIcon: FC<{ path: string; className?: string }> = ({
-  path,
-  className,
-}) => {
-  const Icon = KIND_ICONS[guessKind(path)];
-  return <Icon className={className} aria-hidden />;
-};
 
 /* ── The shared frame ───────────────────────────────────────────────── */
 
@@ -235,6 +210,8 @@ const ImageView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => 
     <img
       src={fileUrl(path)}
       alt={nameOf(path)}
+      loading="lazy"
+      decoding="async"
       onError={onError}
       className={cn(
         "rounded-lg border object-contain",
@@ -255,6 +232,7 @@ const VideoView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => 
     // header, draws a first frame, and leaves the rest until the scrubber asks.
     <video
       controls
+      preload="metadata"
       src={fileUrl(path)}
       onError={onError}
       className={cn(
@@ -275,7 +253,13 @@ const AudioView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => 
         <MusicIcon className="size-3.5 shrink-0" aria-hidden />
         <span className="truncate">{nameOf(path)}</span>
       </span>
-      <audio controls src={fileUrl(path)} onError={onError} className="w-full" />
+      <audio
+        controls
+        preload="metadata"
+        src={fileUrl(path)}
+        onError={onError}
+        className="w-full"
+      />
     </Frame>
   );
 };

@@ -26,7 +26,7 @@ import { XIcon } from "lucide-react";
 import { LevelIcon } from "@/components/notification-level";
 import { levelOf } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
-import { useSecondBrain } from "@/runtime/provider";
+import { useNotifications } from "@/runtime/provider";
 import type { Banner } from "@/runtime/notifications";
 
 /** How long a dismissible banner stays. Long enough to read a title and a line
@@ -41,7 +41,7 @@ const AT_ONCE = 3;
 const STAYS = new Set(["warning", "error"]);
 
 export const NotificationBanners: FC = () => {
-  const { banners, dismissBanner, notificationsOpen } = useSecondBrain();
+  const { banners, dismissBanner, notificationsOpen } = useNotifications();
 
   // Nothing to say out here while the panel is open — every persisted one is in
   // the list being read, and a banner about a row three inches away is noise.
@@ -123,7 +123,7 @@ const BannerCard: FC<{
 
           {/* Worth showing: it is stamped by the kernel off the provenance
               chain, so a plugin cannot claim to be the plugin watcher. */}
-          <p className="text-muted-foreground/70 mt-1 font-mono text-[10px]">
+          <p className="text-muted-foreground/70 mt-1 font-mono text-[11px]">
             {source}
           </p>
         </div>
@@ -132,7 +132,7 @@ const BannerCard: FC<{
           type="button"
           onClick={dismiss}
           aria-label="Dismiss"
-          className="shrink-0 opacity-60 hover:opacity-100"
+          className="focus-visible:ring-ring shrink-0 rounded-md opacity-60 outline-none hover:opacity-100 focus-visible:ring-2"
         >
           <XIcon className="size-4" />
         </button>

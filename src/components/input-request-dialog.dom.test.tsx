@@ -36,11 +36,11 @@ const ask = (fields: Partial<InputRequest> = {}): InputRequest => ({
 function mount(queue: InputRequest[]) {
   const resolve = vi.fn().mockResolvedValue(undefined);
   const cancelInputRequest = vi.fn().mockResolvedValue(undefined);
-  vi.spyOn(provider, "useSecondBrain").mockReturnValue({
+  vi.spyOn(provider, "useApprovals").mockReturnValue({
     inputRequests: queue,
     resolve,
     cancelInputRequest,
-  } as unknown as provider.SecondBrain);
+  });
   render(<InputRequestDialog />);
   return { resolve, cancelInputRequest, user: userEvent.setup() };
 }

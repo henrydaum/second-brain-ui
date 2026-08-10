@@ -49,19 +49,61 @@ function stub(over: Partial<provider.SecondBrain>) {
     clearSettingsRequest: vi.fn(),
     say: vi.fn().mockResolvedValue(true),
     dismissCommand: vi.fn(),
+    resolve: vi.fn().mockResolvedValue(undefined),
+    cancelInputRequest: vi.fn().mockResolvedValue(undefined),
   };
-  vi.spyOn(provider, "useSecondBrain").mockReturnValue({
+  const value = {
     notifications: [],
+    banners: [],
     unread: 0,
     notificationsFailure: null,
     notificationsOpen: true,
     conversationId: 5,
     commands: [],
     state: { turns: [], typing: false },
+    inputRequests: [],
     settingsRequest: null,
     ...spies,
     ...over,
-  } as unknown as provider.SecondBrain);
+  } as unknown as provider.SecondBrain;
+  vi.spyOn(provider, "useNotifications").mockReturnValue({
+    banners: value.banners,
+    notifications: value.notifications,
+    unread: value.unread,
+    notificationsFailure: value.notificationsFailure,
+    dismissBanner: value.dismissBanner,
+    markNotificationsRead: value.markNotificationsRead,
+    notificationsOpen: value.notificationsOpen,
+    setNotificationsOpen: value.setNotificationsOpen,
+  });
+  vi.spyOn(provider, "useConversations").mockReturnValue({
+    conversations: value.conversations,
+    conversationId: value.conversationId,
+    openConversation: value.openConversation,
+    newConversation: value.newConversation,
+    deleteConversation: value.deleteConversation,
+  });
+  vi.spyOn(provider, "useSettings").mockReturnValue({
+    commands: value.commands,
+    settingsOpen: value.settingsOpen,
+    setSettingsOpen: value.setSettingsOpen,
+    openSettings: value.openSettings,
+    settingsRequest: value.settingsRequest,
+    clearSettingsRequest: value.clearSettingsRequest,
+  });
+  vi.spyOn(provider, "useSession").mockReturnValue({
+    status: value.status,
+    state: value.state,
+    say: value.say,
+    report: value.report,
+    dismissError: value.dismissError,
+    dismissCommand: value.dismissCommand,
+  });
+  vi.spyOn(provider, "useApprovals").mockReturnValue({
+    inputRequests: value.inputRequests,
+    resolve: value.resolve,
+    cancelInputRequest: value.cancelInputRequest,
+  });
   return { ...spies, user: userEvent.setup() };
 }
 
@@ -189,5 +231,55 @@ describe("Settings lands where it was asked to", () => {
     expect(
       screen.getByRole("heading", { name: "Agents and Models" }),
     ).toBeTruthy();
+  });
+
+  it("shows immediate pending feedback and blocks duplicate command starts", async () => {
+    const say = vi.fn(() => new Promise<boolean>(() => undefined));
+    const { user } = stub({
+      say,
+      commands: [{ name: "llm", description: "Choose a model" }],
+    });
+    render(<SettingsDialog open onOpenChange={vi.fn()} />);
+
+    const card = screen.getByRole("button", { name: /Language models/i });
+    await user.click(card);
+
+    expect(card.getAttribute("aria-busy")).toBe("true");
+    expect((card as HTMLButtonElement).disabled).toBe(true);
+    await user.click(card);
+    expect(say).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render the command machine's Back acknowledgement", () => {
+    stub({
+      state: {
+        turns: [],
+        typing: false,
+        suppressedCommand: null,
+        buttons: [],
+        error: null,
+        shownText: [],
+        form: {
+          name: "agent",
+          field: { name: "profile" },
+          display: {
+            prompt: "Select an agent profile.",
+            choices: [{ value: "default", label: "Default" }],
+            allow_back: true,
+          },
+        },
+        command: {
+          callId: "cmd:agent:test",
+          name: "agent",
+          args: {},
+          status: "progressed",
+          outcome: ["Back.", "Useful command output"],
+        },
+      } as provider.SecondBrain["state"],
+    });
+    render(<SettingsDialog open onOpenChange={vi.fn()} />);
+
+    expect(screen.queryByText("Back.")).toBeNull();
+    expect(screen.getByText("Useful command output")).toBeTruthy();
   });
 });

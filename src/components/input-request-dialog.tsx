@@ -52,7 +52,7 @@ import {
 } from "@/components/ui/dialog";
 import { choicesOf } from "@/lib/input-requests";
 import { cn } from "@/lib/utils";
-import { useSecondBrain } from "@/runtime/provider";
+import { useApprovals } from "@/runtime/provider";
 
 /**
  * Past this, options are prose rather than labels and want a column.
@@ -66,7 +66,7 @@ import { useSecondBrain } from "@/runtime/provider";
 const LONG_ENOUGH_TO_STACK = 32;
 
 export const InputRequestDialog: FC = () => {
-  const { inputRequests, resolve, cancelInputRequest } = useSecondBrain();
+  const { inputRequests, resolve, cancelInputRequest } = useApprovals();
   // Head first, matching the order the kernel works its own queue down. A
   // second blocked call waits behind this one rather than replacing it.
   const request = inputRequests[0];
