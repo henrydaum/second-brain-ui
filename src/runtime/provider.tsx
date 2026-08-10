@@ -38,6 +38,7 @@ import {
   type AppendMessage,
   type AttachmentAdapter,
   type PendingAttachment,
+  type QueueItemState,
 } from "@assistant-ui/react";
 
 // Type-only, deliberately. The sections are the settings dialog's own
@@ -90,6 +91,11 @@ import { initialState, reduce, type State } from "@/runtime/store";
  * back when the message is actually sent.
  */
 const hostPaths = new Map<string, string>();
+
+/** The queue adapter's two lanes, which are always empty — see `queue` in the
+ *  provider. One frozen array rather than a fresh literal per render, so the
+ *  runtime's own memos over it never see a changed identity. */
+const NO_QUEUED_MESSAGES: readonly QueueItemState[] = [];
 
 const attachmentAdapter: AttachmentAdapter = {
   // Everything.
@@ -503,6 +509,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         const session = await sdk<{
           conversation_id?: number | null;
           mode?: "lockdown" | "ask" | "yolo" | null;
+          busy?: boolean | null;
         } | null>(
           "session.get",
           { details: true },
@@ -537,6 +544,24 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
             dispatch({ type: "history", turns });
             setConversationId(bound);
           }
+        }
+
+        // **The turn a reload landed in the middle of.**
+        //
+        // `typing` only ever moves on a `typing` frame, and the one that opened
+        // the running turn was sent before this page existed — so a reload
+        // mid-turn came up believing the agent was idle. That is not a cosmetic
+        // wrong indicator: `isRunning` is what puts Stop in the composer, so the
+        // one control that ends a turn disappeared exactly when it was wanted,
+        // and reloading became a way to lose the ability to interrupt.
+        //
+        // The server has always answered this — `session.get` returns `busy`,
+        // read here off the response boot already makes. **After the history
+        // dispatch**, which resets everything transient and would otherwise wipe
+        // it; and dispatched as the frame it stands in for, so the store opens a
+        // turn for whatever arrives next exactly as the real frame would have.
+        if (!cancelled && session?.busy) {
+          dispatch({ type: "frame", frame: { kind: "typing", payload: true } });
         }
 
         // After the conversation, not before: neither Settings nor the sidebar
@@ -812,23 +837,54 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     [],
   );
 
-  const refreshSecurityMode = useCallback(async () => {
+  /**
+   * Whether the agent has the turn, readable without becoming a dependency.
+   *
+   * `syncSession` below only dispatches when the server disagrees with what is
+   * on screen, and a `useCallback` that listed `state.typing` would be rebuilt
+   * on every turn — taking the effects that depend on it with it, which for the
+   * stream-open effect means re-asking on every frame.
+   */
+  const typingRef = useRef(false);
+  typingRef.current = state.typing;
+
+  /**
+   * Re-read what the session itself says, for the two fields a client cannot
+   * work out on its own.
+   *
+   * Both are ephemeral kernel state that no frame will re-announce: the
+   * per-conversation security mode is cleared by a backend restart, and `busy`
+   * is the answer to "does the agent have the turn *right now*", which the
+   * stream only ever states at the moment it changes. One `session.get` answers
+   * both, so this is one Request rather than two.
+   *
+   * The `typing` dispatch is guarded on disagreement rather than sent every
+   * time: it is idempotent (a second `typing: true` reuses the open turn) but it
+   * rebuilds the turn array, and this runs on every reconnect.
+   */
+  const syncSession = useCallback(async () => {
     try {
       const session = await sdk<{
         mode?: "lockdown" | "ask" | "yolo" | null;
+        busy?: boolean | null;
       } | null>("session.get", { details: true });
       setSecurityModeState(session?.mode ?? "ask");
+      const busy = Boolean(session?.busy);
+      if (busy !== typingRef.current) {
+        dispatch({ type: "frame", frame: { kind: "typing", payload: busy } });
+      }
     } catch (error) {
       report(error);
     }
   }, [report]);
 
-  // A backend restart clears this ephemeral per-conversation setting. Refresh
-  // it whenever the event stream opens so the composer chip cannot keep
-  // showing the pre-restart mode after EventSource reconnects.
+  // On every stream open. A backend restart clears the mode, and a drop long
+  // enough to outrun the replay buffer loses whichever `typing` frame moved the
+  // turn — either way the composer would go on showing the pre-drop state, and
+  // for `busy` that means offering Send where Stop belongs.
   useEffect(() => {
-    if (status === "open") void refreshSecurityMode();
-  }, [status, refreshSecurityMode]);
+    if (status === "open") void syncSession();
+  }, [status, syncSession]);
 
   /** Set the per-conversation mode from the dedicated composer control.
    * The kernel treats an attended switch to Ask as Lockdown's narrow escape
@@ -854,8 +910,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (state.command?.name !== "mode") return;
     if (state.command.status !== "finished") return;
-    void refreshSecurityMode();
-  }, [state.command?.name, state.command?.status, refreshSecurityMode]);
+    void syncSession();
+  }, [state.command?.name, state.command?.status, syncSession]);
 
   /* ── Conversations ──────────────────────────────────────────────── */
 
@@ -978,13 +1034,13 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         }
         dispatch({ type: "history", turns: await readConversation(id) });
         setConversationId(id);
-        await refreshSecurityMode();
+        await syncSession();
         await refreshConversations();
       } catch (error) {
         report(error);
       }
     },
-    [report, refreshConversations, refreshSecurityMode],
+    [report, refreshConversations, syncSession],
   );
 
   /** Make a conversation and point the session at it. Unconditional — the
@@ -1134,6 +1190,43 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     }
   }, [report]);
 
+  /**
+   * Sending while the agent still has the turn.
+   *
+   * **The queue is the kernel's, and this adapter holds none of it.** A message
+   * submitted mid-turn is queued server-side and drained at the next loop
+   * boundary, with a notification saying so — so there is nothing for a client
+   * to hold, dispatch, reorder or edit, and `items`/`steerItems` are empty
+   * forever. Everything here is `onNew` under two other names.
+   *
+   * It is declared anyway because assistant-ui gates the *keyboard* on it:
+   * `ComposerPrimitive.Input` swallows Enter outright while `isRunning` unless
+   * `thread.capabilities.queue` says the runtime can take a message now
+   * (`primitives/composer/ComposerInput`). Clicking Send was never gated —
+   * `composer.send` checks only `isEditing`, emptiness and `isSendDisabled` —
+   * so without this the button and the Enter key would disagree, which is the
+   * worst of the three possible states.
+   *
+   * `steer` and `enqueue` are the same call because we have one lane. The
+   * composer picks `steer` while a run is live and `enqueue` otherwise, and the
+   * distinction assistant-ui draws — steering *interrupts*, queueing waits — is
+   * not one the kernel offers: a queued message never cancels the turn it
+   * arrived during. `move` and `edit` are no-ops for the same reason, and
+   * nothing can call them, since the lanes they reorder are always empty.
+   */
+  const queue = useMemo(
+    () => ({
+      items: NO_QUEUED_MESSAGES,
+      steerItems: NO_QUEUED_MESSAGES,
+      enqueue: onNew,
+      steer: onNew,
+      move: () => {},
+      edit: () => {},
+      remove: () => {},
+    }),
+    [onNew],
+  );
+
   /** Re-read the conversation from the server. The escape hatch for a long
    *  disconnect: the replay buffer holds 500 frames per session, so a client
    *  that has been away a while should re-read rather than trust the replay. */
@@ -1164,6 +1257,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     isSendDisabled: waiting,
 
     onNew,
+    // Every send actually travels through here — `onNew` is unused once a queue
+    // adapter is present, and both of its lanes are `onNew` itself. It stays
+    // declared because the adapter type requires it and because it is the
+    // honest statement of what a send does.
+    queue,
     onCancel,
     onRefetchThread,
 

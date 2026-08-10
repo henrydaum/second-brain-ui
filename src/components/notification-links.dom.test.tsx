@@ -19,7 +19,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NotificationPanel } from "@/components/notification-panel";
-import { SettingsDialog } from "@/components/settings-dialog";
+import { SettingsDialogContent } from "@/components/settings-dialog";
 import type { Notification } from "@/lib/notifications";
 import * as provider from "@/runtime/provider";
 
@@ -39,6 +39,11 @@ const row = (over: Partial<Notification> = {}): Notification => ({
   read_at: null,
   ...over,
 });
+
+const runSettingsAction = async (action: () => void | Promise<void>) => {
+  await action();
+  return true;
+};
 
 function stub(over: Partial<provider.SecondBrain>) {
   const spies = {
@@ -206,7 +211,12 @@ describe("Settings lands where it was asked to", () => {
     // Without this the link lands on "Agents and Models", which is the default
     // page and has nothing to do with a settings change.
     stub({ settingsRequest: { page: "config" } });
-    render(<SettingsDialog open onOpenChange={vi.fn()} />);
+    render(
+      <SettingsDialogContent
+        commandActionPending={false}
+        afterCurrentCommand={runSettingsAction}
+      />,
+    );
 
     expect(
       screen.getByRole("heading", { name: "Configuration" }),
@@ -219,14 +229,24 @@ describe("Settings lands where it was asked to", () => {
     const { clearSettingsRequest } = stub({
       settingsRequest: { page: "config" },
     });
-    render(<SettingsDialog open onOpenChange={vi.fn()} />);
+    render(
+      <SettingsDialogContent
+        commandActionPending={false}
+        afterCurrentCommand={runSettingsAction}
+      />,
+    );
 
     expect(clearSettingsRequest).toHaveBeenCalled();
   });
 
   it("uses the default section when nothing asked for one", () => {
     stub({ settingsRequest: null });
-    render(<SettingsDialog open onOpenChange={vi.fn()} />);
+    render(
+      <SettingsDialogContent
+        commandActionPending={false}
+        afterCurrentCommand={runSettingsAction}
+      />,
+    );
 
     expect(
       screen.getByRole("heading", { name: "Agents and Models" }),
@@ -239,7 +259,12 @@ describe("Settings lands where it was asked to", () => {
       say,
       commands: [{ name: "llm", description: "Choose a model" }],
     });
-    render(<SettingsDialog open onOpenChange={vi.fn()} />);
+    render(
+      <SettingsDialogContent
+        commandActionPending={false}
+        afterCurrentCommand={runSettingsAction}
+      />,
+    );
 
     const card = screen.getByRole("button", { name: /Language models/i });
     await user.click(card);
@@ -259,6 +284,7 @@ describe("Settings lands where it was asked to", () => {
         buttons: [],
         error: null,
         shownText: [],
+        carried: {},
         form: {
           name: "agent",
           field: { name: "profile" },
@@ -277,7 +303,12 @@ describe("Settings lands where it was asked to", () => {
         },
       } as provider.SecondBrain["state"],
     });
-    render(<SettingsDialog open onOpenChange={vi.fn()} />);
+    render(
+      <SettingsDialogContent
+        commandActionPending={false}
+        afterCurrentCommand={runSettingsAction}
+      />,
+    );
 
     expect(screen.queryByText("Back.")).toBeNull();
     expect(screen.getByText("Useful command output")).toBeTruthy();

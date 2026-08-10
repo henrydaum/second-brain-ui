@@ -12,7 +12,6 @@
  */
 
 import {
-  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -30,11 +29,7 @@ import {
 } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import {
-  LazySettingsDialog,
-  preloadSettings,
-  SettingsFallback,
-} from "@/components/lazy-settings";
+import { preloadSettings, SettingsDialog } from "@/components/lazy-settings";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -573,19 +568,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
   );
 
   const settingsDialog = settingsMounted ? (
-    <Suspense
-      fallback={
-        <SettingsFallback
-          open={settingsOpen}
-          onOpenChange={setSettingsOpen}
-        />
-      }
-    >
-      <LazySettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-      />
-    </Suspense>
+    <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
   ) : null;
 
   if (isDesktop) {

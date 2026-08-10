@@ -1,0 +1,233 @@
+/**
+ * What a message sent mid-turn does to the transcript.
+ *
+ * The composer can now send while the agent still has the turn — the kernel
+ * queues it and drains it at the next loop boundary. The line has to land
+ * *between* what the agent had already said and whatever it says next, which
+ * means closing the open reply and continuing it below.
+ *
+ * That is a stream told in two halves, and the `done` frame carries
+ * `final_text` for the whole of it. Most of what follows is about that: the
+ * failure it causes is not a missing message but a doubled one. See
+ * `splitOpenTurn` and `tailOf`.
+ */
+
+import { describe, expect, it } from "vitest";
+
+import type { Frame } from "@/lib/events";
+import {
+  initialState,
+  reduce,
+  type State,
+  type TextPart,
+  type ToolPart,
+} from "@/runtime/store";
+
+/** Drive the reducer over a script, starting from nothing. */
+const run = (...frames: Frame[]): State =>
+  frames.reduce(
+    (state, frame) => reduce(state, { type: "frame", frame }),
+    initialState,
+  );
+
+const typing = (on: boolean) => ({ kind: "typing", payload: on }) as Frame;
+
+const delta = (text: string, over: Record<string, unknown> = {}): Frame =>
+  ({
+    kind: "stream_delta",
+    payload: { stream_id: "s1", delta: text, done: false, ...over },
+  }) as Frame;
+
+const toolStatus = (status: "started" | "progressed" | "finished"): Frame =>
+  ({
+    kind: "tool_status",
+    payload: {
+      kind: "tool",
+      call_id: "c1",
+      tool_name: "read_file",
+      status,
+      narration: "Reading",
+      ...(status === "finished" ? { ok: true, summary: "Read it." } : {}),
+    },
+  }) as Frame;
+
+/** Every text part of every turn, in order, as plain strings. */
+const said = (state: State) =>
+  state.turns.map((turn) =>
+    turn.parts
+      .filter((part): part is TextPart => part.kind === "text")
+      .map((part) => part.text)
+      .join(""),
+  );
+
+describe("a message sent while the agent is still talking", () => {
+  it("lands under what was already said, not under the whole turn", () => {
+    let state = run(typing(true), delta("Half a "));
+    state = reduce(state, { type: "said", text: "one more thing" });
+    state = reduce(state, { type: "frame", frame: delta("sentence.") });
+
+    // The tail is its own message *below* the queued line — the thing the
+    // single-turn reading got backwards, by writing it into the message above.
+    expect(state.turns.map((turn) => turn.role)).toEqual([
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+    expect(said(state)).toEqual(["Half a ", "one more thing", "sentence."]);
+  });
+
+  it("leaves only one message running, so only one indicator draws", () => {
+    let state = run(typing(true), delta("Half a "));
+    state = reduce(state, { type: "said", text: "one more thing" });
+    state = reduce(state, { type: "frame", frame: delta("sentence.") });
+
+    expect(state.turns.filter((turn) => turn.running)).toHaveLength(1);
+    expect(state.turns.at(-1)!.running).toBe(true);
+  });
+
+  it("does not repeat the first half when the stream finishes", () => {
+    // `final_text` is the *whole* stream and replaces what accumulated. Landing
+    // it whole in the second half is how the first half appeared twice.
+    let state = run(typing(true), delta("Half a "));
+    state = reduce(state, { type: "said", text: "one more thing" });
+    state = reduce(state, {
+      type: "frame",
+      frame: delta("sentence.", { done: true, final_text: "Half a sentence." }),
+    });
+
+    expect(said(state)).toEqual(["Half a ", "one more thing", "sentence."]);
+  });
+
+  it("keeps the deltas when the cleaned text cannot be lined up", () => {
+    // `final_text` is cleaned, so it need not start with what is on screen.
+    // Falling back to the deltas shows the tail once; trusting `final_text`
+    // would show the first half twice.
+    let state = run(typing(true), delta("Half a "));
+    state = reduce(state, { type: "said", text: "one more thing" });
+    state = reduce(state, {
+      type: "frame",
+      frame: delta("sentence.", {
+        done: true,
+        final_text: "Something else entirely.",
+      }),
+    });
+
+    expect(said(state)).toEqual(["Half a ", "one more thing", "sentence."]);
+  });
+
+  it("still recognises the whole reply if a messages frame repeats it", () => {
+    let state = run(typing(true), delta("Half a "));
+    state = reduce(state, { type: "said", text: "one more thing" });
+    state = reduce(state, {
+      type: "frame",
+      frame: delta("sentence.", { done: true, final_text: "Half a sentence." }),
+    });
+    state = reduce(state, {
+      type: "frame",
+      frame: { kind: "messages", payload: ["Half a sentence."] } as Frame,
+    });
+
+    expect(said(state)).toEqual(["Half a ", "one more thing", "sentence."]);
+  });
+
+  it("moves the indicator below the line rather than leaving one above", () => {
+    // `typing: true` opens a turn before there is anything to put in it. Closing
+    // it in place would leave a blank running message above the person's line —
+    // and dropping it without replacement would leave the agent looking stopped
+    // while it works. It moves.
+    let state = run(typing(true));
+    state = reduce(state, { type: "said", text: "one more thing" });
+
+    expect(state.turns.map((turn) => turn.role)).toEqual(["user", "assistant"]);
+    expect(state.turns[1].parts).toEqual([]);
+    expect(state.turns[1].running).toBe(true);
+  });
+
+  it("carries a call still in flight down with the reply", () => {
+    // A tool-call part with no result inherits its message's status, so a
+    // running call left in the closed half would draw as finished — and its
+    // `finished` frame would then appear again below as a second block.
+    let state = run(typing(true), delta("Looking. "), toolStatus("started"));
+    state = reduce(state, { type: "said", text: "and check the logs" });
+
+    expect(state.turns.map((turn) => turn.role)).toEqual([
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+    expect(state.turns[0].parts.map((part) => part.kind)).toEqual(["text"]);
+    expect(state.turns[2].parts.map((part) => part.kind)).toEqual(["tool"]);
+
+    // And the result updates that one block rather than making another.
+    state = reduce(state, { type: "frame", frame: toolStatus("finished") });
+    expect(state.turns).toHaveLength(3);
+    expect(state.turns[2].parts).toHaveLength(1);
+    expect((state.turns[2].parts[0] as ToolPart).status).toBe("finished");
+  });
+
+  it("leaves a call that already finished where it was made", () => {
+    let state = run(
+      typing(true),
+      delta("Looked. "),
+      toolStatus("started"),
+      toolStatus("finished"),
+    );
+    state = reduce(state, { type: "said", text: "and now the logs" });
+
+    expect(state.turns.map((turn) => turn.role)).toEqual([
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+    expect(state.turns[0].parts.map((part) => part.kind)).toEqual([
+      "text",
+      "tool",
+    ]);
+    expect(state.turns[2].parts).toEqual([]);
+  });
+
+  it("survives being sent twice in one reply", () => {
+    let state = run(typing(true), delta("One "));
+    state = reduce(state, { type: "said", text: "first" });
+    state = reduce(state, { type: "frame", frame: delta("two ") });
+    state = reduce(state, { type: "said", text: "second" });
+    state = reduce(state, {
+      type: "frame",
+      frame: delta("three.", { done: true, final_text: "One two three." }),
+    });
+
+    expect(said(state)).toEqual([
+      "One ",
+      "first",
+      "two ",
+      "second",
+      "three.",
+    ]);
+  });
+
+  it("forgets the carried text once the turn ends", () => {
+    let state = run(typing(true), delta("Half a "));
+    state = reduce(state, { type: "said", text: "one more thing" });
+    state = reduce(state, {
+      type: "frame",
+      frame: delta("sentence.", { done: true, final_text: "Half a sentence." }),
+    });
+    state = reduce(state, { type: "frame", frame: typing(false) });
+
+    expect(state.carried).toEqual({});
+  });
+});
+
+describe("an uninterrupted reply", () => {
+  it("is still one message, with final_text replacing the deltas", () => {
+    const state = run(
+      typing(true),
+      delta("Half a "),
+      delta("sentance.", { done: true, final_text: "Half a sentence." }),
+      typing(false),
+    );
+
+    expect(said(state)).toEqual(["Half a sentence."]);
+    expect(state.carried).toEqual({});
+  });
+});

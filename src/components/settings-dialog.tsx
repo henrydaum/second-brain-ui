@@ -1,9 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type FC } from "react";
-import {
-  ChevronRightIcon,
-  LoaderCircleIcon,
-  Settings2Icon,
-} from "lucide-react";
+import { useEffect, useMemo, useState, type FC } from "react";
+import { ChevronRightIcon, LoaderCircleIcon } from "lucide-react";
 
 import { CommandPanel } from "@/components/command-panel";
 import {
@@ -15,15 +11,13 @@ import {
   type SettingsPageId,
 } from "@/components/settings-structure";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import type { Command } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 import { useSession, useSettings } from "@/runtime/provider";
+
+export type SettingsCommandGate = (
+  action: () => void | Promise<void>,
+) => Promise<boolean>;
 
 function CommandCard({
   command,
@@ -104,24 +98,16 @@ const SystemActions: FC<{
   );
 };
 
-export const SettingsDialog: FC<{
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}> = ({ open, onOpenChange }) => {
+export const SettingsDialogContent: FC<{
+  commandActionPending: boolean;
+  afterCurrentCommand: SettingsCommandGate;
+}> = ({ commandActionPending, afterCurrentCommand }) => {
   const { commands, settingsRequest, clearSettingsRequest } = useSettings();
-  const {
-    say,
-    state,
-    dismissCommand,
-  } = useSession();
+  const { say, state } = useSession();
   const [page, setPage] = useState<SettingsPageId>("agents");
-  const [commandActionPending, setCommandActionPending] = useState(false);
   const [pendingCommand, setPendingCommand] = useState<string | null>(null);
-  const commandActionPendingRef = useRef(false);
   const activeName = state.form?.name ?? state.command?.name;
   const commandActive = Boolean(activeName);
-  const commandRunning =
-    commandActive && state.command?.status !== "finished";
 
   useEffect(() => {
     if (activeName) {
@@ -160,29 +146,6 @@ export const SettingsDialog: FC<{
     [commands, page],
   );
 
-  const afterCurrentCommand = async (action: () => void | Promise<void>) => {
-    if (!commandActive) {
-      await action();
-      return true;
-    }
-    if (commandActionPendingRef.current) return false;
-
-    commandActionPendingRef.current = true;
-    setCommandActionPending(true);
-    try {
-      if (commandRunning) {
-        const submitted = await say("/cancel");
-        if (!submitted) return false;
-      }
-      dismissCommand();
-      await action();
-      return true;
-    } finally {
-      commandActionPendingRef.current = false;
-      setCommandActionPending(false);
-    }
-  };
-
   const run = (name: string) => {
     if (pendingCommand) return;
     setPendingCommand(name);
@@ -199,37 +162,8 @@ export const SettingsDialog: FC<{
     void afterCurrentCommand(() => setPage(nextPage));
   };
 
-  const handleOpenChange = (next: boolean) => {
-    // Closing while a command is active is also a cancellation. Wait for the
-    // server to accept it before hiding Settings so a failed submission does
-    // not leave the session waiting on an invisible question.
-    if (!next && commandActive) {
-      void afterCurrentCommand(() => onOpenChange(false));
-      return;
-    }
-    onOpenChange(next);
-  };
-
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent
-        className="flex h-[min(94dvh,54rem)] w-[min(calc(100vw-1rem),70rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
-        overlayClassName="bg-black/45 backdrop-blur-[2px]"
-        closeButtonDisabled={commandActionPending}
-      >
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4 sm:h-16 sm:px-6">
-          <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg">
-            <Settings2Icon className="size-4" />
-          </span>
-          <div>
-            <DialogTitle className="text-base">Second Brain settings</DialogTitle>
-            <DialogDescription className="text-xs">
-              Kernel, agents, security, plugins, and packages
-            </DialogDescription>
-          </div>
-        </header>
-
-        <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[14rem_minmax(0,1fr)]">
+    <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[14rem_minmax(0,1fr)]">
           <nav
             className="bg-muted/25 hidden min-h-0 flex-col border-r p-3 sm:flex"
             aria-label="Settings sections"
@@ -353,8 +287,6 @@ export const SettingsDialog: FC<{
               </div>
             )}
           </main>
-        </div>
-      </DialogContent>
-    </Dialog>
+    </div>
   );
 };

@@ -164,6 +164,15 @@ export type State = {
    * Bounded, because this only ever needs to catch a repeat of something recent.
    */
   shownText: string[];
+  /**
+   * Per live stream, the text an earlier half of a split reply already shows.
+   *
+   * Empty for every conversation nobody interrupts. It fills only when a
+   * message is sent while the agent is mid-sentence, which closes the turn the
+   * stream was writing into and continues it in the next one — see
+   * `splitOpenTurn`, and `tailOf` for what reads it.
+   */
+  carried: Record<string, string>;
 };
 
 export const initialState: State = {
@@ -175,6 +184,7 @@ export const initialState: State = {
   buttons: [],
   error: null,
   shownText: [],
+  carried: {},
 };
 
 export type Action =
@@ -210,7 +220,11 @@ const HOW_MUCH_TEXT_TO_REMEMBER = 50;
  *
  *  A new one is minted rather than assumed because frames do not strictly
  *  require a preceding `typing: true` — a `messages` frame can arrive on its
- *  own, and dropping it because no turn was open would lose real output. */
+ *  own, and dropping it because no turn was open would lose real output.
+ *
+ *  Reading the *last* turn stays correct even though a message can now be sent
+ *  mid-reply, because `splitOpenTurn` closes the reply as it appends the
+ *  person's line. So the open turn is always last, or there is none. */
 function openTurn(turns: Turn[]): { turns: Turn[]; turn: Turn } {
   const last = turns.at(-1);
   if (last && last.role === "assistant" && last.running) {
@@ -227,6 +241,138 @@ function openTurn(turns: Turn[]): { turns: Turn[]; turn: Turn } {
     createdAt: Date.now(),
   };
   return { turns: [...turns, turn], turn };
+}
+
+/**
+ * Close the reply being written, so a message sent mid-turn lands after it.
+ *
+ * **A queued message belongs where it was typed.** The composer takes one while
+ * the agent still has the turn — the kernel queues it for the next loop
+ * boundary — and the only place it can honestly go is between what the agent
+ * had already said and everything that comes after. Appending it and leaving
+ * the reply open put the rest of the reply *above* it, so the transcript
+ * answered a question it had not yet been asked.
+ *
+ * So the open turn is closed here and the next frame opens a fresh one below.
+ * Closing rather than leaving it running also decides where the working
+ * indicator draws: `convert.ts` turns `running` into the message status, and
+ * two running assistant messages would show two of them.
+ *
+ * **What it costs is a stream told in two halves**, which is why `carried`
+ * exists. A `stream_delta` marked `done` carries `final_text` for the *whole*
+ * stream and replaces whatever accumulated — landing that in the second half
+ * would put the first half on screen twice. So the text already shown is
+ * recorded per stream id on the way past, and `tailOf` takes it back off.
+ *
+ * **Text stays above the line; work still in flight moves below it.** Text
+ * already on screen has been read, so splitting it is honest. A tool call has
+ * not finished, and a tool-call part with no `result` inherits its *message's*
+ * status (see `convert.ts`) — so leaving one in the message we are closing
+ * would draw it as finished, and its real `finished` frame would then arrive
+ * with nothing to update and appear again below. Moving it is what keeps one
+ * call one block. That is why this returns a turn to place *after* the
+ * person's: the caller owns the ordering, and the continuation has to come
+ * second.
+ *
+ * **The continuation is opened here rather than left to the next frame**, even
+ * when it starts empty. The agent still has the turn, and an empty running
+ * message is what draws the working indicator — without one the transcript
+ * goes silent between the moment you press send and whatever the agent says
+ * next, which for a long tool call is a long time to look stopped. It also
+ * makes the invariant exact: after this, exactly one assistant message is
+ * running, so exactly one indicator can draw.
+ */
+function splitOpenTurn(
+  turns: Turn[],
+  carried: Record<string, string>,
+): {
+  turns: Turn[];
+  carried: Record<string, string>;
+  /** The reply's second half, to be appended after the person's message. Null
+   *  only when no reply was open — an ordinary message, and much the commoner
+   *  case. */
+  continued: Turn | null;
+} {
+  const open = turns.at(-1);
+  if (!open || open.role !== "assistant" || !open.running) {
+    return { turns, carried, continued: null };
+  }
+
+  const kept: Part[] = [];
+  const moved: Part[] = [];
+  for (const part of open.parts) {
+    if (part.kind === "tool" && part.status !== "finished") moved.push(part);
+    else kept.push(part);
+  }
+
+  const next = { ...carried };
+  for (const part of kept) {
+    // Only a stream still being written can be continued below. A part already
+    // `done` had its `final_text` applied in the half it belongs to.
+    if (part.kind === "text" && !part.done) {
+      next[part.streamId] = (next[part.streamId] ?? "") + part.text;
+    }
+  }
+
+  const continued: Turn = {
+    id: nextId(),
+    role: "assistant",
+    parts: moved,
+    running: true,
+    aborted: false,
+    createdAt: Date.now(),
+  };
+
+  // Nothing left to keep — either the agent had taken the turn without saying
+  // anything yet, or everything it had was still in flight and has just moved.
+  // An empty closed message is what `typing: false` filters away anyway, and
+  // keeping one would draw a blank row above the person's line.
+  if (kept.length === 0) {
+    return { turns: turns.slice(0, -1), carried: next, continued };
+  }
+
+  return {
+    turns: replace(turns, open.id, {
+      ...open,
+      running: false,
+      parts: kept.map((part) =>
+        part.kind === "text" ? { ...part, done: true } : part,
+      ),
+    }),
+    carried: next,
+    continued,
+  };
+}
+
+/**
+ * The part of a finished stream's `final_text` that is not already on screen.
+ *
+ * `carried` is what an earlier half of a split reply is showing. The comparison
+ * is on the text rather than on a character count because `final_text` is the
+ * *cleaned* stream, and cleaning can move an offset while leaving the prose
+ * recognisable — hence the second attempt against the untrimmed start.
+ *
+ * When neither lines up, the deltas that arrived in this half are kept. They
+ * are what actually came over the wire, and showing the first half twice is a
+ * worse failure than missing whatever the cleanup tidied.
+ */
+function tailOf(final: string, carried: string, accumulated: string): string {
+  if (!carried) return final;
+  if (final.startsWith(carried)) return final.slice(carried.length);
+  const trimmed = carried.trimStart();
+  if (trimmed && final.startsWith(trimmed)) return final.slice(trimmed.length);
+  return accumulated;
+}
+
+/** Drop one stream from the carry map, which only ever holds live streams. */
+function stopCarrying(
+  carried: Record<string, string>,
+  streamId: string,
+): Record<string, string> {
+  if (!(streamId in carried)) return carried;
+  const next = { ...carried };
+  delete next[streamId];
+  return next;
 }
 
 /** Replace one turn in the list, leaving a new array behind.
@@ -313,12 +459,19 @@ export function reduce(state: State, action: Action): State {
         aborted: false,
         createdAt: Date.now(),
       };
+      // Sent mid-reply, this closes the reply first so the line lands after
+      // what the agent had already said and before whatever it says next. A
+      // no-op for the ordinary case, where no turn is open.
+      const split = splitOpenTurn(state.turns, state.carried);
       // An ordinary message also puts any finished command away — the person
       // has moved on, and its panel would otherwise sit there catching output
       // meant for the conversation.
       return {
         ...state,
-        turns: [...state.turns, turn],
+        turns: split.continued
+          ? [...split.turns, turn, split.continued]
+          : [...split.turns, turn],
+        carried: split.carried,
         form: null,
         command: null,
         suppressedCommand: null,
@@ -367,7 +520,10 @@ function applyFrame(state: State, frame: Frame): State {
         // which belongs to the panel — would otherwise sit in the transcript as
         // a blank message.
         .filter((turn) => turn.parts.length > 0 || turn.running);
-      return { ...state, typing: false, turns };
+      // Nothing is being written any more, so nothing can be continued into a
+      // later turn. A backstop rather than the main path — a stream normally
+      // retires its own entry on `done`.
+      return { ...state, typing: false, turns, carried: {} };
     }
 
     /* The reply, token by token. */
@@ -387,17 +543,25 @@ function applyFrame(state: State, frame: Frame): State {
         );
         return {
           ...state,
+          carried: stopCarrying(state.carried, stream_id),
           turns: replace(turns, turn.id, { ...turn, parts, aborted: true }),
         };
       }
 
+      // What an earlier half of this same stream is already showing, when a
+      // message sent mid-sentence split the reply. Empty otherwise, which is
+      // every conversation nobody interrupts.
+      const shown = state.carried[stream_id] ?? "";
+      const accumulated = (existing?.text ?? "") + (delta ?? "");
+
       // **On `done` with `final_text`, replace what accumulated.** It is the
       // cleaned text and the deltas agree with it, so appending would double
       // the reply and trusting the deltas would keep whatever it cleaned up.
+      // It covers the *whole* stream, so a split one takes only the tail.
       const text =
         done && final_text !== undefined
-          ? final_text
-          : (existing?.text ?? "") + (delta ?? "");
+          ? tailOf(final_text, shown, accumulated)
+          : accumulated;
 
       const part: TextPart = { kind: "text", streamId: stream_id, text, done };
       const parts = existing
@@ -406,13 +570,22 @@ function applyFrame(state: State, frame: Frame): State {
           )
         : [...turn.parts, part];
 
+      // The *whole* stream is what a later `messages` frame would repeat, so
+      // that is what has to be remembered — plus the tail on its own, since
+      // either could come back. Identical strings when nothing was split.
       const shownText = done
-        ? [text.trim(), ...state.shownText].slice(0, HOW_MUCH_TEXT_TO_REMEMBER)
+        ? [
+            (shown + text).trim(),
+            text.trim(),
+            ...state.shownText,
+          ].slice(0, HOW_MUCH_TEXT_TO_REMEMBER)
         : state.shownText;
 
       return {
         ...state,
         shownText,
+        // A finished stream can no longer be continued in a later turn.
+        carried: done ? stopCarrying(state.carried, stream_id) : state.carried,
         turns: replace(turns, turn.id, { ...turn, parts }),
       };
     }

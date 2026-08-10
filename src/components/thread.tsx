@@ -248,40 +248,78 @@ const Composer: FC = () => {
                 <VoiceNoteButton />
                 <SecurityModePicker />
               </div>
-              {/* Send and Cancel occupy the same corner: a turn is either yours
-                  to start or the agent's to stop, never both. */}
-              <AuiIf condition={(s) => !s.thread.isRunning}>
-                <ComposerPrimitive.Send asChild>
-                  <TooltipIconButton
-                    tooltip="Send message"
-                    side="bottom"
-                    type="button"
-                    variant="default"
-                    size="icon"
-                    className="size-7 rounded-full"
-                  >
-                    <ArrowUpIcon className="size-4.5" />
-                  </TooltipIconButton>
-                </ComposerPrimitive.Send>
-              </AuiIf>
-              <AuiIf condition={(s) => s.thread.isRunning}>
-                <ComposerPrimitive.Cancel asChild>
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="icon"
-                    className="size-7 rounded-full"
-                    aria-label="Stop generating"
-                  >
-                    <SquareIcon className="size-3.5 fill-current" />
-                  </Button>
-                </ComposerPrimitive.Cancel>
-              </AuiIf>
+              <ComposerAction />
             </div>
           </div>
         </ComposerPrimitive.AttachmentDropzone>
 
       </ComposerPrimitive.Root>
+  );
+};
+
+/**
+ * The one control in the composer's corner: Send, or Stop.
+ *
+ * **What decides between them is the box, not the turn.** It used to be
+ * `isRunning` alone — a turn was either yours to start or the agent's to stop,
+ * never both — which made the composer useless for as long as the agent was
+ * working: the only thing you could do with a thought was interrupt with it.
+ * The kernel has always taken a message mid-turn and queued it for the next
+ * loop boundary, so the restriction was the client's own.
+ *
+ * So: an empty box while the agent works can only mean stop, and a box with
+ * something in it can only mean send it. Typing is what changes the button,
+ * which is the rule people already know from Claude Code, and it costs nothing
+ * to discover — nobody types into a composer they meant to press Stop on.
+ *
+ * `isEmpty` counts attachments too, so a staged file with no caption is a send
+ * rather than a stop. See `runtime/provider.tsx`'s `queue` for why the Enter
+ * key agrees with this button.
+ *
+ * **Only text is actually queueable**, and that is a kernel fact rather than a
+ * choice made here: the busy guard in `runtime/conversation_runtime.py` queues
+ * `send_text` and refuses `send_attachment` with "Still working." So a file
+ * sent mid-turn comes back as that sentence in the transcript. It is offered
+ * anyway because the alternative — a Send that refuses to appear while a file
+ * is staged — hides the composer's own state to prevent one legible refusal.
+ */
+const ComposerAction: FC = () => {
+  const running = useAuiState((s) => s.thread.isRunning);
+  const empty = useAuiState((s) => s.composer.isEmpty);
+
+  if (running && empty) {
+    return (
+      <ComposerPrimitive.Cancel asChild>
+        <Button
+          type="button"
+          variant="default"
+          size="icon"
+          className="size-7 rounded-full"
+          aria-label="Stop generating"
+        >
+          <SquareIcon className="size-3.5 fill-current" />
+        </Button>
+      </ComposerPrimitive.Cancel>
+    );
+  }
+
+  return (
+    <ComposerPrimitive.Send asChild>
+      <TooltipIconButton
+        // Named for what actually happens: mid-turn the kernel holds the
+        // message until the agent reaches a loop boundary, and says so with a
+        // notification. A button promising "send" and delivering a queue is
+        // the sort of small lie that makes people press it twice.
+        tooltip={running ? "Queue message" : "Send message"}
+        side="bottom"
+        type="button"
+        variant="default"
+        size="icon"
+        className="size-7 rounded-full"
+      >
+        <ArrowUpIcon className="size-4.5" />
+      </TooltipIconButton>
+    </ComposerPrimitive.Send>
   );
 };
 
