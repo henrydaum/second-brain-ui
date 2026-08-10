@@ -533,20 +533,25 @@ function applyFrame(state: State, frame: Frame): State {
 
     /* ── Handled elsewhere, on purpose ──────────────────────────────────
      *
-     * A question the kernel is blocking a turn on, and the frame saying one
-     * stopped waiting. **Session state, not conversation state**: the kernel
-     * holds a pending question on the session's phase stack and persists it
-     * there, so it outlives any one conversation and must survive everything
-     * `history` above resets. The provider fans both straight into
-     * `runtime/input-requests.ts` and they never reach this reducer.
+     * A question the kernel is blocking a turn on, the frame saying one stopped
+     * waiting, and something the system is telling you. **Session state, not
+     * conversation state**, all three: the kernel holds a pending question on
+     * the session's phase stack and persists it there, and a notification is
+     * usually not about the open conversation at all — a plugin registering is
+     * about the install, a scheduled agent's report about a background session.
+     * So all three must survive everything `history` above resets, and the
+     * provider fans them into `runtime/input-requests.ts` and
+     * `runtime/notifications.ts` before this reducer ever sees them.
      *
      * They are listed anyway rather than left to a `default`, because an
-     * unhandled kind here is a *compile* error — which is how the eleventh
-     * kind gets noticed instead of being silently dropped. This case firing at
-     * all would mean the fan-out in `provider.tsx` had been removed.
+     * unhandled kind here is a *compile* error — which is how the eleventh kind
+     * got noticed instead of being silently dropped, exactly as this comment
+     * said it would when there were ten. Any of these firing would mean the
+     * fan-out in `provider.tsx` had been removed.
      */
     case "approval":
     case "approval_settled":
+    case "notification":
       return state;
 
     case "form_field":

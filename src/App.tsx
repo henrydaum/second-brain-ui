@@ -14,6 +14,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { FilesDrawer } from "@/components/files-drawer";
 import { FileViewerDialog } from "@/components/file-viewer-dialog";
 import { InputRequestDialog } from "@/components/input-request-dialog";
+import { NotificationBanners } from "@/components/notification-banners";
 import { SessionBar } from "@/components/session-bar";
 import { Thread } from "@/components/thread";
 import { FileActivityProvider } from "@/runtime/file-activity-provider";
@@ -61,6 +62,12 @@ export const App: FC = () => {
               rather than something nested inside one part of it. */}
           <InputRequestDialog />
           <FileViewerDialog />
+
+          {/* Beside the dialog and for the same reason: a notification is the
+              system speaking to the *session*, and most of them are not about
+              the conversation on screen at all. Fixed-positioned, so where it
+              sits in this tree decides only what it stacks above. */}
+          <NotificationBanners />
         </FileActivityProvider>
       </SecondBrainProvider>
     </ErrorBoundary>

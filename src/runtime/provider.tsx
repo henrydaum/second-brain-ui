@@ -39,9 +39,15 @@ import {
   type PendingAttachment,
 } from "@assistant-ui/react";
 
+// Type-only, deliberately. The sections are the settings dialog's own
+// vocabulary and belong beside it; naming one here has to cost nothing at
+// runtime, and an erased import is how the dependency stays one-way in the
+// bundle even though the *name* points the other way.
+import type { SettingsPageId } from "@/components/settings-structure";
 import { RequestFailed, sdk } from "@/lib/client";
 import { listCommands, looksLikeCommand, type Command } from "@/lib/commands";
 import {
+  isUnused,
   listConversations,
   type Conversation,
   type LoadResult,
@@ -49,6 +55,15 @@ import {
 import { connect, type StreamStatus } from "@/lib/events";
 import { readConversation } from "@/lib/history";
 import { isPendingInput, type InputRequest } from "@/lib/input-requests";
+// `Notification` deliberately shadows the DOM global of that name here. Ours is
+// a row in the kernel's table; the browser's is a desktop popup this app does
+// not use, and leaving the global reachable under the same spelling is how a
+// missing import turns into a type error nobody can read.
+import {
+  listNotifications,
+  markRead,
+  type Notification,
+} from "@/lib/notifications";
 import { extensionOf, uploadToHost } from "@/lib/upload";
 import { convertMessage } from "@/runtime/convert";
 import {
@@ -56,6 +71,13 @@ import {
   reduceInputRequests,
   unseenRequest,
 } from "@/runtime/input-requests";
+import {
+  highestId,
+  initialNotifications,
+  reduceNotifications,
+  unreadCount,
+  type Banner,
+} from "@/runtime/notifications";
 import { initialState, reduce, type State } from "@/runtime/store";
 
 /* ── Attachments ────────────────────────────────────────────────────────
@@ -153,7 +175,8 @@ export type SecondBrain = {
   conversationId: number | null;
   /** Point the session at another conversation and show it. */
   openConversation: (id: number) => Promise<void>;
-  /** Start a fresh conversation and switch to it. */
+  /** Start a fresh conversation and switch to it — or stay where you are, when
+   *  the conversation on screen has never been used. */
   newConversation: () => Promise<void>;
   /** Delete one. **Unsafe** — the server raises an approval dialog, which
    *  arrives on the event stream while this is still in flight. */
@@ -193,8 +216,49 @@ export type SecondBrain = {
   dismissError: () => void;
   /** Put a finished command's panel away. */
   dismissCommand: () => void;
+
+  /**
+   * What the system has told you.
+   *
+   * **`banners` and `notifications` are two sets, not two views of one.**
+   * Transient progress banners and is never stored, so it is in the first and
+   * not the second; anything from before this page connected is in the second
+   * and never was in the first. See `runtime/notifications.ts`.
+   *
+   * Here rather than in the store for the same reason `inputRequests` is: a
+   * notification belongs to the session, and most of them are not about the open
+   * conversation at all.
+   */
+  banners: Banner[];
+  /** The persisted ones, newest first. Backfilled on boot, kept current by the
+   *  stream. */
+  notifications: Notification[];
+  /** How many are still unread — what the bell's dot is drawn from. */
+  unread: number;
+  /** Why the panel is empty, when the reason is not "nothing happened". */
+  notificationsFailure: string | null;
+  /** Take one banner down. */
+  dismissBanner: (key: string) => void;
+  /** Settle everything held. What opening the panel does. */
+  markNotificationsRead: () => Promise<void>;
+  notificationsOpen: boolean;
+  setNotificationsOpen: (open: boolean) => void;
+
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
+  /**
+   * Open Settings, optionally at a particular section.
+   *
+   * For the surfaces that know *why* they are sending you there — a "Settings
+   * changed" notification knows the change was configuration — as opposed to the
+   * gear button, which knows nothing and lands on the default page.
+   */
+  openSettings: (page?: SettingsPageId) => void;
+  /** The section Settings was asked to open at, until it has. **One-shot**: the
+   *  dialog consumes it and clears it, so navigating away afterwards is not
+   *  fought by a request that never expired. */
+  settingsRequest: { page: SettingsPageId } | null;
+  clearSettingsRequest: () => void;
   securityMode: "lockdown" | "ask" | "yolo";
   setSecurityMode: (mode: "lockdown" | "ask" | "yolo") => Promise<void>;
 };
@@ -209,14 +273,26 @@ export function useSecondBrain(): SecondBrain {
 
 /* ── The provider ───────────────────────────────────────────────────── */
 
+/** How often an idle page re-reads the conversation list. See the effect that
+ *  uses it for why a minute is the right number and why a poll is here at all. */
+const IDLE_REFRESH_MS = 60_000;
+
 export function SecondBrainProvider({ children }: PropsWithChildren) {
   const [state, dispatch] = useReducer(reduce, initialState);
   const [inputRequests, askDispatch] = useReducer(
     reduceInputRequests,
     initialInputRequests,
   );
+  const [notifications, notifyDispatch] = useReducer(
+    reduceNotifications,
+    initialNotifications,
+  );
   const [status, setStatus] = useState<StreamStatus>("connecting");
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsRequest, setSettingsRequest] = useState<{
+    page: SettingsPageId;
+  } | null>(null);
   const [securityMode, setSecurityModeState] = useState<
     "lockdown" | "ask" | "yolo"
   >("ask");
@@ -333,6 +409,21 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         askDispatch({ type: "settled", id: frame.payload.request_id });
         return;
       }
+      // Same shape of decision, same reason. A notification is the system
+      // speaking, not the agent, and usually not about the conversation on
+      // screen at all — so it must not reach the store, whose next history read
+      // would drop it.
+      if (frame.kind === "notification") {
+        notifyDispatch({
+          type: "raised",
+          notification: frame.payload,
+          // Generated here rather than in the reducer so the reducer stays a
+          // pure function of its arguments. A transient notification has no
+          // `notification_id` to key a list on; this is what it gets instead.
+          key: crypto.randomUUID(),
+        });
+        return;
+      }
       dispatch({ type: "frame", frame });
     }, setStatus);
 
@@ -362,10 +453,13 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         // yet — and creating is also the one path that has never been able to
         // take the session away from us, since a new conversation has no prior
         // owner to be restored from.
+        //
+        // **No title**, here and everywhere else this app creates one. See
+        // `PLACEHOLDER_TITLE` in `lib/conversations.ts`: a title of ours is one
+        // the store's sweep will not replace.
         let bound = session?.conversation_id ?? null;
         if (bound === null) {
           const created = await sdk<{ id: number }>("conv.create", {
-            title: "New chat",
             activate: true,
           });
           bound = created?.id ?? null;
@@ -481,6 +575,104 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   }, [status, reconcile]);
 
   const waiting = inputRequests.queue.length > 0;
+
+  /* ── Notifications ──────────────────────────────────────────────── */
+
+  /**
+   * Fill the panel from the table.
+   *
+   * **The stream only ever answers "what happened since you connected."** For a
+   * client that was closed while a scheduled agent ran, that is none of it — so
+   * the panel needs a read, not just a subscription. Exactly the division
+   * `FileActivityProvider` draws for the ledger: renders are events, the table
+   * is state.
+   *
+   * `since_id` on the later calls is an index seek rather than a scan, and the
+   * reducer merges by id — so a notification that arrived as a frame *and* comes
+   * back in the read lands once.
+   */
+  const notificationsCursor = useRef(0);
+  const backfillNotifications = useCallback(async (since: number) => {
+    try {
+      const rows = await listNotifications(
+        since > 0 ? { since_id: since } : { limit: 50 },
+      );
+      notifyDispatch({ type: "backfilled", rows });
+    } catch {
+      // Said in the panel rather than the error banner, for the reason
+      // `FileActivityProvider` gives about `ledger.read`: a kernel without the
+      // Request would otherwise raise a banner on every boot, about a surface
+      // that may never be opened. The banners still work either way — they come
+      // off the stream and owe this call nothing.
+      notifyDispatch({
+        type: "failed",
+        message: "Second Brain would not hand back your notifications.",
+      });
+    }
+  }, []);
+
+  /**
+   * On **every** open, like `reconcile` and unlike `loadCatalogue`.
+   *
+   * `EventSource` replays from `Last-Event-ID` and the buffer holds 500 frames
+   * per session, so a short drop is covered for free — but a long one loses the
+   * middle, and the middle is where the notification you actually wanted is. The
+   * cursor makes the repeat calls cheap enough that covering the long case
+   * costs nothing in the common one.
+   */
+  useEffect(() => {
+    if (status !== "open") return;
+    void backfillNotifications(notificationsCursor.current);
+  }, [status, backfillNotifications]);
+
+  // Kept in a ref rather than read from state inside the effect, so topping up
+  // does not re-run every time a notification arrives.
+  notificationsCursor.current = highestId(notifications);
+
+  /**
+   * Settle everything held — what opening the panel does.
+   *
+   * `before_id` rather than a list of ids: the handler filters `id <= ?`, so the
+   * highest id held settles the rows behind it too, including any this client
+   * never loaded. Guarded on there being one, because `mark_read` with neither
+   * argument is a `400` rather than a no-op.
+   *
+   * Dispatched before the await, not after. The count is what the bell's dot is
+   * drawn from, and a dot that lingers for a round trip after you have opened
+   * the panel reads as a failure to notice you.
+   */
+  const markNotificationsRead = useCallback(async () => {
+    const before = highestId(notifications);
+    if (before === 0 || unreadCount(notifications) === 0) return;
+    notifyDispatch({ type: "read", before });
+    try {
+      await markRead({ before_id: before });
+    } catch {
+      // Left as read locally. The next backfill carries the server's own
+      // `read_at`, so this corrects itself rather than needing to be undone —
+      // and a badge that reappeared under someone who had just cleared it would
+      // be worse than one that is briefly optimistic.
+    }
+  }, [notifications]);
+
+  const dismissBanner = useCallback((key: string) => {
+    notifyDispatch({ type: "dismissed", key });
+  }, []);
+
+  /**
+   * Open Settings, optionally at a section.
+   *
+   * A fresh object per call rather than a bare page id, so clicking the same
+   * link twice is two requests. With the id alone, asking for `config` while
+   * already showing `config` — having navigated away in between — would be a
+   * state that never changed and therefore an effect that never fired.
+   */
+  const openSettings = useCallback((page?: SettingsPageId) => {
+    if (page) setSettingsRequest({ page });
+    setSettingsOpen(true);
+  }, []);
+
+  const clearSettingsRequest = useCallback(() => setSettingsRequest(null), []);
 
   /* ── What the person can do ─────────────────────────────────────── */
 
@@ -601,6 +793,28 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
   /* ── Conversations ──────────────────────────────────────────────── */
 
+  /**
+   * Whether the conversation on screen has never been used.
+   *
+   * Both halves are asked, and they answer different questions. The stored row
+   * is the server's fact and is the one that matters; the transcript is the
+   * guard against acting on a stale copy of it, since the list is re-read on
+   * occasions rather than continuously and a conversation can have earned rows
+   * since. Being wrong in the direction of "used" costs one conversation nobody
+   * wanted; being wrong the other way silently reuses somebody's conversation.
+   *
+   * A ref rather than a dependency, for the reason `commandsRef` is one:
+   * `newConversation` is handed out through the context and listed as a
+   * dependency by `deleteConversation`, and this changes on every frame of
+   * every turn.
+   */
+  const openIsUnused = useRef(false);
+  openIsUnused.current =
+    state.turns.length === 0 &&
+    isUnused(
+      conversations.find((conversation) => conversation.id === conversationId),
+    );
+
   const refreshConversations = useCallback(async () => {
     try {
       setConversations(await listConversations());
@@ -630,6 +844,46 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     wasTyping.current = false;
     void refreshConversations();
   }, [state.typing, refreshConversations]);
+
+  /**
+   * Ask again while nothing is happening.
+   *
+   * The refresh above covers everything that changes *because of something
+   * done here*. Two things change without that: the store's title sweep runs
+   * on its own schedule and renames a conversation minutes after the exchange
+   * that earned the name, and `updated_ago` is the server's wording computed
+   * when the list was read — so an untouched sidebar goes on claiming "2
+   * minutes ago" an hour later. Both are only visible by asking again.
+   *
+   * A minute, because that is the resolution of the thing being shown: the
+   * server's own wording is in minutes once anything is a minute old, so
+   * asking more often would re-read the list to render the same sentence.
+   *
+   * **This is a poll standing in for an event**, and the event exists — the
+   * kernel has a `conversation_changed` channel and the sweep emits `retitled`
+   * on it — but nothing carries a bus event to a browser: `/events` carries
+   * the ten render kinds and the HTTP frontend does not subscribe to anything.
+   * Closing that gap is a kernel change (`sandbox/residency.py` wires bus
+   * subscriptions for services and not for frontends), and this is what the
+   * sidebar needs until it happens.
+   *
+   * Nothing is asked while a turn is running — the end of it refreshes anyway —
+   * and nothing while the tab is hidden, since the answer is only worth having
+   * when somebody is looking at it. Coming back to the tab is exactly such a
+   * moment, so that asks straight away rather than waiting out the interval.
+   */
+  useEffect(() => {
+    if (status !== "open" || state.typing) return;
+    const refreshIfWatched = () => {
+      if (!document.hidden) void refreshConversations();
+    };
+    const timer = window.setInterval(refreshIfWatched, IDLE_REFRESH_MS);
+    document.addEventListener("visibilitychange", refreshIfWatched);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshIfWatched);
+    };
+  }, [status, state.typing, refreshConversations]);
 
   /**
    * Point the session at another conversation.
@@ -667,10 +921,12 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     [report, refreshConversations, refreshSecurityMode],
   );
 
-  const newConversation = useCallback(async () => {
+  /** Make a conversation and point the session at it. Unconditional — the
+   *  reuse decision belongs to `newConversation`, and the one caller that must
+   *  not reuse (deleting the open conversation) needs this directly. */
+  const createConversation = useCallback(async () => {
     try {
       const created = await sdk<{ id: number }>("conv.create", {
-        title: "New chat",
         activate: true,
       });
       // `activate: true` binds it to this session, so there is nothing to load
@@ -683,6 +939,25 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       report(error);
     }
   }, [report, refreshConversations]);
+
+  const newConversation = useCallback(async () => {
+    // **Pressing New chat in a conversation nobody has used is a no-op.** The
+    // session is already pointing at an empty conversation; making a second
+    // one is what left tens of untouched rows in the sidebar, one per press.
+    //
+    // This is the shallow half of what other chat apps do by not creating a
+    // conversation until the first message is sent. It stops the accumulation
+    // without the part that costs something: the session stays bound to a real
+    // conversation throughout, so commands, attendance and pushed messages
+    // carry on working exactly as they do now.
+    if (openIsUnused.current) {
+      // Not a `setState` no-op: `history` also clears a half-answered form and
+      // a finished command's panel, which is what "start over" means here.
+      dispatch({ type: "history", turns: [] });
+      return;
+    }
+    await createConversation();
+  }, [createConversation]);
 
   /**
    * Delete a conversation.
@@ -701,12 +976,19 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         // which is the state where every submit answers "No conversation
         // loaded" — so land somewhere real rather than leaving that to be
         // discovered by typing.
-        if (id === conversationId) await newConversation();
+        //
+        // **`createConversation`, not `newConversation`.** The one just deleted
+        // was very possibly unused, and reuse reads a ref that React has had no
+        // chance to recompute between the refresh above and this line — so the
+        // reuse path would keep the session pointed at a conversation that no
+        // longer exists, which is precisely the state this call exists to
+        // avoid. There is nothing here to reuse either way.
+        if (id === conversationId) await createConversation();
       } catch (error) {
         report(error);
       }
     },
-    [conversationId, newConversation, refreshConversations, report],
+    [conversationId, createConversation, refreshConversations, report],
   );
 
   /* ── The runtime ────────────────────────────────────────────────── */
@@ -859,8 +1141,19 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       report,
       dismissError,
       dismissCommand,
+      banners: notifications.banners,
+      notifications: notifications.rows,
+      unread: unreadCount(notifications),
+      notificationsFailure: notifications.failure,
+      dismissBanner,
+      markNotificationsRead,
+      notificationsOpen,
+      setNotificationsOpen,
       settingsOpen,
       setSettingsOpen,
+      openSettings,
+      settingsRequest,
+      clearSettingsRequest,
       securityMode,
       setSecurityMode,
     }),
@@ -880,7 +1173,14 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       report,
       dismissError,
       dismissCommand,
+      notifications,
+      dismissBanner,
+      markNotificationsRead,
+      notificationsOpen,
       settingsOpen,
+      openSettings,
+      settingsRequest,
+      clearSettingsRequest,
       securityMode,
       setSecurityMode,
     ],

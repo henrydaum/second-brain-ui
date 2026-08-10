@@ -49,6 +49,33 @@ export function filterIncludes(
   );
 }
 
+/**
+ * Every named category present, in the order the UI shows them.
+ *
+ * Built-ins first in their declared order, then everything else alphabetically.
+ * Extracted because two things need to agree about it: the filter list, and
+ * `categoryHues` — which assigns colour by position, so a disagreement here
+ * would be a pill whose dot is a different colour than its own entry in the
+ * menu.
+ *
+ * `null` — the ordinary, person-owned chat — is deliberately not in here. It is
+ * not a tag, and it wears a neutral grey rather than a generated hue.
+ */
+export function orderedCategories(conversations: Conversation[]): string[] {
+  const present = new Set<string>();
+  for (const conversation of conversations) {
+    const category = conversationCategory(conversation.category);
+    if (category !== null) present.add(category);
+  }
+
+  return [
+    ...BUILT_IN_CATEGORIES.filter((category) => present.has(category)),
+    ...[...present]
+      .filter((category) => !BUILT_IN_CATEGORIES.includes(category))
+      .sort((left, right) => left.localeCompare(right)),
+  ];
+}
+
 export function conversationFilterOptions(
   conversations: Conversation[],
 ): ConversationFilterOption[] {
@@ -57,17 +84,6 @@ export function conversationFilterOptions(
     const category = conversationCategory(conversation.category);
     counts.set(category, (counts.get(category) ?? 0) + 1);
   }
-
-  const categories = [...counts.keys()];
-  const builtIns = BUILT_IN_CATEGORIES.filter((category) =>
-    counts.has(category),
-  );
-  const pluginCategories = categories
-    .filter(
-      (category): category is string =>
-        category !== null && !BUILT_IN_CATEGORIES.includes(category),
-    )
-    .sort((left, right) => left.localeCompare(right));
 
   return [
     {
@@ -80,7 +96,7 @@ export function conversationFilterOptions(
       label: "Main",
       count: counts.get(null) ?? 0,
     },
-    ...[...builtIns, ...pluginCategories].map((category) => ({
+    ...orderedCategories(conversations).map((category) => ({
       filter: { type: "category", category } as ConversationFilter,
       label: category,
       count: counts.get(category) ?? 0,
@@ -88,13 +104,68 @@ export function conversationFilterOptions(
   ];
 }
 
-/** FNV-1a gives a stable hue without maintaining a palette or stored mapping. */
-export function categoryHue(category: string): number {
-  const normalized = category.normalize("NFKC").toLowerCase();
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < normalized.length; index += 1) {
-    hash ^= normalized.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0) % 360;
+/* ── Colour ───────────────────────────────────────────────────────────── */
+
+/**
+ * The golden angle, in degrees.
+ *
+ * **Placing each tag this far around the wheel from the last is what keeps them
+ * apart at every count, not just at one.** It is the irrational rotation, so the
+ * sequence never repeats and — this is the useful part — *every prefix of it* is
+ * near-optimally spread. Two tags land 137° apart, three fall roughly 137/85/137,
+ * six are never closer than 30°. A fixed `360 / n` would do as well for one
+ * chosen `n` and re-colour every tag the moment the count changed.
+ */
+const GOLDEN_ANGLE = 137.50776405003785;
+
+/** Where the first tag sits. Nothing depends on the value; it decides only
+ *  which colour "Subagent" happens to be. */
+const FIRST_HUE = 25;
+
+/**
+ * A hue for each category, chosen so no two are close.
+ *
+ * **Assigned across the set rather than derived from each name, and it has to
+ * be.** This used to hash the name — stable, needed no palette, and could not
+ * possibly work: hashing scatters names uniformly, so how close two of them land
+ * is luck. `Subagent` drew 270° and `Scheduled` 264°, six degrees apart and
+ * indistinguishable. That was not a bad pair of names, it was the birthday
+ * problem: for *n* independently hashed tags the expected gap between the
+ * closest two is about `360 / n²`, so ten tags are already down to ~4° and a
+ * collision is near-certain. No choice of hash function improves that.
+ *
+ * The cost is that a colour is a function of *position*, so tags cannot be
+ * coloured in isolation and inserting one can shift the ones after it. The
+ * built-ins are pinned to the front of the order, which is what keeps `Subagent`
+ * and `Scheduled` fixed forever; a new plugin category sorting alphabetically
+ * ahead of another will re-colour it. That is the trade this makes on purpose —
+ * distinctness is the thing being asked for, and it is not available at the same
+ * time as per-name independence.
+ *
+ * Hues do eventually crowd, as they must: 30 tags sit about 4° apart at the
+ * closest. There is no arrangement of *n* colours on a wheel that avoids it, and
+ * this is the arrangement that puts it off longest.
+ */
+export function categoryHues(categories: string[]): Map<string, number> {
+  const hues = new Map<string, number>();
+  categories.forEach((category, index) => {
+    // Rounded: the CSS takes any number, but whole degrees keep the inline
+    // styles readable and cost nothing — the sequence stays several degrees
+    // apart well past any plausible tag count.
+    hues.set(category, Math.round((FIRST_HUE + index * GOLDEN_ANGLE) % 360));
+  });
+  return hues;
+}
+
+/**
+ * The hue to draw a category in.
+ *
+ * The fallback is for a category the map has never heard of, which should not
+ * happen — the map and every call site are built from the same conversation
+ * list. It exists because a dot with no colour resolves to `oklch(… 0)`, a red
+ * that looks deliberate; landing on the same colour as the first tag is at
+ * least visibly a fallback rather than a claim.
+ */
+export function hueOf(hues: Map<string, number>, category: string): number {
+  return hues.get(category) ?? FIRST_HUE;
 }

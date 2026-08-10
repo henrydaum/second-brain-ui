@@ -97,7 +97,14 @@ export const SettingsDialog: FC<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }> = ({ open, onOpenChange }) => {
-  const { commands, say, state, dismissCommand } = useSecondBrain();
+  const {
+    commands,
+    say,
+    state,
+    dismissCommand,
+    settingsRequest,
+    clearSettingsRequest,
+  } = useSecondBrain();
   const [page, setPage] = useState<SettingsPageId>("agents");
   const [commandActionPending, setCommandActionPending] = useState(false);
   const commandActionPendingRef = useRef(false);
@@ -109,6 +116,24 @@ export const SettingsDialog: FC<{
   useEffect(() => {
     if (activeName) setPage(pageForCommand(activeName));
   }, [activeName]);
+
+  /**
+   * Somebody asked for a particular section on the way in.
+   *
+   * **Consumed, not watched.** Clearing it here is what makes this a landing
+   * place rather than a lock: without the clear, navigating away would be undone
+   * by the next render that still saw the request standing.
+   *
+   * After the effect above on purpose. Both can fire on one render — Settings
+   * opened at a section while a command happens to be running — and an explicit
+   * request from a person should beat an inference from what the session is
+   * doing.
+   */
+  useEffect(() => {
+    if (!settingsRequest) return;
+    setPage(settingsRequest.page);
+    clearSettingsRequest();
+  }, [settingsRequest, clearSettingsRequest]);
 
   const pageDefinition =
     SETTINGS_PAGES.find((item) => item.id === page) ?? SETTINGS_PAGES[0];

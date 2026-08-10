@@ -44,14 +44,17 @@ import {
 import {
   ALL_CONVERSATIONS_FILTER,
   MAIN_CONVERSATIONS_FILTER,
-  categoryHue,
+  categoryHues,
   categoryLabel,
   conversationCategory,
   conversationFilterOptions,
   filterIncludes,
   filtersEqual,
+  hueOf,
+  orderedCategories,
   type ConversationFilter,
 } from "@/lib/conversation-categories";
+import { conversationTitle } from "@/lib/conversations";
 import { MD_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { useSecondBrain } from "@/runtime/provider";
@@ -65,8 +68,14 @@ type CategoryColorStyle = CSSProperties & {
   "--conversation-category-hue": string;
 };
 
-function categoryColorStyle(category: string): CategoryColorStyle {
-  return { "--conversation-category-hue": String(categoryHue(category)) };
+/** The hue map is threaded through rather than looked up globally: a colour here
+ *  is a function of which categories exist, so there is nothing to ask without
+ *  the set in hand. */
+function categoryColorStyle(
+  category: string,
+  hues: Map<string, number>,
+): CategoryColorStyle {
+  return { "--conversation-category-hue": String(hueOf(hues, category)) };
 }
 
 function readConversationFilter(): ConversationFilter {
@@ -142,6 +151,12 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
 
   const filterOptions = useMemo(
     () => conversationFilterOptions(conversations),
+    [conversations],
+  );
+  /** One assignment for the whole sidebar, so the pill, the menu dot and the
+   *  dot on a row all agree about what colour a category is. */
+  const categoryColors = useMemo(
+    () => categoryHues(orderedCategories(conversations)),
     [conversations],
   );
   const visibleConversations = useMemo(
@@ -348,7 +363,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
                 style={
                   conversationFilter.type === "category" &&
                   conversationFilter.category !== null
-                    ? categoryColorStyle(conversationFilter.category)
+                    ? categoryColorStyle(conversationFilter.category, categoryColors)
                     : undefined
                 }
             >
@@ -408,7 +423,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
                       style={
                         category === null
                           ? undefined
-                          : categoryColorStyle(category)
+                          : categoryColorStyle(category, categoryColors)
                       }
                     />
                     <span className="min-w-0 flex-1 truncate">
@@ -471,7 +486,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
                 className="min-w-0 flex-1 px-2 py-1.5 text-start disabled:opacity-50"
               >
                 <span className="block truncate text-sm">
-                  {conversation.title || "Untitled"}
+                  {conversationTitle(conversation)}
                 </span>
                 {(conversation.updated_ago || showCategory) && (
                   // The server's own wording, rather than a second notion of
@@ -491,7 +506,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
                             role="img"
                             aria-label={`Category: ${categoryLabel(category)}`}
                             className="conversation-category-dot size-2 shrink-0 rounded-full"
-                            style={categoryColorStyle(category)}
+                            style={categoryColorStyle(category, categoryColors)}
                           />
                         </TooltipTrigger>
                         <TooltipContent variant="subtle" side="right">

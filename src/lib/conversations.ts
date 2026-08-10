@@ -44,6 +44,55 @@ export async function listConversations(limit = 50): Promise<Conversation[]> {
   return [...items].sort((a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0));
 }
 
+/**
+ * A title the kernel supplied rather than one the conversation earned.
+ *
+ * **This pattern is the store's, not ours.** `task_update_titles` replaces
+ * exactly the titles matching `^new conversation` and never touches anything
+ * else, on the reasoning that a real title — whether it wrote it or a person
+ * did — is not its to overwrite. Which means a title *this app* invents is a
+ * real title as far as the sweep is concerned: sending `"New chat"` on
+ * `conv.create` is what kept every conversation made here from ever being
+ * named. So nothing here sends a title at all, and the kernel's own
+ * "New conversation" is translated for display below.
+ */
+const PLACEHOLDER_TITLE = /^new conversation\b/i;
+
+/**
+ * What to call a conversation on screen.
+ *
+ * "New chat" rather than the kernel's wording, because it is the same thing
+ * the button that made it says. A `(cleared)` title is left alone on purpose —
+ * the sweep may replace it, but until it does, that suffix is telling you
+ * something a placeholder is not.
+ */
+export function conversationTitle(conversation: Conversation): string {
+  const title = conversation.title?.trim() ?? "";
+  return !title || PLACEHOLDER_TITLE.test(title) ? "New chat" : title;
+}
+
+/**
+ * Whether nothing has ever been said in this conversation.
+ *
+ * Read from the timestamps because there is no message count to read: the rows
+ * `conv.list` hands back are the `conversations` table verbatim, which counts
+ * nothing. The kernel stamps `created_at` and `updated_at` with one value when
+ * it makes the row and only `save_message` moves `updated_at` afterwards — so
+ * the two being equal is exactly "no message was ever stored here". Retitling
+ * deliberately does not bump it, which is what makes this still true of a
+ * conversation the title sweep has already been over.
+ *
+ * A row with no timestamps answers `false`: the caller uses this to decide
+ * whether it may skip creating a conversation, and the safe way to be wrong is
+ * to create one.
+ */
+export function isUnused(conversation: Conversation | undefined): boolean {
+  const created = conversation?.created_at;
+  const updated = conversation?.updated_at;
+  if (typeof created !== "number" || typeof updated !== "number") return false;
+  return updated <= created;
+}
+
 /** What `conv.load` answers: a command-shaped result rather than a bare value.
  *  `ok: false` with "No such conversation." is how a conversation this user
  *  does not own is reported — deliberately indistinguishable from one that does

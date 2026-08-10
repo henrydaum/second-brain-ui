@@ -2,9 +2,9 @@
  * The inbound half of the bridge: `GET /events`.
  *
  * Every frame is one `render` call the kernel made, verbatim. There is no
- * translation layer — these are the same ten payloads a native Python frontend
- * receives, which is why a client that handles all ten can do what the REPL
- * can.
+ * translation layer — these are the same eleven payloads a native Python
+ * frontend receives, which is why a client that handles all eleven can do what
+ * the REPL can.
  *
  * **Opening this stream is the attendance signal.** It declares that a person is
  * watching this session, and attendance is what decides whether an unsafe
@@ -14,12 +14,16 @@
 
 import { serverUrl } from "@/lib/client";
 
-/* ── The ten kinds ───────────────────────────────────────────────────────
+/* ── The eleven kinds ────────────────────────────────────────────────────
  *
  * Handle what you can show and ignore the rest; a client that only renders
  * `messages` is a working client. These types are transcriptions of the
  * protocol document, so every optional marker below is a real "may be absent",
  * not defensive typing.
+ *
+ * `notification` is the one exception to "ignore the rest": ignoring it is not
+ * quiet, because the kernel only sends it to a frontend that declared it can
+ * show it. See `NotificationPayload`.
  */
 
 /** GitHub-flavoured markdown, including tables and fenced code blocks. This is
@@ -171,6 +175,72 @@ export type ErrorPayload = {
  *  open these directly; the contents come back through `fs.read_bytes`. */
 export type AttachmentsPayload = string[];
 
+/**
+ * Something the *system* is telling you, as opposed to something the agent said.
+ *
+ * **This kind only arrives because the frontend asked for it.** The store's
+ * `frontend_http.py` declares `supports_notifications`, and without that
+ * declaration the kernel does not drop these — it flattens each one into
+ * markdown and sends it as an ordinary `messages` frame. So the failure mode is
+ * not an error: it is plugin registrations appearing in the transcript as if a
+ * person had typed them. The same bargain `supports_streaming` makes for
+ * `stream_delta`.
+ *
+ * The line the kernel draws is **who was speaking**. Mid-turn narration ("let me
+ * check that file") and `sdk.ui.render` are the agent's own turn and stay on
+ * `messages` and `attachments` respectively. Everything else that arrives
+ * unprompted is one of these. The classification is made at each emit site, so
+ * there is nothing to re-derive on this side.
+ */
+export type NotificationPayload = {
+  /** Short header — what happened. Always plain text. */
+  title: string;
+  /** The detail. Multi-line, and **sometimes markdown** — see `body` in
+   *  `lib/notifications.ts` for why it is rendered as markdown regardless. */
+  body: string;
+  /**
+   * Who raised it.
+   *
+   * Stamped by the kernel off the live provenance chain, never stated by
+   * whoever raised it — which is the part a sandboxed plugin cannot state about
+   * itself, so a plugin cannot claim to be `plugin_watcher`. Trustworthy
+   * attribution, and worth showing.
+   *
+   * In practice: `plugin_watcher`, `config`, `runtime`, `subagents`, `session`,
+   * or the leaf name of a plugin that called `sdk.session.push(notify=True)`.
+   */
+  source: string;
+  /** Styling only. Nothing branches on it kernel-side, and an unrecognised
+   *  value is normalised to `info` before it arrives — so the union is closed. */
+  level: "info" | "success" | "warning" | "error";
+  /** Epoch **seconds**, fractional. Same units as `LedgerRow.ts`, and not the
+   *  milliseconds `Turn.createdAt` uses. */
+  sent_at: number;
+
+  /** Producer-specific: a session key, a handle id, a config scope. */
+  source_id?: string;
+  /** The session it came *from*, which is usually not one being looked at.
+   *  **Not a delivery target** — it names where the work happened, and that is
+   *  a session with no frontend attached. */
+  source_session_key?: string;
+  /** The conversation it is about, when there is one. Usually **not** the open
+   *  one; that is the point, since it came from a background session. */
+  conversation_id?: number;
+  /** A pre-rendered slash command, for surfaces whose only affordance is text.
+   *  **Never rendered here** — this client has `conversation_id` and can open
+   *  the conversation itself. */
+  load_hint?: string;
+  /**
+   * The row id — **absent when this was not persisted.**
+   *
+   * Transient progress ("Compacting conversation…", overflow recovery) is
+   * delivered and deliberately never stored, because a panel that fills with
+   * progress lines is one nobody reads. So the set that banners is strictly
+   * larger than the set in the panel, and this field is what tells them apart.
+   */
+  notification_id?: number;
+};
+
 /** One frame off the stream, discriminated by `kind`. */
 export type Frame =
   | { kind: "messages"; payload: MessagesPayload }
@@ -182,7 +252,8 @@ export type Frame =
   | { kind: "form_field"; payload: FormFieldPayload }
   | { kind: "buttons"; payload: ButtonsPayload }
   | { kind: "error"; payload: ErrorPayload }
-  | { kind: "attachments"; payload: AttachmentsPayload };
+  | { kind: "attachments"; payload: AttachmentsPayload }
+  | { kind: "notification"; payload: NotificationPayload };
 
 /** What the connection itself is doing, for the status line. This is not part
  *  of the protocol — it is the transport's own state, and worth showing because

@@ -12,7 +12,9 @@ import type { FC } from "react";
 import { FilesIcon, PanelLeftOpenIcon, XIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { NotificationPanel } from "@/components/notification-panel";
 import { ThemePicker } from "@/components/theme-picker";
+import { conversationTitle } from "@/lib/conversations";
 import { cn } from "@/lib/utils";
 import { useFileActivity } from "@/runtime/file-activity-provider";
 import { useSecondBrain } from "@/runtime/provider";
@@ -31,9 +33,10 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
   // Which conversation you are in, where every other chat app puts it. The
   // sidebar says it too, but the sidebar collapses — and on a narrow screen it
   // is not on the page at all.
-  const title =
-    conversations.find((conversation) => conversation.id === conversationId)
-      ?.title || "New chat";
+  const open = conversations.find(
+    (conversation) => conversation.id === conversationId,
+  );
+  const title = open ? conversationTitle(open) : "New chat";
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2 sm:px-4">
@@ -76,6 +79,11 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
       </span>
 
       <ThemePicker />
+
+      {/* Before Files, which keeps Files hard against the edge its drawer comes
+          out of. The bell's panel is a popover and has no edge of its own to
+          line up with. */}
+      <NotificationPanel />
 
       {/* Last in the row, against the edge the panel comes out of — the same
           pairing the conversations button has with the sidebar at the other

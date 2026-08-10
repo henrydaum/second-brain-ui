@@ -116,6 +116,51 @@ export const SYSTEM_ACTION_NAMES: ReadonlySet<string> = new Set(
   SYSTEM_ACTIONS.map((action) => action.name),
 );
 
+/**
+ * Which section a notification is about, when it is about one at all.
+ *
+ * **Keyed on `source`, which is the only field here that can be trusted.** It is
+ * stamped by the kernel off the live provenance chain rather than stated by
+ * whoever raised the notification, so a plugin cannot route itself somewhere it
+ * does not belong by claiming to be the config announcer.
+ *
+ * Most notifications map to nothing and that is the honest answer — a scheduled
+ * agent finishing has a *conversation* to offer, not a settings page. Returning
+ * null is what keeps the link off those rows rather than sending them somewhere
+ * arbitrary.
+ *
+ * **The section, not the setting.** Settings has no per-setting address to link
+ * to: a section is a page, and each individual setting is a slash command run
+ * inside it. So `config` is as precise as this can honestly be, and the
+ * notification's own body already names which settings changed.
+ */
+const NOTIFICATION_PAGES: Record<string, SettingsPageId> = {
+  config: "config",
+};
+
+export function pageForNotification(source: string): SettingsPageId | null {
+  return NOTIFICATION_PAGES[source] ?? null;
+}
+
+/**
+ * The command that opens one setting.
+ *
+ * `/config` takes its arguments positionally — category, then setting name — and
+ * naming the setting is what makes the form skip the category and plugin steps
+ * and go straight to that setting's own page. `all` is the category that does
+ * not have to be right: it is the one that matches wherever the setting
+ * actually lives, so this never has to work out whether something is a kernel,
+ * plugin or user setting to link to it.
+ *
+ * Safe to interpolate only because `settingNamesOf` has already thrown away
+ * anything that is not identifier-shaped. Nothing here quotes, and nothing here
+ * needs to.
+ */
+export function settingCommand(setting: string): string {
+  return `/config all ${setting}`;
+}
+
+
 export function pageForCommand(name?: string | null): SettingsPageId {
   if (!name || SYSTEM_ACTION_NAMES.has(name)) return "misc";
   for (const page of SETTINGS_PAGES) {
