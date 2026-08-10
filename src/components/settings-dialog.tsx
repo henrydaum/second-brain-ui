@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FC } from "react";
-import { ChevronRightIcon, Settings2Icon } from "lucide-react";
+import {
+  ChevronRightIcon,
+  LoaderCircleIcon,
+  Settings2Icon,
+} from "lucide-react";
 
 import { CommandPanel } from "@/components/command-panel";
 import {
@@ -19,16 +23,18 @@ import {
 } from "@/components/ui/dialog";
 import type { Command } from "@/lib/commands";
 import { cn } from "@/lib/utils";
-import { useSecondBrain } from "@/runtime/provider";
+import { useSession, useSettings } from "@/runtime/provider";
 
 function CommandCard({
   command,
   onRun,
   disabled,
+  pending,
 }: {
   command: Command;
   onRun: () => void;
   disabled: boolean;
+  pending: boolean;
 }) {
   const presentation = commandPresentation(command);
   const Icon = presentation.icon;
@@ -36,6 +42,7 @@ function CommandCard({
     <button
       type="button"
       disabled={disabled}
+      aria-busy={pending || undefined}
       onClick={onRun}
       className="group bg-card hover:bg-accent/50 focus-visible:ring-ring flex w-full items-start gap-3 rounded-lg border p-3 text-start transition-colors focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50"
     >
@@ -48,7 +55,11 @@ function CommandCard({
           {presentation.detail}
         </span>
       </span>
-      <ChevronRightIcon className="text-muted-foreground mt-1.5 size-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
+      {pending ? (
+        <LoaderCircleIcon className="text-muted-foreground mt-1.5 size-4 shrink-0 animate-spin" />
+      ) : (
+        <ChevronRightIcon className="text-muted-foreground mt-1.5 size-4 shrink-0" />
+      )}
     </button>
   );
 }
@@ -97,16 +108,15 @@ export const SettingsDialog: FC<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }> = ({ open, onOpenChange }) => {
+  const { commands, settingsRequest, clearSettingsRequest } = useSettings();
   const {
-    commands,
     say,
     state,
     dismissCommand,
-    settingsRequest,
-    clearSettingsRequest,
-  } = useSecondBrain();
+  } = useSession();
   const [page, setPage] = useState<SettingsPageId>("agents");
   const [commandActionPending, setCommandActionPending] = useState(false);
+  const [pendingCommand, setPendingCommand] = useState<string | null>(null);
   const commandActionPendingRef = useRef(false);
   const activeName = state.form?.name ?? state.command?.name;
   const commandActive = Boolean(activeName);
@@ -114,7 +124,10 @@ export const SettingsDialog: FC<{
     commandActive && state.command?.status !== "finished";
 
   useEffect(() => {
-    if (activeName) setPage(pageForCommand(activeName));
+    if (activeName) {
+      setPage(pageForCommand(activeName));
+      setPendingCommand(null);
+    }
   }, [activeName]);
 
   /**
@@ -150,19 +163,20 @@ export const SettingsDialog: FC<{
   const afterCurrentCommand = async (action: () => void | Promise<void>) => {
     if (!commandActive) {
       await action();
-      return;
+      return true;
     }
-    if (commandActionPendingRef.current) return;
+    if (commandActionPendingRef.current) return false;
 
     commandActionPendingRef.current = true;
     setCommandActionPending(true);
     try {
       if (commandRunning) {
         const submitted = await say("/cancel");
-        if (!submitted) return;
+        if (!submitted) return false;
       }
       dismissCommand();
       await action();
+      return true;
     } finally {
       commandActionPendingRef.current = false;
       setCommandActionPending(false);
@@ -170,10 +184,15 @@ export const SettingsDialog: FC<{
   };
 
   const run = (name: string) => {
+    if (pendingCommand) return;
+    setPendingCommand(name);
     void afterCurrentCommand(async () => {
-      setPage(pageForCommand(name));
-      await say(`/${name}`);
-    });
+        setPage(pageForCommand(name));
+        const submitted = await say(`/${name}`);
+        if (!submitted) setPendingCommand(null);
+      }).then((ran) => {
+        if (!ran) setPendingCommand(null);
+      });
   };
 
   const navigateTo = (nextPage: SettingsPageId) => {
@@ -194,11 +213,11 @@ export const SettingsDialog: FC<{
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="flex h-[min(88vh,54rem)] w-[min(94vw,70rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
-        overlayClassName="bg-black/40 backdrop-blur-sm"
+        className="flex h-[min(94dvh,54rem)] w-[min(calc(100vw-1rem),70rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+        overlayClassName="bg-black/45 backdrop-blur-[2px]"
         closeButtonDisabled={commandActionPending}
       >
-        <header className="flex h-16 shrink-0 items-center gap-3 border-b px-5 sm:px-6">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4 sm:h-16 sm:px-6">
           <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg">
             <Settings2Icon className="size-4" />
           </span>
@@ -238,7 +257,9 @@ export const SettingsDialog: FC<{
               <SystemActions
                 commands={commands}
                 disabled={
-                  commandActionPending || (!commandActive && state.typing)
+                  commandActionPending ||
+                  pendingCommand !== null ||
+                  (!commandActive && state.typing)
                 }
                 onRun={run}
               />
@@ -312,7 +333,8 @@ export const SettingsDialog: FC<{
                   <CommandCard
                     key={command.name}
                     command={command}
-                    disabled={state.typing}
+                    disabled={state.typing || pendingCommand !== null}
+                    pending={pendingCommand === command.name}
                     onRun={() => run(command.name)}
                   />
                 ))}
@@ -325,7 +347,7 @@ export const SettingsDialog: FC<{
                 <SystemActions
                   compact
                   commands={commands}
-                  disabled={state.typing}
+                  disabled={state.typing || pendingCommand !== null}
                   onRun={run}
                 />
               </div>

@@ -58,6 +58,7 @@ import { SecurityModePicker } from "@/components/security-mode-picker";
 import { TurnFilesButton, TurnShownFile } from "@/components/turn-files";
 import { VoiceNoteButton } from "@/components/voice-note";
 import { fullTimestamp, shortTimestamp } from "@/lib/time";
+import { FINE_POINTER_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { HOST_FILES, SENT_AT } from "@/runtime/convert";
 
@@ -162,7 +163,7 @@ export const Thread: FC = () => {
 
         <ThreadPrimitive.ViewportFooter
           className={cn(
-            "bg-background mx-auto flex w-full max-w-(--thread-max-width) flex-col gap-3 pb-4 md:pb-6",
+            "bg-background mx-auto flex w-full max-w-(--thread-max-width) flex-col gap-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-6",
             !centerComposer &&
               "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
           )}
@@ -224,14 +225,18 @@ const ScrollToBottom: FC = () => (
   </ThreadPrimitive.ScrollToBottom>
 );
 
-const Composer: FC = () => (
+const Composer: FC = () => {
+  const finePointer = useMediaQuery(FINE_POINTER_QUERY);
+
+  return (
       <ComposerPrimitive.Root className="relative flex w-full flex-col">
         <ComposerPrimitive.AttachmentDropzone asChild>
           <div className="border-primary/25 data-[dragging=true]:border-ring focus-within:border-primary/60 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-2 data-[dragging=true]:border-dashed">
             <ComposerAttachments />
             <ComposerPrimitive.Input
               rows={1}
-              autoFocus
+              autoFocus={finePointer}
+              unstable_insertNewlineOnTouchEnter
               placeholder="Message Second Brain"
               className="placeholder:text-muted-foreground max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
             />
@@ -277,7 +282,8 @@ const Composer: FC = () => (
         </ComposerPrimitive.AttachmentDropzone>
 
       </ComposerPrimitive.Root>
-);
+  );
+};
 
 const AssistantMessage: FC = () => (
   <MessagePrimitive.Root

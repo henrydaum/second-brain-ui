@@ -1,14 +1,20 @@
 import { useState, type FC } from "react";
-import { CheckIcon, ChevronDownIcon, ShieldCheckIcon } from "lucide-react";
+import { ChevronDownIcon, ShieldCheckIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { useSecondBrain } from "@/runtime/provider";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  useApprovals,
+  useSecurity,
+  useSession,
+} from "@/runtime/provider";
 
 const MODES = [
   {
@@ -29,8 +35,9 @@ const MODES = [
 ];
 
 export const SecurityModePicker: FC = () => {
-  const { securityMode, setSecurityMode, state, inputRequests } =
-    useSecondBrain();
+  const { securityMode, setSecurityMode } = useSecurity();
+  const { state } = useSession();
+  const { inputRequests } = useApprovals();
   const [open, setOpen] = useState(false);
   const [changing, setChanging] = useState(false);
   const selected = MODES.find((mode) => mode.id === securityMode) ?? MODES[1];
@@ -52,8 +59,8 @@ export const SecurityModePicker: FC = () => {
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
         <Button
           type="button"
           variant="ghost"
@@ -67,46 +74,37 @@ export const SecurityModePicker: FC = () => {
           <span>{changing ? "Changing…" : selected.label}</span>
           <ChevronDownIcon className="size-3" />
         </Button>
-      </PopoverTrigger>
-      <PopoverContent
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
         side="top"
         align="start"
         sideOffset={8}
         onMouseDown={(event) => event.stopPropagation()}
-        className="w-72 p-1.5"
+        className="w-72"
       >
-        <div className="px-2 py-1.5">
-          <p className="text-sm font-medium">Security mode</p>
+        <DropdownMenuLabel>
+          <span className="block">Security mode</span>
           <p className="text-muted-foreground mt-0.5 text-xs">
             Choose how this conversation handles approval requests.
           </p>
-        </div>
-        <div className="mt-1" role="menu">
+        </DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={securityMode} onValueChange={(value) => void choose(value as (typeof MODES)[number]["id"])}>
           {MODES.map((mode) => (
-            <button
+            <DropdownMenuRadioItem
               key={mode.id}
-              type="button"
-              role="menuitemradio"
-              aria-checked={mode.id === securityMode}
-              onClick={() => void choose(mode.id)}
-              className={cn(
-                "hover:bg-accent flex w-full items-start gap-2 rounded-md px-2 py-2 text-start",
-                mode.id === securityMode && "bg-accent/60",
-              )}
+              value={mode.id}
+              className="items-start py-2"
             >
-              <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
-                {mode.id === securityMode && <CheckIcon className="size-3.5" />}
-              </span>
               <span>
                 <span className="block text-sm font-medium">{mode.label}</span>
                 <span className="text-muted-foreground mt-0.5 block text-xs leading-relaxed">
                   {mode.description}
                 </span>
               </span>
-            </button>
+            </DropdownMenuRadioItem>
           ))}
-        </div>
-      </PopoverContent>
-    </Popover>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };

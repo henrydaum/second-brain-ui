@@ -26,7 +26,7 @@ import { useAui } from "@assistant-ui/react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { canRecord, record, type Recording } from "@/lib/audio";
-import { useSecondBrain } from "@/runtime/provider";
+import { useSession } from "@/runtime/provider";
 
 /** m:ss. Long enough for a voice note, and a number climbing past 9:59 is its
  *  own warning. */
@@ -36,7 +36,7 @@ function elapsed(seconds: number): string {
 
 export const VoiceNoteButton: FC = () => {
   const aui = useAui();
-  const { report } = useSecondBrain();
+  const { report } = useSession();
 
   // The live recorder, held in a ref rather than in state: it is not something
   // that gets drawn, and putting it in state would make every tick of the timer

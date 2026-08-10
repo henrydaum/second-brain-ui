@@ -9,21 +9,23 @@
  * ask it. So the drawer holds the conversation, in turn-shaped sections, and
  * the chip under a message scrolls to its own.
  *
- * The shape mirrors `conversation-sidebar.tsx` deliberately, flipped to the end
- * edge: an overlay with a scrim below `md`, an inline panel that takes width
- * from `md` up. Two drawers in one app that behave differently is one more
- * thing to learn for no reason.
+ * The shape mirrors `conversation-sidebar.tsx`, flipped to the end edge, but
+ * stays an overlay until `xl`. This keeps the thread comfortable on tablets
+ * and small desktops when the conversation rail is open too.
  */
 
 import { useEffect, useRef, type FC } from "react";
 import { TerminalIcon, XIcon } from "lucide-react";
 
-import { FileKindIcon } from "@/components/file-view";
+import { FileKindIcon } from "@/components/file-kind-icon";
+import { preloadFileViewer } from "@/components/lazy-file-viewer";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { fileUrl } from "@/lib/client";
 import { guessKind, nameOf } from "@/lib/files";
 import { shortTimestamp } from "@/lib/time";
+import { useMediaQuery, XL_QUERY } from "@/lib/media";
 import { cn } from "@/lib/utils";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   entriesOf,
   UNATTRIBUTED,
@@ -31,7 +33,7 @@ import {
   type FileSection,
 } from "@/runtime/file-activity";
 import { useFileActivity } from "@/runtime/file-activity-provider";
-import { useSecondBrain } from "@/runtime/provider";
+import { useSession } from "@/runtime/provider";
 
 /** How long a section stays ringed after being jumped to. Long enough to
  *  notice, short enough not to become part of the design. */
@@ -48,7 +50,8 @@ export const FilesDrawer: FC = () => {
     clearFocus,
     view,
   } = useFileActivity();
-  const { state } = useSecondBrain();
+  const { state } = useSession();
+  const isInline = useMediaQuery(XL_QUERY);
 
   const close = () => setFilesOpen(false);
 
@@ -63,7 +66,7 @@ export const FilesDrawer: FC = () => {
    * layer stands down whenever an inner one is on screen.
    */
   useEffect(() => {
-    if (!filesOpen) return;
+    if (!isInline || !filesOpen) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (document.querySelector('[data-slot="dialog-content"]')) return;
@@ -71,7 +74,7 @@ export const FilesDrawer: FC = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [filesOpen, setFilesOpen]);
+  }, [filesOpen, isInline, setFilesOpen]);
 
   // Jumping to a section, when the chip under a message asked for one. The
   // clear is on a timer rather than on the scroll finishing, because a smooth
@@ -120,18 +123,10 @@ export const FilesDrawer: FC = () => {
   const last = state.turns.at(-1);
   const running = last?.running ? last.id : undefined;
 
-  return (
+  const drawer = (
     <>
-      {/* The scrim, below `md` only — dismissing by pressing the conversation
+      {/* The scrim, below `xl` only — dismissing by pressing the conversation
           you were reading is the gesture everybody tries first. */}
-      {filesOpen && (
-        <div
-          aria-hidden
-          onClick={close}
-          className="animate-in fade-in-0 fixed inset-0 z-40 bg-black/50 md:hidden"
-        />
-      )}
-
       <aside
         data-slot="files-drawer"
         aria-label="Files"
@@ -141,16 +136,17 @@ export const FilesDrawer: FC = () => {
         inert={!filesOpen}
         className={cn(
           "bg-sidebar flex h-full flex-col overflow-hidden",
-          // Below `md`: an overlay drawer, off-canvas until asked for.
+          // Below `xl`: an overlay drawer, off-canvas until asked for.
           "fixed inset-y-0 end-0 z-50 w-80 max-w-[85vw] border-s transition-transform duration-200",
           filesOpen ? "translate-x-0" : "translate-x-full rtl:-translate-x-full",
-          // From `md`: in the flow, animating width, so opening it reflows the
+          // From `xl`: in the flow, animating width, so opening it reflows the
           // thread rather than covering the part you were reading.
-          "md:relative md:z-auto md:max-w-none md:translate-x-0 md:transition-[width] rtl:md:translate-x-0",
-          filesOpen ? "md:w-96 md:border-s" : "md:w-0 md:border-s-0",
+          "xl:relative xl:z-auto xl:max-w-none xl:translate-x-0 xl:transition-[width] rtl:xl:translate-x-0",
+          filesOpen ? "xl:w-96 xl:border-s" : "xl:w-0 xl:border-s-0",
         )}
       >
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2">
+        {!isInline && <SheetTitle className="sr-only">Files</SheetTitle>}
+        <header className="flex h-12 w-80 shrink-0 items-center gap-2 border-b px-2 xl:w-96">
           <span className="min-w-0 flex-1 truncate px-1 text-sm font-medium">
             Files
             {total > 0 && (
@@ -169,7 +165,10 @@ export const FilesDrawer: FC = () => {
           </TooltipIconButton>
         </header>
 
-        <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto">
+        <div
+          ref={bodyRef}
+          className="min-h-0 w-80 flex-1 overflow-y-auto xl:w-96"
+        >
           {failure ? (
             <p className="text-muted-foreground p-4 text-xs">{failure}</p>
           ) : sections.length === 0 ? (
@@ -191,6 +190,16 @@ export const FilesDrawer: FC = () => {
         </div>
       </aside>
     </>
+  );
+
+  if (isInline) return drawer;
+
+  return (
+    <Sheet open={filesOpen} onOpenChange={setFilesOpen}>
+      <SheetContent side="right" className="w-80 max-w-[85vw]">
+        {drawer}
+      </SheetContent>
+    </Sheet>
   );
 };
 
@@ -270,6 +279,8 @@ const Row: FC<{
         <img
           src={fileUrl(entry.path)}
           alt=""
+          loading="lazy"
+          decoding="async"
           // A broken thumbnail is noisier than no thumbnail; fall back to the
           // icon underneath by simply removing this.
           onError={(event) => event.currentTarget.remove()}
@@ -313,6 +324,8 @@ const Row: FC<{
         <button
           type="button"
           onClick={() => onOpen(entry)}
+          onPointerEnter={preloadFileViewer}
+          onFocus={preloadFileViewer}
           className={cn(className, "hover:bg-accent focus-visible:bg-accent")}
         >
           {inside}
@@ -346,7 +359,7 @@ const Badges: FC<{ entry: FileEntry }> = ({ entry }) => {
   if (!words.length && !entry.viaShell) return null;
 
   return (
-    <span className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-[10px]">
+    <span className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-[11px]">
       {words.map((word) => (
         <span key={word} className="bg-muted rounded px-1 py-px">
           {word}

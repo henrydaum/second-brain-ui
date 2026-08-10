@@ -23,6 +23,12 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
+  /* Shared chrome dimensions. Keeping these here prevents every compact
+   * surface from inventing a slightly different icon-button or header size. */
+  --spacing-control-sm: 2rem;
+  --spacing-control-md: 2.25rem;
+  --spacing-touch: 2.75rem;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -183,6 +189,11 @@
     font: inherit;
   }
 
+  button,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   @supports not selector(::-webkit-scrollbar) {
     * {
       scrollbar-width: thin;
@@ -235,8 +246,34 @@
   }
 }
 
-:focus-visible {
-  box-shadow: none;
+/* Do not reset `box-shadow` here. Tailwind and the Radix-backed controls use
+ * it to draw their focus rings; the old global reset silently erased those
+ * rings and left keyboard focus visible only on a handful of bordered inputs. */
+
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  [role="menuitem"],
+  [role="menuitemradio"],
+  [role="radio"] {
+    min-width: var(--spacing-touch);
+    min-height: var(--spacing-touch);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /**

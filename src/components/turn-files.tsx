@@ -30,11 +30,12 @@
  * cap of one file it reads fine.
  */
 
-import type { FC } from "react";
+import { Suspense, type FC } from "react";
 import { FilesIcon, Maximize2Icon } from "lucide-react";
 import { useAuiState } from "@assistant-ui/react";
 
-import { FileView } from "@/components/file-view";
+import { LazyFileView, preloadFileView } from "@/components/lazy-file-view";
+import { preloadFileViewer } from "@/components/lazy-file-viewer";
 import { Button } from "@/components/ui/button";
 import { nameOf } from "@/lib/files";
 import { countOf } from "@/runtime/file-activity";
@@ -61,12 +62,26 @@ export const TurnShownFile: FC = () => {
           play; a download falls back to an `<a>`, which may not be nested in a
           button at all. The line underneath is the click target for all of
           them, which also means it behaves the same whatever the file is. */}
-      <FileView path={path} size="inline" />
+      <Suspense
+        fallback={
+          <div className="bg-muted/30 h-40 w-full animate-pulse rounded-lg border" />
+        }
+      >
+        <LazyFileView path={path} size="inline" />
+      </Suspense>
       <button
         type="button"
         onClick={() => view([path], 0)}
+        onPointerEnter={() => {
+          preloadFileView();
+          preloadFileViewer();
+        }}
+        onFocus={() => {
+          preloadFileView();
+          preloadFileViewer();
+        }}
         title={path}
-        className="text-muted-foreground hover:text-foreground inline-flex max-w-full items-center gap-1.5 rounded px-1 text-[11px]"
+        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex max-w-full items-center gap-1.5 rounded px-1 text-xs outline-none focus-visible:ring-2"
       >
         <Maximize2Icon className="size-3 shrink-0" aria-hidden />
         <span className="truncate">{nameOf(path)}</span>
