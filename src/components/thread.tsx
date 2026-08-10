@@ -55,6 +55,7 @@ import {
 import { HostFiles, HostFilesDataUI } from "@/components/host-file";
 import { ErrorBanner } from "@/components/session-bar";
 import { SecurityModePicker } from "@/components/security-mode-picker";
+import { TurnFilesButton, TurnShownFile } from "@/components/turn-files";
 import { VoiceNoteButton } from "@/components/voice-note";
 import { fullTimestamp, shortTimestamp } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -94,8 +95,8 @@ const messageComponents = {
   Text: MarkdownText,
   Empty: WorkingIndicator,
   tools: { Fallback: ToolFallback },
-  // Host file paths arrive as a named data part; this is what turns them into
-  // something a browser can show. See `components/host-file.tsx`.
+  // The person's own attachments, which arrive as a named data part. The
+  // agent's files are not parts at all — see `components/turn-files.tsx`.
   data: { by_name: { [HOST_FILES]: HostFiles } },
 } as const;
 
@@ -319,6 +320,10 @@ const AssistantMessage: FC = () => (
           }
         }}
       </MessagePrimitive.GroupedParts>
+      {/* After the parts rather than among them: the ledger records that a turn
+          showed you a file, not where in the turn it did. See
+          `components/turn-files.tsx`. */}
+      <TurnShownFile />
       <MessagePrimitive.Error>
         <ErrorPrimitive.Root className="border-destructive bg-destructive/10 text-destructive mt-2 rounded-md border p-3 text-sm">
           <ErrorPrimitive.Message />
@@ -422,6 +427,9 @@ const AssistantMessageFooter: FC = () => {
         </ActionBarPrimitive.Root>
 
         <MessageTime />
+        {/* Draws nothing for a turn that touched no files, which is most of
+            them. See `FOOTER_HEIGHT` for why nothing here may grow taller. */}
+        <TurnFilesButton />
       </div>
     </div>
   );

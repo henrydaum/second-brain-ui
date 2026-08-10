@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
     strictPort: true,
 
     /**
-     * The two Second Brain endpoints, served from this app's own origin.
+     * The Second Brain endpoints, served from this app's own origin.
      *
      * **This is what keeps CORS out of the picture entirely.** The alternative
      * is `http_allowed_origins`, and it is a sharper edge than it looks: the
@@ -53,6 +53,13 @@ export default defineConfig(({ mode }) => {
      */
     proxy: {
       "/sdk": { target, changeOrigin: true },
+      // Host files, as bytes with a `Content-Type`. Nothing special is needed
+      // here beyond existing: `Range` and `206` pass through untouched, which
+      // is what lets a `<video>` seek instead of downloading everything before
+      // the point you clicked. Without this entry `fileUrl` resolves against
+      // Vite, which has no such route and answers the index page — an `<img>`
+      // that fails for reasons no status code explains.
+      "/files": { target, changeOrigin: true },
       "/events": {
         target,
         changeOrigin: true,

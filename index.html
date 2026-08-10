@@ -2,7 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      Second Brain's own icon, copied from `icon.ico` in the server repo — the
+      same mark the desktop app wears, so a pinned tab and a taskbar button
+      look like one program rather than two.
+
+      Two files on purpose. The `.ico` carries sizes drawn at 16, 20, 24 and 32
+      pixels, and a tab is 16: letting a browser shrink a 256px icon to that
+      turns a mark this detailed into a smudge. The PNG is for everywhere a
+      large one is wanted — bookmarks, a home-screen shortcut — where the `.ico`
+      would be the one having to scale up.
+
+      It replaces a hand-drawn placeholder SVG that adapted to the theme. The
+      real icon is a raster and cannot, but a fixed teal reads on both, and
+      being *the* icon is worth more than adapting.
+    -->
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" type="image/png" href="/favicon.png" sizes="256x256" />
+    <link rel="apple-touch-icon" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <title>Second Brain</title>

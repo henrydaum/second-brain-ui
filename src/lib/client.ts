@@ -1,14 +1,20 @@
 /**
  * The outbound half of the bridge: `POST /sdk/<request.type>`.
  *
- * Second Brain exposes exactly two endpoints. This file is one of them; the
- * other is `events.ts`. There is no third way to reach the server, no REST
+ * Second Brain's protocol is Requests, and this file is how one is made; the
+ * other half, the answers that arrive unasked, is `events.ts`. There is no REST
  * surface beside this and no database — whatever is not expressible as a
  * Request cannot be done from here at all.
  *
  * The body is a Request's arguments as JSON and the answer is its result. That
  * is the whole protocol; the interesting parts are all in what the failures
  * mean.
+ *
+ * `fileUrl` at the bottom is the one exception, and it is not really a third
+ * protocol: `GET /files` reads through the same `fs.read_bytes` as everything
+ * else, with the same policy check and the same ledger row. What it adds is an
+ * HTTP body with a real `Content-Type`, which is the one thing a Request cannot
+ * give an `<img>` or a `<video>`.
  */
 
 /**
@@ -50,8 +56,9 @@ export const THREAD =
   import.meta.env.VITE_SB_THREAD ||
   "main";
 
-/** Bearer auth on every request. `/events` is the one route that also takes a
- *  query token, because `EventSource` cannot send headers. */
+/** Bearer auth on every request. `/events` and `/files` are the two routes that
+ *  also take a query token, because the browser APIs that call them —
+ *  `EventSource`, and `<img>`/`<video>` — cannot send headers. */
 export const authHeader = () => `Bearer ${TOKEN}`;
 
 /** Build a URL against the server, with the thread already attached. */
@@ -59,6 +66,42 @@ export function serverUrl(path: string): URL {
   const url = new URL(path, window.location.origin);
   url.searchParams.set("thread", THREAD);
   return url;
+}
+
+/**
+ * A path on the host, as a URL the browser can actually fetch.
+ *
+ * Everything the agent hands over — an `attachments` frame, a `paths` entry in
+ * a ledger row — is a **filesystem path on the host**, and there is nothing to
+ * link to. This is the route that turns one into a link.
+ *
+ * **The token goes in the query string, and it has to.** A media element issues
+ * its own request: `<img src>` and `<video src>` are fetches the browser makes
+ * on its own account, with no hook to add an `Authorization` header to. So
+ * `/files` accepts `?token=` for exactly the reason `/events` does, and those
+ * two are the only routes that do — everything a *script* calls sends the
+ * header instead.
+ *
+ * Prefer handing this to an element over fetching it. The route honours `Range`
+ * and a large file answers `206` even when nothing asked it to, so the browser's
+ * own loader gets the whole file right where a naive `fetch` gets a fragment.
+ * `fetchWhole` in `lib/files.ts` is the fetching version, for the renderers that
+ * genuinely need the bytes in hand.
+ *
+ * **The query is built by hand, and it has to be.** `URLSearchParams` — which
+ * is what `serverUrl` uses, and what the obvious version of this function used
+ * — serialises as `application/x-www-form-urlencoded`, where a space becomes
+ * `+` rather than `%20`. The server percent-decodes, so every path under
+ * `AppData\Local\Second Brain\` arrived as `Second+Brain` and answered `404`.
+ * `encodeURIComponent` is the encoding this route is specified in.
+ */
+export function fileUrl(hostPath: string): string {
+  const query = [
+    `thread=${encodeURIComponent(THREAD)}`,
+    `path=${encodeURIComponent(hostPath)}`,
+    `token=${encodeURIComponent(TOKEN)}`,
+  ].join("&");
+  return new URL(`/files?${query}`, window.location.origin).toString();
 }
 
 /**

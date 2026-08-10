@@ -14,8 +14,8 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { ReadonlyJSONObject } from "assistant-stream/utils";
 import type { Turn } from "@/runtime/store";
 
-/** The `name` on the data part carrying host file paths. `thread.tsx` maps this
- *  name to the component that fetches and renders them. */
+/** The `name` on the data part carrying the *person's* attachments. `thread.tsx`
+ *  maps this name to the component that names them. */
 export const HOST_FILES = "host-files";
 
 /** Key under `metadata.custom` holding the turn's time in epoch milliseconds.
@@ -28,13 +28,15 @@ export const SENT_AT = "sentAt";
 type Part = Exclude<ThreadMessageLike["content"], string>[number];
 
 export function convertMessage(turn: Turn): ThreadMessageLike {
-  const content = turn.parts.map((part): Part => {
+  // `flatMap` rather than `map`, because one kind of part deliberately produces
+  // nothing to render — see the `files` case.
+  const content = turn.parts.flatMap((part): Part[] => {
     switch (part.kind) {
       case "text":
-        return { type: "text" as const, text: part.text };
+        return [{ type: "text" as const, text: part.text }];
 
       case "tool":
-        return {
+        return [{
           type: "tool-call" as const,
           toolCallId: part.callId,
           toolName: part.name,
@@ -58,17 +60,33 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
                 isError: part.ok === false,
               }
             : {}),
-        };
+        }];
 
       case "files":
-        // Host paths cannot be rendered without fetching their bytes, and this
-        // function is pure. So the paths travel as a data part and the
-        // component registered for `HOST_FILES` does the asynchronous half.
-        return {
-          type: "data" as const,
-          name: HOST_FILES,
-          data: { paths: part.paths, sent: part.sent === true },
-        };
+        /**
+         * **Only the person's attachments become a part.**
+         *
+         * Theirs are names, which is all there is to draw, and they belong in
+         * their message. The agent's are host paths, and where those render is
+         * decided somewhere else entirely: `components/turn-files.tsx` reads
+         * the turn's files out of the ledger, because the ledger is the only
+         * record that survives a reload — `conversation_messages` has no
+         * metadata column, so a re-read conversation has no `attachments`
+         * frames and would show none of them.
+         *
+         * The agent's `FilesPart` stays in the store regardless. It is the
+         * fast half of that lookup: the frame arrives the moment the file is
+         * produced, while the ledger row is not read until the next poll.
+         */
+        return part.sent
+          ? [
+              {
+                type: "data" as const,
+                name: HOST_FILES,
+                data: { paths: part.paths },
+              },
+            ]
+          : [];
     }
   });
 

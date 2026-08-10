@@ -1,0 +1,368 @@
+/**
+ * What the agent showed you and what it changed, for the whole conversation.
+ *
+ * **Sectioned by turn, not flat.** Attribution is most of the value: "the agent
+ * wrote these four files" is a much weaker statement than "it wrote these four
+ * files while answering *that*". But scoping the whole panel to one turn would
+ * answer only the question you already know the answer to — the one you can see
+ * on screen — and leave "where did that chart from earlier go?" with nowhere to
+ * ask it. So the drawer holds the conversation, in turn-shaped sections, and
+ * the chip under a message scrolls to its own.
+ *
+ * The shape mirrors `conversation-sidebar.tsx` deliberately, flipped to the end
+ * edge: an overlay with a scrim below `md`, an inline panel that takes width
+ * from `md` up. Two drawers in one app that behave differently is one more
+ * thing to learn for no reason.
+ */
+
+import { useEffect, useRef, type FC } from "react";
+import { TerminalIcon, XIcon } from "lucide-react";
+
+import { FileKindIcon } from "@/components/file-view";
+import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { fileUrl } from "@/lib/client";
+import { guessKind, nameOf } from "@/lib/files";
+import { shortTimestamp } from "@/lib/time";
+import { cn } from "@/lib/utils";
+import {
+  entriesOf,
+  UNATTRIBUTED,
+  type FileEntry,
+  type FileSection,
+} from "@/runtime/file-activity";
+import { useFileActivity } from "@/runtime/file-activity-provider";
+import { useSecondBrain } from "@/runtime/provider";
+
+/** How long a section stays ringed after being jumped to. Long enough to
+ *  notice, short enough not to become part of the design. */
+const FLASH_MS = 1400;
+
+export const FilesDrawer: FC = () => {
+  const {
+    sections,
+    total,
+    failure,
+    filesOpen,
+    setFilesOpen,
+    focusTurn,
+    clearFocus,
+    view,
+  } = useFileActivity();
+  const { state } = useSecondBrain();
+
+  const close = () => setFilesOpen(false);
+
+  /**
+   * Escape closes it, as it does for every other overlay here — but only if
+   * this is the thing Escape is about.
+   *
+   * **A dialog opened from the drawer is in front of the drawer.** Radix
+   * dismisses on a `document` keydown, and this listens on `window`, so both
+   * ran: pressing Escape to put a file away also put the panel it was opened
+   * from away. One Escape, two layers, and the wrong one lost. So the outer
+   * layer stands down whenever an inner one is on screen.
+   */
+  useEffect(() => {
+    if (!filesOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (document.querySelector('[data-slot="dialog-content"]')) return;
+      setFilesOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [filesOpen, setFilesOpen]);
+
+  // Jumping to a section, when the chip under a message asked for one. The
+  // clear is on a timer rather than on the scroll finishing, because a smooth
+  // scroll has no completion event worth waiting for.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusTurn || !filesOpen) return;
+    const target = bodyRef.current?.querySelector(
+      `[data-turn="${CSS.escape(focusTurn)}"]`,
+    );
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const timer = setTimeout(clearFocus, FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [focusTurn, filesOpen, clearFocus, sections]);
+
+  /**
+   * Opened from the header, with no particular turn in mind: show the end, the
+   * way the transcript does. The list runs oldest-first to match the chat, so
+   * the newest files are at the bottom and this is what puts them on screen.
+   *
+   * Once per opening, hence the ref. Re-running it as the conversation grew
+   * would yank the panel away from somebody who had scrolled up to read it,
+   * and re-running it when the flash clears would undo the jump the chip
+   * just made.
+   *
+   * It waits for something to land on. Opening the panel during the ledger
+   * read — which is easy, the button is right there at boot — otherwise
+   * scrolled an empty list to its bottom, counted that as done, and left a
+   * long conversation's files sitting at the oldest end.
+   */
+  const landed = useRef(false);
+  useEffect(() => {
+    if (!filesOpen) {
+      landed.current = false;
+      return;
+    }
+    if (landed.current || sections.length === 0) return;
+    landed.current = true;
+    if (focusTurn) return; // the jump above owns the scroll this time
+    const body = bodyRef.current;
+    if (body) body.scrollTop = body.scrollHeight;
+  }, [filesOpen, focusTurn, sections.length]);
+
+  /** The turn still being written, so its section can say so rather than
+   *  wearing a clock time that is only seconds old. */
+  const last = state.turns.at(-1);
+  const running = last?.running ? last.id : undefined;
+
+  return (
+    <>
+      {/* The scrim, below `md` only — dismissing by pressing the conversation
+          you were reading is the gesture everybody tries first. */}
+      {filesOpen && (
+        <div
+          aria-hidden
+          onClick={close}
+          className="animate-in fade-in-0 fixed inset-0 z-40 bg-black/50 md:hidden"
+        />
+      )}
+
+      <aside
+        data-slot="files-drawer"
+        aria-label="Files"
+        // `inert` rather than unmounting: the panel keeps its scroll position
+        // between openings, and a closed overlay must not hold focus or be
+        // reachable by tab.
+        inert={!filesOpen}
+        className={cn(
+          "bg-sidebar flex h-full flex-col overflow-hidden",
+          // Below `md`: an overlay drawer, off-canvas until asked for.
+          "fixed inset-y-0 end-0 z-50 w-80 max-w-[85vw] border-s transition-transform duration-200",
+          filesOpen ? "translate-x-0" : "translate-x-full rtl:-translate-x-full",
+          // From `md`: in the flow, animating width, so opening it reflows the
+          // thread rather than covering the part you were reading.
+          "md:relative md:z-auto md:max-w-none md:translate-x-0 md:transition-[width] rtl:md:translate-x-0",
+          filesOpen ? "md:w-96 md:border-s" : "md:w-0 md:border-s-0",
+        )}
+      >
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2">
+          <span className="min-w-0 flex-1 truncate px-1 text-sm font-medium">
+            Files
+            {total > 0 && (
+              <span className="text-muted-foreground ms-2 text-xs font-normal tabular-nums">
+                {total}
+              </span>
+            )}
+          </span>
+          <TooltipIconButton
+            tooltip="Hide files"
+            side="left"
+            className="size-8"
+            onClick={close}
+          >
+            <XIcon className="size-4" />
+          </TooltipIconButton>
+        </header>
+
+        <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto">
+          {failure ? (
+            <p className="text-muted-foreground p-4 text-xs">{failure}</p>
+          ) : sections.length === 0 ? (
+            <p className="text-muted-foreground p-4 text-xs">
+              Nothing yet. Files the agent shows you, and files it writes,
+              appear here as it works.
+            </p>
+          ) : (
+            sections.map((section) => (
+              <Section
+                key={section.turnId}
+                section={section}
+                running={section.turnId === running}
+                flashing={section.turnId === focusTurn}
+                onOpen={view}
+              />
+            ))
+          )}
+        </div>
+      </aside>
+    </>
+  );
+};
+
+const Section: FC<{
+  section: FileSection;
+  running: boolean;
+  flashing: boolean;
+  onOpen: (paths: string[], index: number) => void;
+}> = ({ section, running, flashing, onOpen }) => {
+  const entries = entriesOf(section);
+  // One list for the arrows to walk, in the order the section draws them, so
+  // "next" in the viewer means what it looks like it means.
+  const openable = entries
+    .filter((entry) => !entry.gone)
+    .map((entry) => entry.path);
+
+  const open = (entry: FileEntry) => {
+    const index = openable.indexOf(entry.path);
+    if (index >= 0) onOpen(openable, index);
+  };
+
+  return (
+    <section
+      data-turn={section.turnId}
+      className={cn(
+        "border-b px-2 py-2 transition-colors duration-300 last:border-b-0",
+        flashing && "bg-accent/60",
+      )}
+    >
+      {/* The turn, and nothing else. No count beside it: the rows underneath
+          are the count, and no "shown"/"changed" headings either — a row that
+          was changed says so on itself, and one that was not is a row the
+          agent showed you. */}
+      <h3 className="text-muted-foreground truncate px-1 py-1 text-[11px] font-medium tracking-wide uppercase">
+        {heading(section, running)}
+      </h3>
+
+      <ul className="flex flex-col">
+        {entries.map((entry) => (
+          <Row key={entry.path} entry={entry} onOpen={open} />
+        ))}
+      </ul>
+    </section>
+  );
+};
+
+/** What a section is called. `UNATTRIBUTED` gets a name that says what it is
+ *  rather than a time it does not have — see the constant's own note. */
+function heading(section: FileSection, running: boolean): string {
+  if (section.turnId === UNATTRIBUTED) return "Not tied to a reply";
+  if (running) return "This turn";
+  return section.at === undefined
+    ? "Earlier"
+    : shortTimestamp(new Date(section.at));
+}
+
+/**
+ * One file.
+ *
+ * **A file that is gone is not a button.** Its path is a record of what
+ * happened, not a promise it is still there, and offering to open something
+ * that can only answer 404 is an invitation to a dead end. It stays in the list
+ * — it is half the point of the list — struck through and inert.
+ */
+const Row: FC<{
+  entry: FileEntry;
+  onOpen: (entry: FileEntry) => void;
+}> = ({ entry, onOpen }) => {
+  // Any image still on disk gets its own picture, whether the agent showed it
+  // to you or merely wrote it — a thumbnail identifies a file faster than its
+  // name does, and there is no reason the two cases should look different.
+  const thumbnail = !entry.gone && guessKind(entry.path) === "image";
+
+  const inside = (
+    <>
+      {thumbnail ? (
+        <img
+          src={fileUrl(entry.path)}
+          alt=""
+          // A broken thumbnail is noisier than no thumbnail; fall back to the
+          // icon underneath by simply removing this.
+          onError={(event) => event.currentTarget.remove()}
+          className="size-9 shrink-0 rounded border object-cover"
+        />
+      ) : (
+        <span className="bg-muted/60 flex size-9 shrink-0 items-center justify-center rounded border">
+          <FileKindIcon
+            path={entry.path}
+            className="text-muted-foreground size-4"
+          />
+        </span>
+      )}
+
+      <span className="flex min-w-0 flex-1 flex-col text-start">
+        <span
+          className={cn(
+            "truncate text-xs font-medium",
+            entry.gone && "text-muted-foreground line-through",
+          )}
+        >
+          {nameOf(entry.path)}
+        </span>
+        <Badges entry={entry} />
+      </span>
+    </>
+  );
+
+  const className =
+    "flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-start";
+
+  // Where the file lives is not in this list at all — not as a line, and not
+  // as a tooltip either. The full host path is three times the width of the
+  // panel, and the viewer already puts it under the filename the moment you
+  // open one. A row is a name, a picture and what happened to it.
+  return (
+    <li>
+      {entry.gone ? (
+        <div className={className}>{inside}</div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onOpen(entry)}
+          className={cn(className, "hover:bg-accent focus-visible:bg-accent")}
+        >
+          {inside}
+        </button>
+      )}
+    </li>
+  );
+};
+
+const Badges: FC<{ entry: FileEntry }> = ({ entry }) => {
+  const words: string[] = [];
+  switch (entry.effect) {
+    case "shown":
+      break;
+    case "deleted":
+      words.push("deleted");
+      break;
+    case "moved-from":
+      words.push("moved away");
+      break;
+    case "moved-to":
+      words.push(
+        entry.movedFrom ? `moved from ${nameOf(entry.movedFrom)}` : "moved",
+      );
+      break;
+    case "wrote":
+      words.push(entry.edits > 1 ? `edited ×${entry.edits}` : "edited");
+      break;
+  }
+
+  if (!words.length && !entry.viaShell) return null;
+
+  return (
+    <span className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-[10px]">
+      {words.map((word) => (
+        <span key={word} className="bg-muted rounded px-1 py-px">
+          {word}
+        </span>
+      ))}
+      {/* A weaker claim than the rest, so it says so. These paths were read out
+          of a command line rather than serviced by the kernel. */}
+      {entry.viaShell && (
+        <span
+          className="inline-flex items-center gap-0.5"
+          title={entry.command ?? "Read from a shell command line"}
+        >
+          <TerminalIcon className="size-3" aria-hidden />
+          shell
+        </span>
+      )}
+    </span>
+  );
+};

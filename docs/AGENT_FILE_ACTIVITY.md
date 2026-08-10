@@ -49,6 +49,13 @@ else it has.
 `origin: "sandbox"`, `action_type` one of `fs.write` / `fs.write_bytes` /
 `fs.delete` / `fs.move`:
 
+**`origin` does not tell the agent's writes from the frontend's.** A file the
+browser uploads goes through the same `fs.write_bytes` and is recorded
+`"sandbox"` too. The chain's last hop is the one that answers:
+`"http:web -> frontend:http"` for our own upload against
+`"http:web -> edit_file"` for the agent's. Filter on that, or a files panel
+lists the person's own attachments as things the agent did.
+
 ```jsonc
 { "paths": ["/srv/app/notes.md"], "bytes": 14400,
   "level": "safe", "reason": "workspace" }
@@ -149,17 +156,25 @@ These are the only two routes that do; everything a *script* calls sends the
 header.
 
 ```ts
-import { serverUrl } from "@/lib/client";
-
-const TOKEN = import.meta.env.VITE_SB_TOKEN ?? "";
-
 export function fileUrl(hostPath: string): string {
-  const url = serverUrl("/files");
-  url.searchParams.set("path", hostPath);
-  url.searchParams.set("token", TOKEN);   // media elements send no headers
-  return url.toString();
+  const query = [
+    `thread=${encodeURIComponent(THREAD)}`,
+    `path=${encodeURIComponent(hostPath)}`,
+    `token=${encodeURIComponent(TOKEN)}`,   // media elements send no headers
+  ].join("&");
+  return new URL(`/files?${query}`, window.location.origin).toString();
 }
 ```
+
+**Build the query by hand.** `URLSearchParams` — and therefore
+`serverUrl().searchParams.set()` — serialises as
+`application/x-www-form-urlencoded`, where a space becomes `+` rather than
+`%20`. The route percent-decodes, so every path under
+`AppData\Local\Second Brain\` arrives as `Second+Brain` and answers `404`. The
+signature at the top of this section says `encodeURIComponent` and means it.
+
+This is a hard one to catch: `curl` and any hand-written test encode the space
+correctly, so the route looks fine from everywhere except the application.
 
 ### Picking a renderer
 
@@ -297,10 +312,14 @@ A path in a row is a record of what happened, not a promise the file is still
 there. A `404` means it has moved or been deleted — say so rather than showing
 an empty pane.
 
-`src/components/host-file.tsx` predates this route and still assembles Blobs via
-`downloadFromHost`. That works and is fine for small images; `fileUrl` is
-strictly better for anything the browser renders natively, and is the only
-option for video.
+**Do not use `HEAD` to find out which failure this was.** On its error path the
+route sends a `Content-Length` for a body it then does not write, and a proxy in
+front of it turns that mismatch into a `502` — so the one request whose entire
+job is to report the real status reports `502` for every failure there is. Ask
+for one byte instead: `Range: bytes=0-0` answers `206` when the file is fine and
+the true status when it is not, with no body worth mentioning. This matters
+because `<img>` and `<video>` report failure as a bare `onError` with no status
+on it, and that follow-up request is the only way to tell "gone" from "refused".
 
 ## Three honest gaps
 

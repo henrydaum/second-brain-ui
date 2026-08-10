@@ -9,11 +9,12 @@
  */
 
 import type { FC } from "react";
-import { PanelLeftOpenIcon, XIcon } from "lucide-react";
+import { FilesIcon, PanelLeftOpenIcon, XIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { ThemePicker } from "@/components/theme-picker";
 import { cn } from "@/lib/utils";
+import { useFileActivity } from "@/runtime/file-activity-provider";
 import { useSecondBrain } from "@/runtime/provider";
 
 const LABELS = {
@@ -24,6 +25,7 @@ const LABELS = {
 
 export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
   const { status, conversations, conversationId } = useSecondBrain();
+  const { filesOpen, setFilesOpen, total } = useFileActivity();
   const label = LABELS[status];
 
   // Which conversation you are in, where every other chat app puts it. The
@@ -74,6 +76,30 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
       </span>
 
       <ThemePicker />
+
+      {/* Last in the row, against the edge the panel comes out of — the same
+          pairing the conversations button has with the sidebar at the other
+          end. Not hidden at any width, unlike that one: the files panel starts
+          closed everywhere, so this is the only way to it. */}
+      <TooltipIconButton
+        tooltip={filesOpen ? "Hide files" : "Show files"}
+        side="bottom"
+        className="relative size-8"
+        aria-expanded={filesOpen}
+        onClick={() => setFilesOpen(!filesOpen)}
+      >
+        <FilesIcon className="size-4" />
+        {/* A dot rather than a number. How *many* files there are is the
+            drawer's business; whether there are any is the only thing worth
+            saying from out here, and it is what decides whether opening it is
+            worth doing. */}
+        {total > 0 && !filesOpen && (
+          <span
+            aria-hidden
+            className="bg-primary absolute end-1 top-1 size-1.5 rounded-full"
+          />
+        )}
+      </TooltipIconButton>
     </header>
   );
 };
