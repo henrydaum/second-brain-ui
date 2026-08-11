@@ -97,7 +97,10 @@ export const CommandPanel: FC = () => {
   const busy = advancing || blocked;
 
   return (
-    <div data-slot="command-panel" className="w-full text-sm">
+    <div
+      data-slot="command-panel"
+      className="min-w-0 w-full max-w-full overflow-hidden text-sm"
+    >
       {collected.length > 0 && (
         <dl className="bg-muted/30 mb-6 grid gap-x-6 gap-y-3 rounded-lg px-4 py-3 sm:grid-cols-2 lg:grid-cols-3">
           {collected.map(([name, value]) => (
@@ -122,7 +125,10 @@ export const CommandPanel: FC = () => {
 
       {!cancelling && display && form && (
         <form onSubmit={submit} className="space-y-6">
-          <fieldset>
+          {/* A fieldset's browser default min-width is its min-content width.
+              A wide prompt table would therefore widen the choice grid below
+              it unless this boundary explicitly permits shrinking. */}
+          <fieldset className="min-w-0">
             <legend className="sr-only">{display.prompt}</legend>
             <div className="max-w-3xl">
               <CommandMarkdown
@@ -151,7 +157,7 @@ export const CommandPanel: FC = () => {
                     <label
                       key={`${index}-${String(choice.value)}`}
                       className={cn(
-                        "has-[:focus-visible]:border-ring has-[:focus-visible]:ring-ring/30 flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-start transition-colors has-[:focus-visible]:ring-[3px]",
+                        "has-[:focus-visible]:border-ring has-[:focus-visible]:ring-ring/30 flex min-h-11 min-w-0 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-start transition-colors has-[:focus-visible]:ring-[3px]",
                         selected
                           ? "border-primary bg-primary/5"
                           : "bg-background hover:bg-muted/45",
@@ -183,7 +189,7 @@ export const CommandPanel: FC = () => {
                           <CircleIcon className="size-5" />
                         )}
                       </span>
-                      <span className="font-medium">
+                      <span className="min-w-0 font-medium whitespace-normal [overflow-wrap:anywhere]">
                         {choice.label ?? String(choice.value)}
                       </span>
                     </label>

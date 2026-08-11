@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import "@testing-library/jest-dom/vitest";
+
 /**
  * The dialog, in a DOM.
  *
@@ -108,6 +110,19 @@ describe("answering", () => {
     mount([ask()]);
 
     expect(screen.getByText("rm -rf /tmp/x")).toBeDefined();
+  });
+
+  it("reserves the close button's touch target beside the title", () => {
+    mount([ask({ title: "A deliberately long request title" })]);
+
+    expect(
+      screen.getByRole("heading", {
+        name: "A deliberately long request title",
+      }).parentElement,
+    ).toHaveClass("pe-12");
+    expect(
+      screen.getByRole("button", { name: "Cancel this request" }),
+    ).toHaveClass("size-8");
   });
 
   it("takes free text when there is nothing to press", async () => {

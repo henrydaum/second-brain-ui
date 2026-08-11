@@ -11,7 +11,7 @@ type MarkdownElementProps<Tag extends keyof React.JSX.IntrinsicElements> =
 /** Tables need their own surface in Settings: command output is operational
  * data, not prose, and should scan like an ordinary application table. */
 const CommandTable: FC<MarkdownElementProps<"table">> = ({ node: _node, ...props }) => (
-  <div className="my-4 min-w-0 max-w-full overflow-x-auto rounded-lg border">
+  <div className="my-4 min-w-0 w-full max-w-full overflow-x-auto overscroll-x-contain rounded-lg border [contain:inline-size] [-webkit-overflow-scrolling:touch]">
     {/* `table` is Tailwind's `display: table` utility, and it is here on
         purpose. The chat's `.aui-md` stylesheet makes bare tables `display:
         block` so a wide one scrolls inside itself; this table already has a
@@ -74,7 +74,7 @@ export const CommandMarkdown: FC<{
       components={markdownComponents}
       smooth={false}
       className={cn(
-        "aui-md text-sm [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold",
+        "aui-md min-w-0 max-w-full text-sm [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold",
         className,
       )}
     />

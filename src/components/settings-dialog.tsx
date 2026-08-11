@@ -163,7 +163,7 @@ export const SettingsDialogContent: FC<{
   };
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[14rem_minmax(0,1fr)]">
+    <div className="grid min-h-0 min-w-0 w-full flex-1 grid-cols-1 overflow-hidden sm:grid-cols-[14rem_minmax(0,1fr)]">
           <nav
             className="bg-muted/25 hidden min-h-0 flex-col border-r p-3 sm:flex"
             aria-label="Settings sections"
@@ -200,7 +200,7 @@ export const SettingsDialogContent: FC<{
             </div>
           </nav>
 
-          <main className="min-w-0 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
+          <main className="min-w-0 w-full max-w-full overflow-x-hidden overflow-y-auto p-4 sm:p-6">
             <label className="mb-4 block sm:hidden">
               <span className="sr-only">Settings section</span>
               <select

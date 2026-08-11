@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { fileUrl } from "@/lib/client";
-import { dirOf, nameOf } from "@/lib/files";
+import { nameOf } from "@/lib/files";
 import { useFileActivity } from "@/runtime/file-activity-provider";
 
 export const FileViewerDialog: FC = () => {
@@ -73,19 +73,23 @@ export const FileViewerDialog: FC = () => {
           <DialogTitle className="truncate text-base" title={path}>
             {nameOf(path)}
           </DialogTitle>
-          <DialogDescription className="truncate text-xs">
-            {dirOf(path) || "The host filesystem"}
+          <DialogDescription
+            className="overflow-hidden text-left text-xs text-ellipsis whitespace-nowrap [direction:rtl]"
+            title={path}
+            aria-label={path}
+          >
+            {path}
           </DialogDescription>
         </DialogHeader>
 
         {/* The file and its arrows on one row, so paging does not move the
             thing you are looking at. */}
-        <div className="flex min-h-0 min-w-0 items-center gap-2">
+        <div className="relative flex min-h-0 min-w-0 items-center sm:gap-2">
           {many && (
             <TooltipIconButton
               tooltip="Previous file"
               side="right"
-              className="size-8"
+              className="bg-background/85 absolute start-1 z-10 size-8 rounded-full shadow-sm backdrop-blur-sm sm:static sm:bg-transparent sm:shadow-none sm:backdrop-blur-none"
               onClick={() => stepView(-1)}
             >
               <ChevronLeftIcon className="size-4" />
@@ -111,7 +115,7 @@ export const FileViewerDialog: FC = () => {
             <TooltipIconButton
               tooltip="Next file"
               side="left"
-              className="size-8"
+              className="bg-background/85 absolute end-1 z-10 size-8 rounded-full shadow-sm backdrop-blur-sm sm:static sm:bg-transparent sm:shadow-none sm:backdrop-blur-none"
               onClick={() => stepView(1)}
             >
               <ChevronRightIcon className="size-4" />
@@ -119,7 +123,7 @@ export const FileViewerDialog: FC = () => {
           )}
         </div>
 
-        <div className="text-muted-foreground flex min-w-0 items-center justify-between gap-3 pb-[env(safe-area-inset-bottom)] text-xs">
+        <div className="text-muted-foreground flex min-w-0 items-center justify-between gap-3 text-xs">
           <span>
             {many
               ? `${viewing.index + 1} of ${viewing.paths.length}`

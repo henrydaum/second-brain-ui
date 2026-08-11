@@ -131,15 +131,16 @@ export const InputRequestDialog: FC = () => {
         <DialogClose
           disabled={answering}
           title="Cancel this request"
-          className="ring-offset-background focus:ring-ring absolute end-4 top-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:pointer-events-none"
+          className="ring-offset-background focus:ring-ring absolute end-3 top-3 flex size-8 items-center justify-center rounded-md opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none sm:end-4 sm:top-4 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:pointer-events-none"
         >
           <XIcon />
           <span className="sr-only">Cancel this request</span>
         </DialogClose>
 
-        <DialogHeader>
-          {/* `pe-6` so a long title does not run under the corner button. */}
-          <DialogTitle className="pe-6">
+        <DialogHeader className="min-w-0 pe-12">
+          {/* Reserve the close button's full mobile touch target, not merely
+              the visible glyph, so a long title cannot run underneath it. */}
+          <DialogTitle className="min-w-0 break-words">
             {request.title || "The agent is asking"}
           </DialogTitle>
           {request.body && (
