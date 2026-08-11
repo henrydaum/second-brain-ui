@@ -7,7 +7,9 @@
 http://:4173 {
 	header {
 		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
+		# FileView embeds same-origin PDFs and SVGs. SAMEORIGIN keeps external
+		# sites from framing the UI without blocking the app's own viewer.
+		X-Frame-Options "SAMEORIGIN"
 		Referrer-Policy "no-referrer"
 		Permissions-Policy "microphone=(self), camera=(), geolocation=()"
 	}
