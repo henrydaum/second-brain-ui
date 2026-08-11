@@ -35,7 +35,6 @@ import {
 import {
   ComposerAddAttachment,
   ComposerAttachments,
-  UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
 import { DotMatrix } from "@/components/assistant-ui/dot-matrix";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
@@ -546,7 +545,6 @@ const UserMessage: FC = () => (
     data-role="user"
     className="fade-in animate-in mx-auto grid w-full max-w-(--thread-max-width) auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 px-2 duration-150 [&:where(>*)]:col-start-2"
   >
-    <UserMessageAttachments />
     <div className="col-start-2 min-w-0">
       <div className="bg-muted text-foreground rounded-xl px-4 py-2 wrap-break-word empty:hidden">
         <MessagePrimitive.Parts components={userMessageComponents} />

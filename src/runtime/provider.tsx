@@ -66,7 +66,7 @@ import {
   markRead,
   type Notification,
 } from "@/lib/notifications";
-import { extensionOf, uploadToHost } from "@/lib/upload";
+import { attachmentSubmitArgs, uploadToHost } from "@/lib/upload";
 import { convertMessage } from "@/runtime/convert";
 import {
   initialInputRequests,
@@ -1249,25 +1249,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
       try {
         if (files.length) {
-          // Each attachment is its own submission — there is no "several files
-          // and a caption" shape on the wire. The text rides on the last one so
-          // it arrives with the file it is about rather than starting a bare
-          // turn of its own.
-          for (const [index, file] of files.entries()) {
-            const last = index === files.length - 1;
-            await sdk("frontend.submit", {
-              input_kind: "attachment",
-              path: file.path,
-              file_name: file.name,
-              // What decides the file's modality, and whether the current model
-              // accepts it at all — see `extensionOf`.
-              extension: extensionOf(file.name),
-              caption: last ? text : "",
-              // Into the watched attachment cache, so the file is extracted and
-              // indexed rather than left in scratch.
-              ingest: true,
-            });
-          }
+          // Several files are one user action and therefore one state-machine
+          // action. A sequence cannot work: the first attachment hands priority
+          // to the agent, making every later attachment the wrong actor type.
+          await sdk("frontend.submit", attachmentSubmitArgs(files, text));
           return;
         }
 

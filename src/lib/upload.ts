@@ -62,6 +62,34 @@ export function extensionOf(name: string): string {
   return suffixOf(name).replace(/^\./, "");
 }
 
+export type UploadedAttachment = { path: string; name: string };
+
+/**
+ * One composer message, however many files it carries.
+ *
+ * `send_attachment` hands priority to the agent, so several sequential
+ * Requests can never represent one multi-file message: after the first, the
+ * rest arrive on the agent's turn. The HTTP frontend's `files` form is the
+ * atomic spelling and deliberately works for a one-file list too.
+ */
+export function attachmentSubmitArgs(
+  files: UploadedAttachment[],
+  caption: string,
+) {
+  return {
+    input_kind: "attachment" as const,
+    files: files.map((file) => ({
+      path: file.path,
+      file_name: file.name,
+      extension: extensionOf(file.name),
+    })),
+    caption,
+    // Into the watched attachment cache, so every file is extracted and
+    // indexed rather than left in scratch.
+    ingest: true,
+  };
+}
+
 /**
  * Write a file to host scratch and answer with its path.
  *

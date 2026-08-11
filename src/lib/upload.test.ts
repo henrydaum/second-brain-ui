@@ -6,7 +6,7 @@ vi.mock("@/lib/client", () => ({
   sdk: (...args: unknown[]) => sdk(...args),
 }));
 
-const { uploadToHost } = await import("@/lib/upload");
+const { attachmentSubmitArgs, uploadToHost } = await import("@/lib/upload");
 
 beforeEach(() => {
   sdk.mockReset();
@@ -16,6 +16,34 @@ beforeEach(() => {
 });
 
 describe("browser attachment uploads", () => {
+  it("submits several files as one atomic frontend message", () => {
+    expect(
+      attachmentSubmitArgs(
+        [
+          { path: "/tmp/chart.png", name: "Chart.png" },
+          { path: "/tmp/notes.pdf", name: "Notes.pdf" },
+        ],
+        "Compare these",
+      ),
+    ).toEqual({
+      input_kind: "attachment",
+      files: [
+        {
+          path: "/tmp/chart.png",
+          file_name: "Chart.png",
+          extension: "png",
+        },
+        {
+          path: "/tmp/notes.pdf",
+          file_name: "Notes.pdf",
+          extension: "pdf",
+        },
+      ],
+      caption: "Compare these",
+      ingest: true,
+    });
+  });
+
   it("keeps base64 write requests below a four-megabyte gateway limit", async () => {
     const bytes = new Uint8Array(2 * 1024 * 1024 + 1);
     const file = {
