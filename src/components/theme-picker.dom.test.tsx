@@ -3,13 +3,17 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ThemePicker } from "@/components/theme-picker";
 import { THEME_KEY } from "@/lib/theme";
 
 beforeEach(() => {
-  localStorage.clear();
+  // Newer Node releases may expose their own partial `localStorage` global.
+  // Pin the DOM test to jsdom's real Storage implementation rather than
+  // depending on which global Vitest happened to install first.
+  vi.stubGlobal("localStorage", window.localStorage);
+  window.localStorage.clear();
   document.documentElement.classList.remove("dark");
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
@@ -21,6 +25,8 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("ThemePicker", () => {
   it("supports arrow-key selection through the radio menu", async () => {
     const user = userEvent.setup();
@@ -31,7 +37,9 @@ describe("ThemePicker", () => {
     system.focus();
     await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
 
-    await waitFor(() => expect(localStorage.getItem(THEME_KEY)).toBe("dark"));
+    await waitFor(() =>
+      expect(window.localStorage.getItem(THEME_KEY)).toBe("dark"),
+    );
     expect(document.documentElement).toHaveClass("dark");
   });
 });

@@ -58,6 +58,10 @@ Open <http://127.0.0.1:4173>. Caddy starts at login and restarts if it exits.
 It may start before Second Brain; requests return `502` until `frontend_http`
 is ready, then recover without restarting Caddy.
 
+The installer first probes port 8787 without credentials. A working
+`frontend_http` answers `401`; `503` means the kernel listener exists but no
+frontend owns it, and a connection failure means Second Brain is not listening.
+
 For unattended installation, supply the token in the process environment. Do
 not put it on the command line, where it would enter shell history:
 
@@ -129,3 +133,25 @@ longer needed.
 For a later Tailscale deployment, point persistent Tailscale Serve at
 `http://127.0.0.1:4173`. For Cloudflare, put Access in front of the tunnel before
 forwarding to the same address. Neither requires changing the frontend build.
+
+## Port 8787 troubleshooting
+
+If Second Brain reports that `frontend_http` could not take port 8787, identify
+the listener before changing any ports:
+
+```bash
+lsof -nP -iTCP:8787 -sTCP:LISTEN
+curl -i --max-time 3 http://127.0.0.1:8787/events
+```
+
+- One Second Brain process plus `HTTP/1.1 401` means the listener is healthy;
+  the error may be from a second, manually launched Second Brain process or an
+  older log entry.
+- Two Second Brain processes means the LaunchAgent copy and a manual copy are
+  competing. Keep the LaunchAgent instance and stop the manually started one.
+- `503` means the kernel has the socket but `frontend_http` failed to claim it.
+  Use `/frontends` to disable any duplicate HTTP-serving frontend, then restart
+  Second Brain so ownership is established cleanly.
+- A different process name means that application owns 8787. Stop it or move
+  `frontend_http` with `http_port`; if the backend port changes, update all three
+  Caddy upstreams to match before reinstalling.

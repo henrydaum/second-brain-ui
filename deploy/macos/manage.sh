@@ -16,6 +16,7 @@ case "${1:-}" in
     ;;
   status)
     launchctl print "$domain/$LABEL" 2>/dev/null || true
+    printf '\nfrontend_http: HTTP %s (expected 401)\n' "$(backend_status)"
     printf '\nGateway: '
     if curl --fail --silent --show-error http://127.0.0.1:4173/healthz; then
       printf '\n'

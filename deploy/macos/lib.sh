@@ -64,6 +64,24 @@ prompt_token() {
   printf '%s' "$entered"
 }
 
+backend_status() {
+  # An unauthenticated frontend_http request must finish immediately with 401.
+  # 503 means the kernel owns the socket but no frontend owns its request queue;
+  # 000 means nothing accepted the connection at all.
+  curl --max-time 3 --silent --output /dev/null --write-out '%{http_code}' \
+    http://127.0.0.1:8787/events 2>/dev/null || true
+}
+
+require_backend_listener() {
+  status=$(backend_status)
+  case "$status" in
+    401) return 0 ;;
+    503) die "127.0.0.1:8787 is open, but frontend_http does not own it; check for a duplicate enabled frontend and restart Second Brain" ;;
+    000|"") die "nothing is listening on 127.0.0.1:8787; start the Second Brain LaunchAgent and check its logs" ;;
+    *) die "127.0.0.1:8787 answered HTTP $status instead of frontend_http's 401; inspect the process with: lsof -nP -iTCP:8787 -sTCP:LISTEN" ;;
+  esac
+}
+
 atomic_link() {
   target=$1
   destination=$2

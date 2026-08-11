@@ -26,6 +26,7 @@ if [ ! -f "$RUNTIME_ENV" ]; then
 fi
 chmod 600 "$RUNTIME_ENV"
 
+require_backend_listener
 sh "$SCRIPT_DIR/build-release.sh"
 
 xml_escape() {
