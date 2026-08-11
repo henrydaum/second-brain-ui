@@ -175,6 +175,12 @@ live. This avoids caching private conversations, files, SSE, or stale frontend
 code. Consequently the app requires the Mac Mini and Tailscale connection to be
 available; offline mode can be designed separately if it ever becomes useful.
 
+Each browser installation stores its own session identity locally. This lets
+the Mac, iPhone, and Windows clients keep independent event streams while still
+seeing the same persisted conversations. An explicit `?thread=name` URL remains
+available for an intentional extra session; do not open that exact URL in two
+places at once, because the backend permits one event stream per thread.
+
 For a later Cloudflare deployment, put Access in front of the tunnel before
 forwarding to `http://127.0.0.1:4173`. It does not require changing the frontend
 build.

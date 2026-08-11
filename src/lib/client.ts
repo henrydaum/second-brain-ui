@@ -53,10 +53,14 @@ const TOKEN = import.meta.env.DEV
  * replaces the first — so two tabs on one thread take turns being connected and
  * both sit there reconnecting.
  */
-export const THREAD =
-  new URLSearchParams(window.location.search).get("thread") ||
-  import.meta.env.VITE_SB_THREAD ||
-  "main";
+import { browserStorage, selectThread } from "@/lib/thread";
+
+export const THREAD = selectThread({
+  search: window.location.search,
+  configured: import.meta.env.VITE_SB_THREAD,
+  storage: browserStorage(),
+  randomUUID: () => crypto.randomUUID(),
+});
 
 /** Development bearer auth. Production answers with an empty object because
  *  the loopback gateway owns the upstream credential. */
