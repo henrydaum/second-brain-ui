@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import "@testing-library/jest-dom/vitest";
+
 /**
  * What the provider believes about the turn when the page first loads.
  *
@@ -16,6 +18,7 @@
  */
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sdk = vi.fn();
@@ -46,12 +49,28 @@ vi.mock("@/lib/notifications", () => ({
   markRead: async () => undefined,
 }));
 
-const { SecondBrainProvider, useSession } = await import("@/runtime/provider");
+const { SecondBrainProvider, useModels, useSession } = await import(
+  "@/runtime/provider"
+);
 
 /** Reads the one field under test out of the context. */
 const Probe = () => {
   const { state } = useSession();
   return <span data-testid="typing">{String(state.typing)}</span>;
+};
+
+const ModelProbe = () => {
+  const { modelName, agentProfile, models, setModel } = useModels();
+  return (
+    <>
+      <span data-testid="model">{modelName}</span>
+      <span data-testid="agent">{agentProfile}</span>
+      <span data-testid="models">{models.map((model) => model.model_name).join(",")}</span>
+      <button type="button" onClick={() => void setModel("openrouter/gpt-5.4")}>
+        Switch
+      </button>
+    </>
+  );
 };
 
 /** Answer `session.get` with `busy`, and everything else with nothing. */
@@ -121,5 +140,68 @@ describe("a page that loads in the middle of a turn", () => {
 
     await waitFor(() => expect(readConversation).toHaveBeenCalledWith(7));
     expect(screen.getByTestId("typing").textContent).toBe("false");
+  });
+});
+
+describe("global model synchronization", () => {
+  it("reads the default model, agent profile, and configured models", async () => {
+    sdk.mockImplementation(async (type: string) => {
+      if (type === "session.get") {
+        return {
+          conversation_id: 7,
+          mode: "ask",
+          busy: false,
+          agent_profile: "researcher",
+        };
+      }
+      if (type === "llm.list") {
+        return { profiles: [{ model_name: "anthropic/sonnet-4.6" }] };
+      }
+      if (type === "config.read") return "anthropic/sonnet-4.6";
+      return null;
+    });
+
+    render(
+      <SecondBrainProvider>
+        <ModelProbe />
+      </SecondBrainProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("model")).toHaveTextContent("anthropic/sonnet-4.6"),
+    );
+    expect(screen.getByTestId("agent")).toHaveTextContent("researcher");
+    expect(screen.getByTestId("models")).toHaveTextContent("anthropic/sonnet-4.6");
+  });
+
+  it("switches the global default through config.write", async () => {
+    bootWith(false);
+    sdk.mockImplementation(async (type: string) => {
+      if (type === "session.get") {
+        return { mode: "ask", busy: false };
+      }
+      if (type === "llm.list") return { profiles: [] };
+      if (type === "config.read") return "anthropic/sonnet-4.6";
+      if (type === "config.write") return true;
+      return null;
+    });
+    const user = userEvent.setup();
+    render(
+      <SecondBrainProvider>
+        <ModelProbe />
+      </SecondBrainProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("model")).toHaveTextContent("anthropic/sonnet-4.6"),
+    );
+    await user.click(screen.getByRole("button", { name: "Switch" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("model")).toHaveTextContent("openrouter/gpt-5.4"),
+    );
+    expect(sdk).toHaveBeenCalledWith("config.write", {
+      key: "default_llm_profile",
+      value: "openrouter/gpt-5.4",
+      scope: "plugin",
+    });
   });
 });

@@ -2,10 +2,10 @@
  * The chat window.
  *
  * Structurally this is the assistant-ui starter template, with everything the
- * server cannot do taken out: no model picker, no regenerate, no message
- * editing, no branch picker. Those are not omissions to fill in later — the
- * kernel has no regenerate and no message tree, and a button that cannot work
- * is worse than no button.
+ * server cannot do taken out: no regenerate, no message editing, no branch
+ * picker. The model picker is backed by Second Brain's global configuration
+ * SDK rather than assistant-ui's request config because this runtime is an
+ * external store.
  *
  * assistant-ui's "primitives" are unstyled components that carry behaviour:
  * `ThreadPrimitive.Messages` knows how to iterate messages, `ComposerPrimitive.
@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/tooltip";
 import { HostFiles, HostFilesDataUI } from "@/components/host-file";
 import { ErrorBanner } from "@/components/session-bar";
+import { ModelSelector } from "@/components/model-selector";
 import { SecurityModePicker } from "@/components/security-mode-picker";
 import { TurnFilesButton, TurnShownFile } from "@/components/turn-files";
 import { VoiceNoteButton } from "@/components/voice-note";
@@ -248,7 +249,10 @@ const Composer: FC = () => {
                 <VoiceNoteButton />
                 <SecurityModePicker />
               </div>
-              <ComposerAction />
+              <div className="flex min-w-0 items-center gap-1">
+                <ModelSelector />
+                <ComposerAction />
+              </div>
             </div>
           </div>
         </ComposerPrimitive.AttachmentDropzone>

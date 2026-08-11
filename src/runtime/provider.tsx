@@ -223,6 +223,14 @@ export type SecondBrain = {
   dismissError: () => void;
   /** Put a finished command's panel away. */
   dismissCommand: () => void;
+  /** Configured LLM profiles and the global default model. */
+  models: LlmProfile[];
+  modelName: string | null;
+  agentProfile: string;
+  modelsLoading: boolean;
+  modelsFailure: boolean;
+  switchingModel: boolean;
+  setModel: (modelName: string) => Promise<void>;
 
   /**
    * What the system has told you.
@@ -270,6 +278,11 @@ export type SecondBrain = {
   setSecurityMode: (mode: "lockdown" | "ask" | "yolo") => Promise<void>;
 };
 
+export type LlmProfile = {
+  model_name: string;
+  loaded?: boolean;
+};
+
 const SecondBrainContext = createContext<SecondBrain | null>(null);
 
 type SessionDomain = Pick<
@@ -280,6 +293,16 @@ type SessionDomain = Pick<
   | "report"
   | "dismissError"
   | "dismissCommand"
+>;
+type ModelDomain = Pick<
+  SecondBrain,
+  | "models"
+  | "modelName"
+  | "agentProfile"
+  | "modelsLoading"
+  | "modelsFailure"
+  | "switchingModel"
+  | "setModel"
 >;
 type ConversationDomain = Pick<
   SecondBrain,
@@ -316,6 +339,7 @@ type SettingsDomain = Pick<
 type SecurityDomain = Pick<SecondBrain, "securityMode" | "setSecurityMode">;
 
 const SessionContext = createContext<SessionDomain | null>(null);
+const ModelContext = createContext<ModelDomain | null>(null);
 const ConversationContext = createContext<ConversationDomain | null>(null);
 const ApprovalContext = createContext<ApprovalDomain | null>(null);
 const NotificationContext = createContext<NotificationDomain | null>(null);
@@ -329,6 +353,7 @@ function useDomain<T>(context: Context<T | null>, name: string): T {
 }
 
 export const useSession = () => useDomain(SessionContext, "useSession");
+export const useModels = () => useDomain(ModelContext, "useModels");
 export const useConversations = () =>
   useDomain(ConversationContext, "useConversations");
 export const useApprovals = () => useDomain(ApprovalContext, "useApprovals");
@@ -368,6 +393,12 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const [securityMode, setSecurityModeState] = useState<
     "lockdown" | "ask" | "yolo"
   >("ask");
+  const [models, setModels] = useState<LlmProfile[]>([]);
+  const [modelName, setModelName] = useState<string | null>(null);
+  const [agentProfile, setAgentProfile] = useState("default");
+  const [modelsLoading, setModelsLoading] = useState(true);
+  const [modelsFailure, setModelsFailure] = useState(false);
+  const [switchingModel, setSwitchingModel] = useState(false);
 
   // `isLoading` covers the gap between "the page is up" and "scrollback is on
   // screen", so the thread does not flash an empty-conversation welcome at
@@ -863,19 +894,44 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    * rebuilds the turn array, and this runs on every reconnect.
    */
   const syncSession = useCallback(async () => {
-    try {
-      const session = await sdk<{
+    setModelsLoading(true);
+    const [sessionResult, modelsResult, defaultModelResult] = await Promise.allSettled([
+      sdk<{
         mode?: "lockdown" | "ask" | "yolo" | null;
         busy?: boolean | null;
-      } | null>("session.get", { details: true });
+        agent_profile?: string | null;
+      } | null>("session.get", { details: true }),
+      sdk<{ profiles?: LlmProfile[] } | null>("llm.list"),
+      sdk<string | null>("config.read", { key: "default_llm_profile" }),
+    ]);
+
+    if (sessionResult.status === "fulfilled") {
+      const session = sessionResult.value;
       setSecurityModeState(session?.mode ?? "ask");
+      setAgentProfile(session?.agent_profile || "default");
       const busy = Boolean(session?.busy);
       if (busy !== typingRef.current) {
         dispatch({ type: "frame", frame: { kind: "typing", payload: busy } });
       }
-    } catch (error) {
-      report(error);
+    } else {
+      report(sessionResult.reason);
     }
+
+    if (modelsResult.status === "fulfilled") {
+      setModels(modelsResult.value?.profiles ?? []);
+      setModelsFailure(false);
+    } else {
+      setModelsFailure(true);
+      report(modelsResult.reason);
+    }
+
+    if (defaultModelResult.status === "fulfilled") {
+      setModelName(defaultModelResult.value || null);
+    } else {
+      setModelsFailure(true);
+      report(defaultModelResult.reason);
+    }
+    setModelsLoading(false);
   }, [report]);
 
   // On every stream open. A backend restart clears the mode, and a drop long
@@ -908,10 +964,43 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   );
 
   useEffect(() => {
-    if (state.command?.name !== "mode") return;
+    if (!state.command?.name) return;
+    if (!["mode", "llm", "agent"].includes(state.command.name)) return;
     if (state.command.status !== "finished") return;
     void syncSession();
   }, [state.command?.name, state.command?.status, syncSession]);
+
+  const modelNameRef = useRef<string | null>(null);
+  modelNameRef.current = modelName;
+  const switchingModelRef = useRef(false);
+
+  /** Change the same global default setting as `/llm`'s Set default action.
+   * Optimistic UI keeps the compact control responsive; a failed Request
+   * restores the kernel-confirmed value. */
+  const setModel = useCallback(
+    async (nextModel: string) => {
+      if (switchingModelRef.current || nextModel === modelNameRef.current) return;
+      const previous = modelNameRef.current;
+      switchingModelRef.current = true;
+      setSwitchingModel(true);
+      setModelName(nextModel);
+      try {
+        await sdk<boolean>("config.write", {
+          key: "default_llm_profile",
+          value: nextModel,
+          scope: "plugin",
+        });
+      } catch (error) {
+        setModelName(previous);
+        await syncSession();
+        report(error);
+      } finally {
+        switchingModelRef.current = false;
+        setSwitchingModel(false);
+      }
+    },
+    [report, syncSession],
+  );
 
   /* ── Conversations ──────────────────────────────────────────────── */
 
@@ -1055,12 +1144,12 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       // afterwards — and an empty conversation has no scrollback to read.
       dispatch({ type: "history", turns: [] });
       setConversationId(created?.id ?? null);
-      setSecurityModeState("ask");
+      await syncSession();
       await refreshConversations();
     } catch (error) {
       report(error);
     }
-  }, [report, refreshConversations]);
+  }, [report, refreshConversations, syncSession]);
 
   const newConversation = useCallback(async () => {
     // **Pressing New chat in a conversation nobody has used is a no-op.** The
@@ -1305,6 +1394,13 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       report,
       dismissError,
       dismissCommand,
+      models,
+      modelName,
+      agentProfile,
+      modelsLoading,
+      modelsFailure,
+      switchingModel,
+      setModel,
       banners: notifications.banners,
       notifications: notifications.rows,
       unread: unreadCount(notifications),
@@ -1337,6 +1433,13 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       report,
       dismissError,
       dismissCommand,
+      models,
+      modelName,
+      agentProfile,
+      modelsLoading,
+      modelsFailure,
+      switchingModel,
+      setModel,
       notifications,
       dismissBanner,
       markNotificationsRead,
@@ -1353,6 +1456,26 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const sessionValue = useMemo<SessionDomain>(
     () => ({ status, state, say, report, dismissError, dismissCommand }),
     [status, state, say, report, dismissError, dismissCommand],
+  );
+  const modelValue = useMemo<ModelDomain>(
+    () => ({
+      models,
+      modelName,
+      agentProfile,
+      modelsLoading,
+      modelsFailure,
+      switchingModel,
+      setModel,
+    }),
+    [
+      models,
+      modelName,
+      agentProfile,
+      modelsLoading,
+      modelsFailure,
+      switchingModel,
+      setModel,
+    ],
   );
   const conversationValue = useMemo<ConversationDomain>(
     () => ({
@@ -1422,7 +1545,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     <AssistantRuntimeProvider runtime={runtime}>
       <SecondBrainContext value={value}>
         <SessionContext value={sessionValue}>
-          <ConversationContext value={conversationValue}>
+          <ModelContext value={modelValue}>
+            <ConversationContext value={conversationValue}>
             <ApprovalContext value={approvalValue}>
               <NotificationContext value={notificationValue}>
                 <SettingsContext value={settingsValue}>
@@ -1432,7 +1556,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
                 </SettingsContext>
               </NotificationContext>
             </ApprovalContext>
-          </ConversationContext>
+            </ConversationContext>
+          </ModelContext>
         </SessionContext>
       </SecondBrainContext>
     </AssistantRuntimeProvider>
