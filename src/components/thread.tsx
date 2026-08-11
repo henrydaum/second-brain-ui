@@ -102,6 +102,19 @@ const messageComponents = {
   data: { by_name: { [HOST_FILES]: HostFiles } },
 } as const;
 
+/**
+ * A user message ending in a data part is complete, not empty.
+ *
+ * `MessagePrimitive.Parts` asks its Empty renderer to fill a message whose last
+ * part is non-text. That is useful for the assistant's blank running turn, but
+ * a voice note is precisely such a non-text user message; sharing the assistant
+ * fallback put "Working" inside the attachment bubble while the agent replied.
+ */
+const userMessageComponents = {
+  ...messageComponents,
+  Empty: () => null,
+} as const;
+
 export const Thread: FC = () => {
   // A conversation with nothing in it centres the composer, the way a new chat
   // does everywhere else. The zero-message geometry applies during loading as
@@ -536,7 +549,7 @@ const UserMessage: FC = () => (
     <UserMessageAttachments />
     <div className="col-start-2 min-w-0">
       <div className="bg-muted text-foreground rounded-xl px-4 py-2 wrap-break-word empty:hidden">
-        <MessagePrimitive.Parts components={messageComponents} />
+        <MessagePrimitive.Parts components={userMessageComponents} />
       </div>
     </div>
   </MessagePrimitive.Root>

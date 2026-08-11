@@ -137,10 +137,12 @@ export const InputRequestDialog: FC = () => {
           <span className="sr-only">Cancel this request</span>
         </DialogClose>
 
-        <DialogHeader className="min-w-0 pe-12">
-          {/* Reserve the close button's full mobile touch target, not merely
-              the visible glyph, so a long title cannot run underneath it. */}
-          <DialogTitle className="min-w-0 break-words">
+        <DialogHeader className="min-w-0">
+          {/* Equal mobile gutters keep the title centred around the dialog,
+              rather than around the space left over beside the close button.
+              Desktop returns to start alignment while retaining the end
+              gutter that protects long titles from the button. */}
+          <DialogTitle className="min-w-0 px-12 break-words sm:ps-0 sm:pe-12">
             {request.title || "The agent is asking"}
           </DialogTitle>
           {request.body && (

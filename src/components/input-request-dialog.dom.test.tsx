@@ -115,11 +115,11 @@ describe("answering", () => {
   it("reserves the close button's touch target beside the title", () => {
     mount([ask({ title: "A deliberately long request title" })]);
 
-    expect(
-      screen.getByRole("heading", {
-        name: "A deliberately long request title",
-      }).parentElement,
-    ).toHaveClass("pe-12");
+    const title = screen.getByRole("heading", {
+      name: "A deliberately long request title",
+    });
+    expect(title).toHaveClass("px-12", "sm:ps-0", "sm:pe-12");
+    expect(title.parentElement).not.toHaveClass("pe-12");
     expect(
       screen.getByRole("button", { name: "Cancel this request" }),
     ).toHaveClass("size-8");

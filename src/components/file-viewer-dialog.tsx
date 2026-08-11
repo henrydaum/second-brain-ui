@@ -89,7 +89,7 @@ export const FileViewerDialog: FC = () => {
             <TooltipIconButton
               tooltip="Previous file"
               side="right"
-              className="bg-background/85 absolute start-1 z-10 size-8 rounded-full shadow-sm backdrop-blur-sm sm:static sm:bg-transparent sm:shadow-none sm:backdrop-blur-none"
+              className="bg-background/45 text-foreground/65 hover:bg-background/75 hover:text-foreground absolute start-1 z-10 size-8 rounded-full shadow-sm backdrop-blur-sm sm:static sm:bg-transparent sm:text-foreground sm:shadow-none sm:backdrop-blur-none"
               onClick={() => stepView(-1)}
             >
               <ChevronLeftIcon className="size-4" />
@@ -115,7 +115,7 @@ export const FileViewerDialog: FC = () => {
             <TooltipIconButton
               tooltip="Next file"
               side="left"
-              className="bg-background/85 absolute end-1 z-10 size-8 rounded-full shadow-sm backdrop-blur-sm sm:static sm:bg-transparent sm:shadow-none sm:backdrop-blur-none"
+              className="bg-background/45 text-foreground/65 hover:bg-background/75 hover:text-foreground absolute end-1 z-10 size-8 rounded-full shadow-sm backdrop-blur-sm sm:static sm:bg-transparent sm:text-foreground sm:shadow-none sm:backdrop-blur-none"
               onClick={() => stepView(1)}
             >
               <ChevronRightIcon className="size-4" />
