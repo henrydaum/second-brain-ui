@@ -14,7 +14,7 @@
  * and small desktops when the conversation rail is open too.
  */
 
-import { useEffect, useRef, type FC } from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 import { TerminalIcon, XIcon } from "lucide-react";
 
 import { FileKindIcon } from "@/components/file-kind-icon";
@@ -53,6 +53,27 @@ export const FilesDrawer: FC = () => {
   const { state } = useSession();
   const isInline = useMediaQuery(XL_QUERY);
 
+  /**
+   * The drawer is lazy-loaded and is not mounted until its first opening. If it
+   * reads `filesOpen` immediately, its first painted position is already open,
+   * leaving the browser no closed position to transition from. Give that first
+   * mount one painted frame in the closed position. The component stays mounted
+   * afterwards, so every later open and close continues to follow `filesOpen`
+   * directly.
+  */
+  const [hasPaintedClosed, setHasPaintedClosed] = useState(false);
+  useEffect(() => {
+    let openFrame = 0;
+    const paintFrame = window.requestAnimationFrame(() => {
+      openFrame = window.requestAnimationFrame(() => setHasPaintedClosed(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(paintFrame);
+      window.cancelAnimationFrame(openFrame);
+    };
+  }, []);
+  const visible = filesOpen && hasPaintedClosed;
+
   const close = () => setFilesOpen(false);
 
   /**
@@ -66,7 +87,7 @@ export const FilesDrawer: FC = () => {
    * layer stands down whenever an inner one is on screen.
    */
   useEffect(() => {
-    if (!isInline || !filesOpen) return;
+    if (!isInline || !visible) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (document.querySelector('[data-slot="dialog-content"]')) return;
@@ -74,21 +95,21 @@ export const FilesDrawer: FC = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [filesOpen, isInline, setFilesOpen]);
+  }, [visible, isInline, setFilesOpen]);
 
   // Jumping to a section, when the chip under a message asked for one. The
   // clear is on a timer rather than on the scroll finishing, because a smooth
   // scroll has no completion event worth waiting for.
   const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!focusTurn || !filesOpen) return;
+    if (!focusTurn || !visible) return;
     const target = bodyRef.current?.querySelector(
       `[data-turn="${CSS.escape(focusTurn)}"]`,
     );
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
     const timer = setTimeout(clearFocus, FLASH_MS);
     return () => clearTimeout(timer);
-  }, [focusTurn, filesOpen, clearFocus, sections]);
+  }, [focusTurn, visible, clearFocus, sections]);
 
   /**
    * Opened from the header, with no particular turn in mind: show the end, the
@@ -107,7 +128,7 @@ export const FilesDrawer: FC = () => {
    */
   const landed = useRef(false);
   useEffect(() => {
-    if (!filesOpen) {
+    if (!visible) {
       landed.current = false;
       return;
     }
@@ -116,7 +137,7 @@ export const FilesDrawer: FC = () => {
     if (focusTurn) return; // the jump above owns the scroll this time
     const body = bodyRef.current;
     if (body) body.scrollTop = body.scrollHeight;
-  }, [filesOpen, focusTurn, sections.length]);
+  }, [visible, focusTurn, sections.length]);
 
   /** The turn still being written, so its section can say so rather than
    *  wearing a clock time that is only seconds old. */
@@ -133,16 +154,16 @@ export const FilesDrawer: FC = () => {
         // `inert` rather than unmounting: the panel keeps its scroll position
         // between openings, and a closed overlay must not hold focus or be
         // reachable by tab.
-        inert={!filesOpen}
+        inert={!visible}
         className={cn(
           "bg-sidebar flex h-full flex-col overflow-hidden",
           // Below `xl`: an overlay drawer, off-canvas until asked for.
           "fixed inset-y-0 end-0 z-50 w-80 max-w-[85vw] border-s transition-transform duration-200",
-          filesOpen ? "translate-x-0" : "translate-x-full rtl:-translate-x-full",
+          visible ? "translate-x-0" : "translate-x-full rtl:-translate-x-full",
           // From `xl`: in the flow, animating width, so opening it reflows the
           // thread rather than covering the part you were reading.
           "xl:relative xl:z-auto xl:max-w-none xl:translate-x-0 xl:transition-[width] rtl:xl:translate-x-0",
-          filesOpen ? "xl:w-96 xl:border-s" : "xl:w-0 xl:border-s-0",
+          visible ? "xl:w-96 xl:border-s" : "xl:w-0 xl:border-s-0",
         )}
       >
         {!isInline && <SheetTitle className="sr-only">Files</SheetTitle>}
@@ -195,7 +216,7 @@ export const FilesDrawer: FC = () => {
   if (isInline) return drawer;
 
   return (
-    <Sheet open={filesOpen} onOpenChange={setFilesOpen}>
+    <Sheet open={visible} onOpenChange={setFilesOpen}>
       <SheetContent side="right" className="w-80 max-w-[85vw]">
         {drawer}
       </SheetContent>
