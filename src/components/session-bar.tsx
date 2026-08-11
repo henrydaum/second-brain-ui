@@ -46,7 +46,7 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
   }, []);
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b px-2 sm:px-4">
+    <header className="flex h-12 shrink-0 items-center gap-2 px-2 sm:px-4">
       {/* Below `md` the sidebar is an off-canvas drawer, so the only way back
           to it is from out here. */}
       <TooltipIconButton

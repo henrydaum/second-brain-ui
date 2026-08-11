@@ -23,7 +23,7 @@
  * function.
  */
 
-import { authHeader, fileUrl, sdk } from "@/lib/client";
+import { authHeaders, fileUrl, sdk } from "@/lib/client";
 
 /* ── Naming ─────────────────────────────────────────────────────────── */
 
@@ -288,7 +288,7 @@ export async function fetchWhole(
   while (at < total && at < cap) {
     const response = await fetch(url, {
       headers: {
-        Authorization: authHeader(),
+        ...authHeaders(),
         // Omitted on the first pass so the server picks its own window; after
         // that we are explicitly asking for the rest.
         ...(at > 0 ? { Range: `bytes=${at}-` } : {}),
@@ -387,7 +387,7 @@ export function forgetFile(path: string): void {
 export async function probeStatus(path: string): Promise<number> {
   try {
     const response = await fetch(fileUrl(path), {
-      headers: { Authorization: authHeader(), Range: "bytes=0-0" },
+      headers: { ...authHeaders(), Range: "bytes=0-0" },
     });
     return response.status;
   } catch {

@@ -7,7 +7,7 @@ const sdk = vi.fn();
 // without — none of what is under test here needs a DOM.
 vi.mock("@/lib/client", () => ({
   sdk: (type: string, args: Record<string, unknown>) => sdk(type, args),
-  authHeader: () => "Bearer test",
+  authHeaders: () => ({ Authorization: "Bearer test" }),
   fileUrl: (path: string) => `http://host/files?path=${encodeURIComponent(path)}`,
 }));
 

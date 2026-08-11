@@ -12,7 +12,7 @@
  * why boot connects here before it POSTs anything.
  */
 
-import { serverUrl } from "@/lib/client";
+import { authHeaders, serverUrl } from "@/lib/client";
 
 /* ── The eleven kinds ────────────────────────────────────────────────────
  *
@@ -282,10 +282,10 @@ export function connect(
   onStatus: (status: StreamStatus) => void,
 ): () => void {
   const url = serverUrl("/events");
-  // The one place a token travels in a URL. `EventSource` cannot send headers,
-  // so this is the API rather than an oversight — and it is why no other route
-  // accepts a query token, since a token in a URL reaches logs and history.
-  url.searchParams.set("token", import.meta.env.VITE_SB_TOKEN ?? "");
+  // EventSource cannot send headers, so development puts its token in the URL.
+  // Production has no browser token: Caddy authenticates the loopback hop.
+  const authorization = authHeaders().Authorization;
+  if (authorization) url.searchParams.set("token", authorization.slice(7));
 
   const stream = new EventSource(url);
   onStatus("connecting");

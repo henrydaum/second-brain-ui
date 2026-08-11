@@ -22,19 +22,21 @@
  *
  * **The browser always talks to its own origin.** In development Vite proxies
  * `/sdk` and `/events` through to the server (see `vite.config.ts`); in
- * production the built app is served by the server itself out of
- * `http_static_dir`. One rule for both, and CORS never enters into it — which
+ * production Caddy serves the build and proxies the same paths. One rule for
+ * both, and CORS never enters into it — which
  * matters because the server echoes `http_allowed_origins` into
  * `Access-Control-Allow-Origin` verbatim, and a mismatch as small as a trailing
  * slash fails a preflight that then explains almost nothing.
  *
- * The token is read once at module load. Vite inlines `import.meta.env` at
- * build time, so it is a string literal in the bundle — worth being clear-eyed
- * about: anyone who can open the page can read it. The bearer token is the
- * whole perimeter, and the server is single-user and loopback-bound behind a
- * tunnel. That is the deployment this is for.
+ * Development reads its token once at module load. Production does not: the
+ * loopback gateway adds it upstream, so the browser bundle holds no credential.
  */
-const TOKEN = import.meta.env.VITE_SB_TOKEN ?? "";
+// Development authenticates through Vite. Production deliberately has no
+// browser credential: Caddy adds it on the private loopback hop. Vite replaces
+// `DEV` at build time and removes this branch from production bundles.
+const TOKEN = import.meta.env.DEV
+  ? (import.meta.env.VITE_SB_TOKEN ?? "").trim()
+  : "";
 
 /**
  * Which session this browser is.
@@ -56,10 +58,10 @@ export const THREAD =
   import.meta.env.VITE_SB_THREAD ||
   "main";
 
-/** Bearer auth on every request. `/events` and `/files` are the two routes that
- *  also take a query token, because the browser APIs that call them —
- *  `EventSource`, and `<img>`/`<video>` — cannot send headers. */
-export const authHeader = () => `Bearer ${TOKEN}`;
+/** Development bearer auth. Production answers with an empty object because
+ *  the loopback gateway owns the upstream credential. */
+export const authHeaders = (): Record<string, string> =>
+  TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
 
 /** Build a URL against the server, with the thread already attached. */
 export function serverUrl(path: string): URL {
@@ -75,12 +77,10 @@ export function serverUrl(path: string): URL {
  * a ledger row — is a **filesystem path on the host**, and there is nothing to
  * link to. This is the route that turns one into a link.
  *
- * **The token goes in the query string, and it has to.** A media element issues
- * its own request: `<img src>` and `<video src>` are fetches the browser makes
- * on its own account, with no hook to add an `Authorization` header to. So
- * `/files` accepts `?token=` for exactly the reason `/events` does, and those
- * two are the only routes that do — everything a *script* calls sends the
- * header instead.
+ * In development the token goes in the query string because a media element
+ * cannot add an `Authorization` header to its own request. Production omits it:
+ * the same-origin Caddy gateway authenticates the upstream request after the
+ * browser has made it, so the credential never has to reach this URL.
  *
  * Prefer handing this to an element over fetching it. The route honours `Range`
  * and a large file answers `206` even when nothing asked it to, so the browser's
@@ -99,9 +99,9 @@ export function fileUrl(hostPath: string): string {
   const query = [
     `thread=${encodeURIComponent(THREAD)}`,
     `path=${encodeURIComponent(hostPath)}`,
-    `token=${encodeURIComponent(TOKEN)}`,
   ].join("&");
-  return new URL(`/files?${query}`, window.location.origin).toString();
+  const token = TOKEN ? `&token=${encodeURIComponent(TOKEN)}` : "";
+  return new URL(`/files?${query}${token}`, window.location.origin).toString();
 }
 
 /**
@@ -181,7 +181,7 @@ export async function sdk<T = unknown>(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: authHeader(),
+      ...authHeaders(),
     },
     body: JSON.stringify(args),
   });

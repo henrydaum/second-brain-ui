@@ -1,0 +1,46 @@
+{
+	auto_https off
+	admin off
+}
+
+http://127.0.0.1:4173 {
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "microphone=(self), camera=(), geolocation=()"
+	}
+
+	@events path /events
+	handle @events {
+		reverse_proxy 127.0.0.1:8787 {
+			header_up Authorization "Bearer {$SB_HTTP_TOKEN}"
+			header_up Accept-Encoding "identity"
+			flush_interval -1
+		}
+	}
+
+	@api path /sdk /sdk/*
+	handle @api {
+		reverse_proxy 127.0.0.1:8787 {
+			header_up Authorization "Bearer {$SB_HTTP_TOKEN}"
+		}
+	}
+
+	@files path /files /files/*
+	handle @files {
+		reverse_proxy 127.0.0.1:8787 {
+			header_up Authorization "Bearer {$SB_HTTP_TOKEN}"
+		}
+	}
+
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	handle {
+		root * "{$SB_UI_CURRENT}"
+		try_files {path} /index.html
+		file_server
+	}
+}

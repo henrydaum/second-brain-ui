@@ -47,9 +47,9 @@ export default defineConfig(({ mode }) => {
      * so a trailing slash or `localhost` where the browser says `127.0.0.1`
      * fails the match — and a failed preflight tells you almost nothing.
      *
-     * Proxying also makes development match production. A built app served out
-     * of `http_static_dir` is same-origin by construction, so "the browser
-     * always talks to its own origin" is one rule that holds in both.
+     * Proxying also makes development match production. Caddy serves the build
+     * and proxies these same paths there, so "the browser always talks to its
+     * own origin" is one rule that holds in both.
      */
     proxy: {
       "/sdk": { target, changeOrigin: true },
