@@ -12,11 +12,11 @@
 
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { ReadonlyJSONObject } from "assistant-stream/utils";
-import type { Turn } from "@/runtime/store";
+import type { MessageAttachment, Turn } from "@/runtime/store";
 
 /** The `name` on the data part carrying the *person's* attachments. `thread.tsx`
  *  maps this name to the component that names them. */
-export const HOST_FILES = "host-files";
+export const SENT_ATTACHMENTS = "sentAttachments";
 
 /** Key under `metadata.custom` holding the turn's time in epoch milliseconds.
  *  Only present when the time is actually known — see `timing` below. */
@@ -28,6 +28,9 @@ export const SENT_AT = "sentAt";
 type Part = Exclude<ThreadMessageLike["content"], string>[number];
 
 export function convertMessage(turn: Turn): ThreadMessageLike {
+  const sentAttachments = turn.parts.flatMap((part): MessageAttachment[] =>
+    part.kind === "files" && part.sent ? (part.attachments ?? []) : [],
+  );
   // `flatMap` rather than `map`, because one kind of part deliberately produces
   // nothing to render — see the `files` case.
   const content = turn.parts.flatMap((part): Part[] => {
@@ -66,27 +69,15 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
         /**
          * **Only the person's attachments become a part.**
          *
-         * Theirs are names, which is all there is to draw, and they belong in
-         * their message. The agent's are host paths, and where those render is
-         * decided somewhere else entirely: `components/turn-files.tsx` reads
-         * the turn's files out of the ledger, because the ledger is the only
-         * record that survives a reload — `conversation_messages` has no
-         * metadata column, so a re-read conversation has no `attachments`
-         * frames and would show none of them.
+         * Theirs live in `metadata.custom`, where `UserMessageAttachments`
+         * draws them above the prose. Agent files stay out of message content;
+         * `components/turn-files.tsx` gets those from the ledger instead.
          *
          * The agent's `FilesPart` stays in the store regardless. It is the
          * fast half of that lookup: the frame arrives the moment the file is
          * produced, while the ledger row is not read until the next poll.
          */
-        return part.sent
-          ? [
-              {
-                type: "data" as const,
-                name: HOST_FILES,
-                data: { paths: part.paths },
-              },
-            ]
-          : [];
+        return [];
     }
   });
 
@@ -106,13 +97,15 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
    * it, and that is the one the UI renders. `createdAt` is still set when known
    * so the library's own view of the message is correct.
    */
-  const timing =
-    turn.createdAt === undefined
+  const custom: Record<string, unknown> = {};
+  if (turn.createdAt !== undefined) custom[SENT_AT] = turn.createdAt;
+  if (sentAttachments.length) custom[SENT_ATTACHMENTS] = sentAttachments;
+  const timing = {
+    ...(turn.createdAt === undefined
       ? {}
-      : {
-          createdAt: new Date(turn.createdAt),
-          metadata: { custom: { [SENT_AT]: turn.createdAt } },
-        };
+      : { createdAt: new Date(turn.createdAt) }),
+    metadata: { custom },
+  };
 
   if (turn.role !== "assistant") {
     return { id: turn.id, role: turn.role, content, ...timing };

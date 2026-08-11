@@ -51,7 +51,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { HostFiles, HostFilesDataUI } from "@/components/host-file";
+import { UserMessageAttachments } from "@/components/host-file";
 import { ErrorBanner } from "@/components/session-bar";
 import { ModelSelector } from "@/components/model-selector";
 import { SecurityModePicker } from "@/components/security-mode-picker";
@@ -60,7 +60,7 @@ import { VoiceNoteButton } from "@/components/voice-note";
 import { fullTimestamp, shortTimestamp } from "@/lib/time";
 import { FINE_POINTER_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
-import { HOST_FILES, SENT_AT } from "@/runtime/convert";
+import { SENT_AT } from "@/runtime/convert";
 
 /**
  * Shown while the agent has the turn but has not said anything yet.
@@ -96,9 +96,6 @@ const messageComponents = {
   Text: MarkdownText,
   Empty: WorkingIndicator,
   tools: { Fallback: ToolFallback },
-  // The person's own attachments, which arrive as a named data part. The
-  // agent's files are not parts at all — see `components/turn-files.tsx`.
-  data: { by_name: { [HOST_FILES]: HostFiles } },
 } as const;
 
 /**
@@ -188,10 +185,6 @@ export const Thread: FC = () => {
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
 
-      {/* Draws nothing. It registers the renderer for the agent's own files
-          with the assistant-wide registry that `GroupedParts` reads — see
-          `components/host-file.tsx`. */}
-      <HostFilesDataUI />
     </ThreadPrimitive.Root>
   );
 };
@@ -545,6 +538,7 @@ const UserMessage: FC = () => (
     data-role="user"
     className="fade-in animate-in mx-auto grid w-full max-w-(--thread-max-width) auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 px-2 duration-150 [&:where(>*)]:col-start-2"
   >
+    <UserMessageAttachments />
     <div className="col-start-2 min-w-0">
       <div className="bg-muted text-foreground rounded-xl px-4 py-2 wrap-break-word empty:hidden">
         <MessagePrimitive.Parts components={userMessageComponents} />

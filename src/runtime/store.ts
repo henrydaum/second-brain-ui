@@ -68,13 +68,27 @@ export type ToolPart = {
 /**
  * Files in a turn — which are two different things wearing one shape.
  *
- * From the agent they are **host paths**, and showing one means fetching its
- * bytes back (`components/host-file.tsx`). From the person they are the *names*
- * of files they just attached, and there is nothing to fetch: the scratch copy
- * is deleted the moment the kernel ingests it, so the only honest thing to draw
- * is the name they chose. `sent` is which of the two this is.
+ * From the agent they are **host paths** reported by a render frame. From the
+ * person they are durable message-attachment records read from `conv.read`.
+ * `sent` distinguishes the two; `attachments` carries the richer user shape.
  */
-export type FilesPart = { kind: "files"; paths: string[]; sent?: boolean };
+export type MessageAttachment = {
+  /** The durable cached path. Absent only for the brief optimistic interval
+   * between submitting a browser File and reading its stored message row. */
+  path?: string;
+  fileName: string;
+  modality: string;
+  extension: string;
+};
+
+export type FilesPart = {
+  kind: "files";
+  paths: string[];
+  sent?: boolean;
+  /** Structured only for files a user message carried. Agent files continue
+   * to be plain paths supplied by `attachments` frames. */
+  attachments?: MessageAttachment[];
+};
 
 /**
  * A slash command being run.
@@ -201,7 +215,15 @@ export type Action =
    *  see `looksLikeCommand` in `lib/commands.ts`. The reducer cannot work it
    *  out alone, and the guess it used to make was wrong in a way that lost
    *  people's messages. */
-  | { type: "said"; text: string; files?: string[]; isCommand?: boolean }
+  | {
+      type: "said";
+      text: string;
+      attachments?: MessageAttachment[];
+      isCommand?: boolean;
+    }
+  /** Replace the latest optimistic user-file records with the canonical
+   * cached paths read from its newly stored conversation row. */
+  | { type: "hydrateSentAttachments"; attachments: MessageAttachment[] }
   /** Scrollback, read from `conv.read` at boot. Replaces everything. */
   | { type: "history"; turns: Turn[] }
   | { type: "clearForm" }
@@ -447,8 +469,15 @@ export function reduce(state: State, action: Action): State {
       }
 
       const parts: Part[] = [];
-      if (action.files?.length) {
-        parts.push({ kind: "files", paths: action.files, sent: true });
+      if (action.attachments?.length) {
+        parts.push({
+          kind: "files",
+          paths: action.attachments.map(
+            (attachment) => attachment.path ?? attachment.fileName,
+          ),
+          sent: true,
+          attachments: action.attachments,
+        });
       }
       if (action.text) {
         parts.push({
@@ -484,6 +513,41 @@ export function reduce(state: State, action: Action): State {
         suppressedCommand: null,
         buttons: [],
       };
+    }
+
+    case "hydrateSentAttachments": {
+      const expected = action.attachments.map((file) => file.fileName);
+      for (let index = state.turns.length - 1; index >= 0; index--) {
+        const turn = state.turns[index];
+        if (!turn || turn.role !== "user") continue;
+        const files = turn.parts.find(
+          (part): part is FilesPart => part.kind === "files" && part.sent === true,
+        );
+        if (!files) continue;
+        const held = (files.attachments ?? []).map((file) => file.fileName);
+        if (
+          held.length !== expected.length ||
+          held.some((name, at) => name !== expected[at])
+        ) {
+          continue;
+        }
+        const parts = turn.parts.map((part) =>
+          part === files
+            ? {
+                ...files,
+                paths: action.attachments.map((file) => file.path ?? file.fileName),
+                attachments: action.attachments,
+              }
+            : part,
+        );
+        return {
+          ...state,
+          turns: state.turns.map((item, at) =>
+            at === index ? { ...turn, parts } : item,
+          ),
+        };
+      }
+      return state;
     }
 
     case "clearForm":

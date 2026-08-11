@@ -23,7 +23,18 @@
  */
 
 import { sdk } from "@/lib/client";
-import type { ToolPart, Turn } from "@/runtime/store";
+import type {
+  MessageAttachment,
+  ToolPart,
+  Turn,
+} from "@/runtime/store";
+
+type StoredAttachment = {
+  path?: unknown;
+  file_name?: unknown;
+  modality?: unknown;
+  extension?: unknown;
+};
 
 /** One row of the `messages` table, as `conv.read` hands it over. */
 export type StoredMessage = {
@@ -32,6 +43,9 @@ export type StoredMessage = {
   content: string;
   tool_call_id: string | null;
   tool_name: string | null;
+  /** Files this message carried. New kernels always return a list; optional so
+   * conversations from the older row shape remain readable. */
+  attachments?: StoredAttachment[] | null;
   /**
    * When the row was stored, as **fractional epoch seconds** — e.g.
    * `1786158850.6803284`.
@@ -45,6 +59,30 @@ export type StoredMessage = {
    */
   timestamp?: number | null;
 };
+
+function messageAttachments(
+  stored: StoredAttachment[] | null | undefined,
+): MessageAttachment[] {
+  if (!Array.isArray(stored)) return [];
+  const attachments: MessageAttachment[] = [];
+  for (const item of stored) {
+    if (!item || typeof item !== "object") continue;
+    if (typeof item.path !== "string" || !item.path) continue;
+    const fileName =
+      typeof item.file_name === "string" && item.file_name
+        ? item.file_name
+        : item.path.split(/[\\/]/).pop() || item.path;
+    attachments.push({
+      path: item.path,
+      fileName,
+      modality:
+        typeof item.modality === "string" ? item.modality : "unknown",
+      extension:
+        typeof item.extension === "string" ? item.extension : "",
+    });
+  }
+  return attachments;
+}
 
 /** A stored row's time as epoch milliseconds, which is what `Date` wants. */
 function momentOf(message: StoredMessage): number | undefined {
@@ -181,15 +219,31 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
       open = null;
       pending = new Map();
       const text = prose(message.content);
-      if (text === null) continue;
+      const attachments = messageAttachments(message.attachments);
+      if (text === null && attachments.length === 0) continue;
+      const parts: Turn["parts"] = [];
+      if (attachments.length) {
+        parts.push({
+          kind: "files",
+          paths: attachments.map((attachment) => attachment.path!),
+          sent: true,
+          attachments,
+        });
+      }
+      if (text !== null) {
+        parts.push({
+          kind: "text",
+          streamId: `stored-${message.id}`,
+          text,
+          done: true,
+        });
+      }
       turns.push({
         // Row ids are the database's own and unique within a conversation,
         // which is exactly the stability assistant-ui wants from a message key.
         id: `stored-${message.id}`,
         role: "user",
-        parts: [
-          { kind: "text", streamId: `stored-${message.id}`, text, done: true },
-        ],
+        parts,
         running: false,
         aborted: false,
         createdAt: momentOf(message),

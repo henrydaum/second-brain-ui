@@ -263,3 +263,38 @@ describe("approval cancellation acknowledgements", () => {
     ]);
   });
 });
+
+describe("sent attachment hydration", () => {
+  it("replaces optimistic names with the cached paths from conv.read", () => {
+    let state = reduce(initialState, {
+      type: "said",
+      text: "Look at this",
+      attachments: [
+        {
+          fileName: "chart.png",
+          modality: "image",
+          extension: "png",
+        },
+      ],
+    });
+    state = reduce(state, {
+      type: "hydrateSentAttachments",
+      attachments: [
+        {
+          path: "/workspace/attachments/1_chart.png",
+          fileName: "chart.png",
+          modality: "image",
+          extension: "png",
+        },
+      ],
+    });
+
+    expect(state.turns[0]?.parts[0]).toMatchObject({
+      kind: "files",
+      paths: ["/workspace/attachments/1_chart.png"],
+      attachments: [
+        { path: "/workspace/attachments/1_chart.png", fileName: "chart.png" },
+      ],
+    });
+  });
+});

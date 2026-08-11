@@ -1,66 +1,97 @@
-/**
- * Files the person attached.
- *
- * **Named, not fetched.** These arrive as the *names* of files that were just
- * sent, and there is nothing to read back: ingesting a file moves it, so the
- * scratch copy it was written to is gone by the time this renders. Drawing the
- * name they chose is the only honest thing available.
- *
- * Files the *agent* produced used to live here too, fetched a chunk at a time
- * through `fs.read_bytes` and reassembled into an object URL. They have moved
- * to `components/turn-files.tsx`, for two reasons. The bytes now come from
- * `GET /files`, which hands the browser a URL and a `Content-Type` instead of a
- * blob held in memory — the only way a video can seek, and the difference
- * between six recognised image extensions and every kind of file there is. And
- * the paths now come from the ledger rather than from the frame, because a
- * frame does not survive a reload and `conversation_messages` has nowhere to
- * keep one.
- */
+/** Files a user message carried, above the prose rather than inside it. */
 
-import type { FC } from "react";
-import { PaperclipIcon } from "lucide-react";
+import type { FC, ReactNode } from "react";
+import { useAuiState } from "@assistant-ui/react";
 
-import {
-  makeAssistantDataUI,
-  type DataMessagePartProps,
-} from "@assistant-ui/react";
-import { nameOf } from "@/lib/files";
-import { HOST_FILES } from "@/runtime/convert";
+import { FileKindIcon } from "@/components/file-kind-icon";
+import { preloadFileViewer } from "@/components/lazy-file-viewer";
+import { fileUrl } from "@/lib/client";
+import { guessKind } from "@/lib/files";
+import { SENT_ATTACHMENTS } from "@/runtime/convert";
+import { useFileActivity } from "@/runtime/file-activity-provider";
+import type { MessageAttachment } from "@/runtime/store";
 
-type HostFiles = { paths: string[] };
+function messageAttachments(value: unknown): MessageAttachment[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is MessageAttachment =>
+      item !== null &&
+      typeof item === "object" &&
+      typeof (item as MessageAttachment).fileName === "string",
+  );
+}
 
-export const HostFiles: FC<DataMessagePartProps<HostFiles>> = ({ data }) => (
-  <div className="my-2 flex flex-wrap items-start gap-2">
-    {data.paths.map((path: string) => (
-      <span
-        key={path}
-        className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs"
-      >
-        <PaperclipIcon className="size-3.5" aria-hidden />
-        {nameOf(path)}
-      </span>
-    ))}
-  </div>
-);
+export const UserMessageAttachments: FC = () => {
+  const { view } = useFileActivity();
+  const stored = useAuiState(
+    (state) => state.message.metadata.custom[SENT_ATTACHMENTS],
+  );
+  const attachments = messageAttachments(stored);
+  if (!attachments.length) return null;
 
-/**
- * Register the renderer above with assistant-ui, for the duration of the mount.
- *
- * **There are two different registries and they are not interchangeable.**
- * Passing `components={{ data: { by_name } }}` to `MessagePrimitive.Parts`
- * registers a renderer for *that* subtree, which is how a person's own
- * attachments render inside `UserMessage`. `MessagePrimitive.GroupedParts` —
- * what assistant messages use, because they interleave text and tool calls —
- * takes no `components` prop at all: it hands the render function a
- * `dataRendererUI` looked up in the assistant-wide registry, and returns `null`
- * when nothing is registered there.
- *
- * Only user messages carry this part now, so only the first registry is
- * strictly needed. This stays anyway: it costs nothing, it draws nothing, and
- * the next named data part to appear on an assistant message would otherwise
- * rediscover the same silent `null` from scratch.
- */
-export const HostFilesDataUI = makeAssistantDataUI<HostFiles>({
-  name: HOST_FILES,
-  render: HostFiles,
-});
+  const paths = attachments.flatMap((attachment) =>
+    attachment.path ? [attachment.path] : [],
+  );
+
+  return (
+    <div className="col-span-full col-start-1 row-start-1 flex max-w-full flex-wrap justify-end gap-2">
+      {attachments.map((attachment, position) => {
+        const path = attachment.path;
+        const tile = <AttachmentTile attachment={attachment} />;
+        if (!path) {
+          return (
+            <div key={`${attachment.fileName}-${position}`} title={attachment.fileName}>
+              {tile}
+            </div>
+          );
+        }
+        const index = paths.indexOf(path);
+        return (
+          <button
+            key={`${path}-${position}`}
+            type="button"
+            aria-label={`View ${attachment.fileName}`}
+            title={attachment.fileName}
+            onClick={() => view(paths, index)}
+            onPointerEnter={preloadFileViewer}
+            onFocus={preloadFileViewer}
+            className="focus-visible:ring-ring rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2"
+          >
+            {tile}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
+const AttachmentTile: FC<{ attachment: MessageAttachment }> = ({
+  attachment,
+}) => {
+  const image =
+    attachment.modality === "image" ||
+    guessKind(attachment.fileName) === "image";
+  const icon: ReactNode = (
+    <FileKindIcon
+      path={attachment.fileName}
+      className="text-muted-foreground size-5"
+    />
+  );
+
+  return (
+    <span className="bg-muted/60 relative flex size-14 items-center justify-center overflow-hidden rounded-md border shadow-sm">
+      {icon}
+      {image && attachment.path && (
+        <img
+          src={fileUrl(attachment.path)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={(event) => event.currentTarget.remove()}
+          className="absolute inset-0 size-full object-cover"
+        />
+      )}
+      <span className="sr-only">{attachment.fileName}</span>
+    </span>
+  );
+};

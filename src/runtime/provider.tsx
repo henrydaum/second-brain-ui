@@ -66,7 +66,11 @@ import {
   markRead,
   type Notification,
 } from "@/lib/notifications";
-import { attachmentSubmitArgs, uploadToHost } from "@/lib/upload";
+import {
+  attachmentSubmitArgs,
+  extensionOf,
+  uploadToHost,
+} from "@/lib/upload";
 import { convertMessage } from "@/runtime/convert";
 import {
   initialInputRequests,
@@ -80,7 +84,13 @@ import {
   unreadCount,
   type Banner,
 } from "@/runtime/notifications";
-import { initialState, reduce, type State } from "@/runtime/store";
+import {
+  initialState,
+  reduce,
+  type FilesPart,
+  type MessageAttachment,
+  type State,
+} from "@/runtime/store";
 import {
   forgetStagedPath,
   rememberStagedPath,
@@ -416,6 +426,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationId, setConversationId] = useState<number | null>(null);
+  const conversationIdRef = useRef<number | null>(null);
+  conversationIdRef.current = conversationId;
 
   /**
    * The catalogue, readable from a callback without becoming a dependency of
@@ -1212,6 +1224,46 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
   /* ── The runtime ────────────────────────────────────────────────── */
 
+  const hydrateSentAttachments = useCallback(async (names: string[], text: string) => {
+    const id = conversationIdRef.current;
+    if (id === null) return;
+
+    // The HTTP frontend acknowledges a background submit before the runtime
+    // stores its row. Read only until that row appears, then patch the local
+    // user turn without replacing the assistant turn that may be streaming.
+    for (let attempt = 0; attempt < 12; attempt++) {
+      try {
+        const turns = await readConversation(id);
+        const user = [...turns].reverse().find((turn) => turn.role === "user");
+        const storedText =
+          user?.parts
+            .filter((part) => part.kind === "text")
+            .map((part) => part.text)
+            .join("\n") ?? "";
+        const files = user?.parts.find(
+          (part): part is FilesPart =>
+            part.kind === "files" && part.sent === true,
+        );
+        const attachments = files?.attachments ?? [];
+        const storedNames = attachments.map((file) => file.fileName);
+        if (
+          storedText.trim() === text &&
+          storedNames.length === names.length &&
+          storedNames.every((name, index) => name === names[index])
+        ) {
+          if (conversationIdRef.current === id) {
+            dispatch({ type: "hydrateSentAttachments", attachments });
+          }
+          return;
+        }
+      } catch {
+        // This is an optimistic enhancement; the normal history path reports
+        // persistent read failures and a later reload can still hydrate it.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+  }, []);
+
   /** Every callback below is `useCallback` with no dependencies, so the adapter
    *  keeps one identity for the life of the page. They talk to the server and
    *  dispatch; neither needs to read state, and rebuilding them on every frame
@@ -1232,15 +1284,33 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         .map((attachment) => ({
           path: stagedPath(attachment.id),
           name: attachment.name,
+          modality:
+            attachment.type === "image"
+              ? "image"
+              : attachment.contentType?.split("/", 1)[0] || "unknown",
+          extension: extensionOf(attachment.name),
         }))
-        .filter((file): file is { path: string; name: string } =>
-          Boolean(file.path),
+        .filter(
+          (
+            file,
+          ): file is {
+            path: string;
+            name: string;
+            modality: string;
+            extension: string;
+          } => Boolean(file.path),
         );
+
+      const attachments: MessageAttachment[] = files.map((file) => ({
+        fileName: file.name,
+        modality: file.modality,
+        extension: file.extension,
+      }));
 
       dispatch({
         type: "said",
         text,
-        files: files.map((file) => file.name),
+        attachments,
         // A message carrying files is a message, whatever it starts with —
         // there is no such thing as a slash command with an attachment.
         isCommand:
@@ -1253,6 +1323,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
           // action. A sequence cannot work: the first attachment hands priority
           // to the agent, making every later attachment the wrong actor type.
           await sdk("frontend.submit", attachmentSubmitArgs(files, text));
+          void hydrateSentAttachments(
+            files.map((file) => file.name),
+            text,
+          );
           return;
         }
 
@@ -1261,7 +1335,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         report(error);
       }
     },
-    [report],
+    [hydrateSentAttachments, report],
   );
 
   const onCancel = useCallback(async () => {
