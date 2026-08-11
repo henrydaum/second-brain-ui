@@ -1,9 +1,10 @@
 {
 	auto_https off
 	admin off
+	default_bind 127.0.0.1
 }
 
-http://127.0.0.1:4173 {
+http://:4173 {
 	header {
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"

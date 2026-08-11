@@ -47,7 +47,7 @@ export const App: FC = () => {
             drawer, and the chip under each reply — are in different branches
             of it. */}
         <FileActivityProvider>
-          <div className="flex h-dvh w-full overflow-hidden">
+          <div className="flex h-dvh w-full overflow-hidden pt-[env(safe-area-inset-top)]">
             <ConversationSidebar open={navOpen} onOpenChange={setNavOpen} />
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <SessionBar onOpenNav={() => setNavOpen(true)} />

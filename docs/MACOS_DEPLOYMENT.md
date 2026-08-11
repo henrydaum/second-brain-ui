@@ -130,9 +130,54 @@ longer needed.
 - `http_allowed_origins` stays empty because the browser uses one origin.
 - Do not bind port 4173 to the LAN or forward it through a router.
 
-For a later Tailscale deployment, point persistent Tailscale Serve at
-`http://127.0.0.1:4173`. For Cloudflare, put Access in front of the tunnel before
-forwarding to the same address. Neither requires changing the frontend build.
+## Private remote access with Tailscale
+
+Install Tailscale on the Mac Mini, iPhone, and Windows PC and sign all three in
+to the same tailnet. On the Mac Mini, publish Caddy as a persistent private
+HTTPS service:
+
+```bash
+tailscale serve --bg http://127.0.0.1:4173
+tailscale serve status
+```
+
+The status command prints the canonical `https://...ts.net` URL. Open that URL
+on the other two devices while Tailscale is connected. Use that URL for normal
+access and for installing the UI as an app; an installed web app is tied to its
+origin, so do not install it from the loopback URL first.
+
+`--bg` makes the Serve configuration survive Tailscale and machine restarts.
+This is **Tailscale Serve**, which is private to the tailnet. Do not enable
+Tailscale Funnel, bind Caddy to the LAN, or forward either local port through a
+router. To inspect or remove the remote endpoint later:
+
+```bash
+tailscale serve status
+tailscale serve reset
+```
+
+If the Tailscale command is not found when using the graphical macOS app, use
+the app's CLI installation option or run the binary from its documented app
+location. Tailscale Serve may prompt once to enable HTTPS certificates.
+
+### Install as an app
+
+- **iPhone:** Open the `https://...ts.net` URL in Safari, use Share, choose
+  **Add to Home Screen**, keep **Open as Web App** enabled if iOS offers it,
+  then tap **Add**.
+- **Windows:** Open the same URL in Microsoft Edge, choose **Apps > Install
+  Second Brain** (or use the install icon in the address bar), then choose the
+  taskbar/Start options you want.
+
+The first PWA release intentionally has no service worker. The manifest gives
+it a standalone window and app icon, while every UI and API request remains
+live. This avoids caching private conversations, files, SSE, or stale frontend
+code. Consequently the app requires the Mac Mini and Tailscale connection to be
+available; offline mode can be designed separately if it ever becomes useful.
+
+For a later Cloudflare deployment, put Access in front of the tunnel before
+forwarding to `http://127.0.0.1:4173`. It does not require changing the frontend
+build.
 
 ## Port 8787 troubleshooting
 
