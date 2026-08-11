@@ -27,7 +27,7 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { cn } from "@/lib/utils";
-import { stagedPath } from "@/runtime/staged-attachments";
+import { useStagedPath } from "@/runtime/staged-attachments";
 
 const useFileSrc = (file: File | undefined) => {
   const [src, setSrc] = useState<string | undefined>(undefined);
@@ -225,7 +225,8 @@ const AttachmentUI: FC = () => {
 
   const isImage = useAuiState((s) => s.attachment.type === "image");
   const attachmentId = useAuiState((s) => s.attachment.id);
-  const hostPath = isComposer ? stagedPath(attachmentId) : undefined;
+  const uploadedPath = useStagedPath(attachmentId);
+  const hostPath = isComposer ? uploadedPath : undefined;
   const typeLabel = useAuiState((s) => {
     const type = s.attachment.type;
     switch (type) {
@@ -247,7 +248,7 @@ const AttachmentUI: FC = () => {
           "aui-attachment-root relative shrink-0",
           isComposer &&
             "flex h-12 w-24 items-stretch overflow-hidden rounded-full border bg-muted sm:block sm:h-auto sm:w-auto sm:overflow-visible sm:rounded-none sm:border-0 sm:bg-transparent",
-          isComposer && isImage && "w-32 bg-transparent sm:w-auto",
+          isComposer && isImage && "bg-transparent",
           isImage &&
             !isComposer &&
             "aui-attachment-root-message only:*:first:size-24",
@@ -297,10 +298,12 @@ const AttachmentRemove: FC = () => {
     <AttachmentPrimitive.Remove asChild>
       <TooltipIconButton
         tooltip="Remove file"
-        className="aui-attachment-tile-remove text-muted-foreground absolute end-0.5 top-1/2 z-10 size-11 -translate-y-1/2 rounded-full bg-background/85 shadow-sm backdrop-blur-[2px] active:bg-background/95! sm:end-1.5 sm:top-1.5 sm:size-3.5 sm:translate-y-0 sm:bg-white/60 sm:backdrop-blur-none sm:hover:bg-white/90! [&_svg]:text-black/70 sm:hover:[&_svg]:text-destructive"
+        className="aui-attachment-tile-remove group text-muted-foreground absolute end-0.5 top-1/2 z-10 size-11 -translate-y-1/2 rounded-full bg-transparent shadow-none sm:end-1.5 sm:top-1.5 sm:size-3.5 sm:translate-y-0 sm:bg-white/60 sm:shadow-sm sm:hover:bg-white/90! sm:hover:[&_svg]:text-destructive"
         side="top"
       >
-        <XIcon className="aui-attachment-remove-icon size-4 sm:size-3 dark:stroke-[2.5px]" />
+        <span className="bg-background/85 flex size-9 items-center justify-center rounded-full shadow-sm backdrop-blur-[2px] group-active:bg-background/95 sm:size-full sm:bg-transparent sm:shadow-none sm:backdrop-blur-none">
+          <XIcon className="aui-attachment-remove-icon size-4 text-black/70 sm:size-3 dark:stroke-[2.5px]" />
+        </span>
       </TooltipIconButton>
     </AttachmentPrimitive.Remove>
   );
