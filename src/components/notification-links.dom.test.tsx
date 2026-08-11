@@ -281,6 +281,7 @@ describe("Settings lands where it was asked to", () => {
         turns: [],
         typing: false,
         suppressedCommand: null,
+        suppressNextCancellationNotice: false,
         buttons: [],
         error: null,
         shownText: [],

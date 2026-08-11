@@ -231,3 +231,35 @@ describe("an uninterrupted reply", () => {
     expect(state.carried).toEqual({});
   });
 });
+
+describe("approval cancellation acknowledgements", () => {
+  it("keeps the exact Cancelled acknowledgement out of the conversation", () => {
+    let state = reduce(initialState, {
+      type: "suppressNextCancellationNotice",
+    });
+    state = reduce(state, {
+      type: "frame",
+      frame: { kind: "messages", payload: ["Cancelled."] } as Frame,
+    });
+
+    expect(state.turns).toEqual([]);
+    expect(state.suppressNextCancellationNotice).toBe(false);
+  });
+
+  it("does not hide other text after an approval dialog closes", () => {
+    let state = reduce(initialState, {
+      type: "suppressNextCancellationNotice",
+    });
+    state = reduce(state, {
+      type: "frame",
+      frame: {
+        kind: "messages",
+        payload: ["The operation was cancelled after a timeout."],
+      } as Frame,
+    });
+
+    expect(said(state)).toEqual([
+      "The operation was cancelled after a timeout.",
+    ]);
+  });
+});

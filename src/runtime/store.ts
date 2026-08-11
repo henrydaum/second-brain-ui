@@ -151,6 +151,9 @@ export type State = {
    *  independent paths, so its final status can arrive after the panel was
    *  dismissed. Keep its identity long enough to ignore that late tail. */
   suppressedCommand: { callId: string; name: string } | null;
+  /** The approval dialog was explicitly closed, so the kernel's matching
+   *  "Cancelled." acknowledgement is redundant UI chrome, not conversation. */
+  suppressNextCancellationNotice: boolean;
   /** Quick replies offered by a store plugin. */
   buttons: ButtonsPayload;
   error: ErrorPayload | null;
@@ -181,6 +184,7 @@ export const initialState: State = {
   form: null,
   command: null,
   suppressedCommand: null,
+  suppressNextCancellationNotice: false,
   buttons: [],
   error: null,
   shownText: [],
@@ -205,6 +209,9 @@ export type Action =
    *  has printed something is not done being read just because it is done
    *  running. */
   | { type: "clearCommand" }
+  /** Closing an approval dialog is already visible. Suppress only the kernel's
+   *  next exact cancellation acknowledgement, not arbitrary errors or text. */
+  | { type: "suppressNextCancellationNotice" }
   | { type: "clearError" };
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
@@ -483,6 +490,8 @@ export function reduce(state: State, action: Action): State {
       return { ...state, form: null };
     case "clearCommand":
       return { ...state, command: null, form: null };
+    case "suppressNextCancellationNotice":
+      return { ...state, suppressNextCancellationNotice: true };
     case "clearError":
       return { ...state, error: null };
 
@@ -592,6 +601,13 @@ function applyFrame(state: State, frame: Frame): State {
 
     /* Whole messages, already complete. */
     case "messages": {
+      if (
+        state.suppressNextCancellationNotice &&
+        frame.payload.every((text) => /^cancelled\.?$/i.test(text.trim()))
+      ) {
+        return { ...state, suppressNextCancellationNotice: false };
+      }
+
       if (
         state.suppressedCommand &&
         frame.payload.every((text) => /^cancelled\.?$/i.test(text.trim()))

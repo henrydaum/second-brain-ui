@@ -148,9 +148,11 @@ const AttachmentThumb: FC<{ compact: boolean }> = ({ compact }) => {
     <Avatar
       className={cn(
         "aui-attachment-tile-avatar",
-        compact
-          ? "size-7 shrink-0 rounded-md sm:h-full sm:w-full sm:rounded-none"
-          : "h-full w-full rounded-none",
+        compact && src
+          ? "absolute inset-0 h-full w-full rounded-none sm:static"
+          : compact
+            ? "size-6 shrink-0 rounded-none bg-transparent sm:h-full sm:w-full"
+            : "h-full w-full rounded-none",
       )}
     >
       <AvatarImage
@@ -159,7 +161,12 @@ const AttachmentThumb: FC<{ compact: boolean }> = ({ compact }) => {
         className="aui-attachment-tile-image object-cover"
       />
       <AvatarFallback>
-        <Icon className="aui-attachment-tile-fallback-icon text-muted-foreground size-8" />
+        <Icon
+          className={cn(
+            "aui-attachment-tile-fallback-icon text-muted-foreground",
+            compact ? "size-5 sm:size-8" : "size-8",
+          )}
+        />
       </AvatarFallback>
     </Avatar>
   );
@@ -239,7 +246,8 @@ const AttachmentUI: FC = () => {
         className={cn(
           "aui-attachment-root relative shrink-0",
           isComposer &&
-            "flex h-11 max-w-64 items-stretch overflow-hidden rounded-full border bg-muted sm:block sm:h-auto sm:max-w-none sm:overflow-visible sm:rounded-none sm:border-0 sm:bg-transparent",
+            "flex h-12 w-24 items-stretch overflow-hidden rounded-full border bg-muted sm:block sm:h-auto sm:w-auto sm:overflow-visible sm:rounded-none sm:border-0 sm:bg-transparent",
+          isComposer && isImage && "w-32 bg-transparent sm:w-auto",
           isImage &&
             !isComposer &&
             "aui-attachment-root-message only:*:first:size-24",
@@ -252,9 +260,14 @@ const AttachmentUI: FC = () => {
               // `relative`, so the progress and error overlays have something
               // to sit inside.
               className={cn(
-                "aui-attachment-tile bg-muted relative cursor-pointer overflow-hidden transition-opacity hover:opacity-75",
+                "aui-attachment-tile bg-muted relative cursor-pointer overflow-hidden transition-opacity sm:hover:opacity-75",
                 isComposer
-                  ? "flex h-full min-w-0 flex-1 items-center gap-2 border-e px-2.5 text-start sm:size-14 sm:block sm:rounded-md sm:border sm:p-0"
+                  ? cn(
+                      "h-full w-full sm:size-14 sm:block sm:rounded-md sm:border sm:p-0",
+                      isImage
+                        ? "p-0"
+                        : "flex items-center ps-3 pe-11 text-start",
+                    )
                   : "size-14 rounded-md border",
               )}
               aria-label={
@@ -266,11 +279,6 @@ const AttachmentUI: FC = () => {
               onFocus={hostPath ? preloadFileView : undefined}
             >
               <AttachmentThumb compact={isComposer} />
-              {isComposer && (
-                <span className="min-w-0 truncate text-xs sm:hidden">
-                  <AttachmentPrimitive.Name />
-                </span>
-              )}
               <AttachmentProgress />
             </button>
           </TooltipTrigger>
@@ -289,10 +297,10 @@ const AttachmentRemove: FC = () => {
     <AttachmentPrimitive.Remove asChild>
       <TooltipIconButton
         tooltip="Remove file"
-        className="aui-attachment-tile-remove text-muted-foreground hover:[&_svg]:text-destructive relative h-full w-11 rounded-none rounded-e-full bg-transparent shadow-none hover:bg-background/45! sm:absolute sm:end-1.5 sm:top-1.5 sm:size-3.5 sm:rounded-full sm:bg-white/60 sm:shadow-sm sm:hover:bg-white/90! [&_svg]:text-black/70 hover:[&_svg]:text-black"
+        className="aui-attachment-tile-remove text-muted-foreground absolute end-0.5 top-1/2 z-10 size-11 -translate-y-1/2 rounded-full bg-background/85 shadow-sm backdrop-blur-[2px] active:bg-background/95! sm:end-1.5 sm:top-1.5 sm:size-3.5 sm:translate-y-0 sm:bg-white/60 sm:backdrop-blur-none sm:hover:bg-white/90! [&_svg]:text-black/70 sm:hover:[&_svg]:text-destructive"
         side="top"
       >
-        <XIcon className="aui-attachment-remove-icon size-3 dark:stroke-[2.5px]" />
+        <XIcon className="aui-attachment-remove-icon size-4 sm:size-3 dark:stroke-[2.5px]" />
       </TooltipIconButton>
     </AttachmentPrimitive.Remove>
   );

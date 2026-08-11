@@ -848,6 +848,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       // Closed first, for the same reason `resolve` closes first: cancelling
       // drives the state machine, and the POST does not come back until it has.
       askDispatch({ type: "answered", id });
+      // The disappearing dialog is the acknowledgement. The kernel also emits
+      // a literal "Cancelled." message; mark that one protocol echo so it does
+      // not become an assistant line in the conversation.
+      dispatch({ type: "suppressNextCancellationNotice" });
       try {
         // **Not `resolve` with a falsy value.** That would be answering "no" to
         // a yes/no question and nonsense to a free-text one; a sandbox gate

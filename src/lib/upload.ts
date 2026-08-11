@@ -21,11 +21,12 @@ import { sdk } from "@/lib/client";
  * How much of the file goes in one Request.
  *
  * One answer has to fit in one wire message, and base64 costs a third on top of
- * the raw bytes — so 3 MB of file is about 4 MB on the wire, comfortably inside
- * the ~11 MB cap with room for the rest of the envelope. Smaller than it could
- * be, deliberately: the progress bar moves more often and a retry costs less.
+ * the raw bytes. Two megabytes stays below gateways with a 4 MB request-body
+ * limit after base64 and the JSON envelope are added. Smaller than it could be
+ * on a direct connection, deliberately: remote gateways vary, the progress bar
+ * moves more often, and a retry costs less.
  */
-const CHUNK_BYTES = 3 * 1024 * 1024;
+const CHUNK_BYTES = 2 * 1024 * 1024;
 
 /** `btoa` takes a string, so the bytes have to become one first. Done in small
  *  slices because `String.fromCharCode(...bytes)` with a multi-megabyte spread
