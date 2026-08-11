@@ -245,14 +245,14 @@ const Composer: FC = () => {
   return (
       <ComposerPrimitive.Root className="relative flex w-full flex-col">
         <ComposerPrimitive.AttachmentDropzone asChild>
-          <div className="border-primary/25 data-[dragging=true]:border-ring focus-within:border-primary/60 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-2 data-[dragging=true]:border-dashed">
+          <div className="border-primary/25 data-[dragging=true]:border-ring focus-within:border-primary/60 flex w-full flex-col rounded-(--composer-radius) border bg-(--composer-bg) p-2 data-[dragging=true]:border-dashed">
             <ComposerAttachments />
             <ComposerPrimitive.Input
               rows={1}
               autoFocus={finePointer}
               unstable_insertNewlineOnTouchEnter
               placeholder="Message Second Brain"
-              className="placeholder:text-muted-foreground max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
+              className="placeholder:text-muted-foreground mb-2 max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
             />
             <div className="relative flex min-w-0 items-center gap-1">
               <div className="flex min-w-0 items-center gap-1">

@@ -81,16 +81,20 @@ import {
   type Banner,
 } from "@/runtime/notifications";
 import { initialState, reduce, type State } from "@/runtime/store";
+import {
+  forgetStagedPath,
+  rememberStagedPath,
+  stagedPath,
+} from "@/runtime/staged-attachments";
 
 /* ── Attachments ────────────────────────────────────────────────────────
  *
  * The host path an upload produced, kept beside the attachment rather than
  * inside it. `CompleteAttachment.content` is message content — what the model
  * would see — and a scratch path is not that; it is a detail of how the bytes
- * got across. So it lives here, keyed by attachment id, and `onNew` reads it
- * back when the message is actually sent.
+ * got across. So it lives in the shared staged-attachment registry, keyed by
+ * attachment id, and `onNew` reads it back when the message is actually sent.
  */
-const hostPaths = new Map<string, string>();
 
 /** The queue adapter's two lanes, which are always empty — see `queue` in the
  *  provider. One frozen array rather than a fresh literal per render, so the
@@ -142,7 +146,7 @@ const attachmentAdapter: AttachmentAdapter = {
       } satisfies PendingAttachment;
       step = await upload.next();
     }
-    hostPaths.set(id, step.value);
+    rememberStagedPath(id, step.value);
 
     yield {
       ...base,
@@ -165,7 +169,7 @@ const attachmentAdapter: AttachmentAdapter = {
     // The scratch file is left on the host. `fs.delete` is a policy-gated write
     // and would raise a dialog for something the person did not ask about —
     // asking permission to tidy up is worse than the stray temp file.
-    hostPaths.delete(attachment.id);
+    forgetStagedPath(attachment.id);
   },
 };
 
@@ -1222,7 +1226,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       // has to be named explicitly or it loses its identity on the way in.
       const files = (message.attachments ?? [])
         .map((attachment) => ({
-          path: hostPaths.get(attachment.id),
+          path: stagedPath(attachment.id),
           name: attachment.name,
         }))
         .filter((file): file is { path: string; name: string } =>

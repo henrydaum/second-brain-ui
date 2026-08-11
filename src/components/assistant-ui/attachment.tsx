@@ -1,5 +1,6 @@
 ﻿import { type PropsWithChildren, useEffect, useState, type FC } from "react";
 import { AlertCircleIcon, FileText, MicIcon, PlusIcon, XIcon } from "lucide-react";
+import { Suspense } from "react";
 import {
   AttachmentPrimitive,
   ComposerPrimitive,
@@ -19,9 +20,14 @@ import {
   DialogContent,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  LazyFileView,
+  preloadFileView,
+} from "@/components/lazy-file-view";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { cn } from "@/lib/utils";
+import { stagedPath } from "@/runtime/staged-attachments";
 
 const useFileSrc = (file: File | undefined) => {
   const [src, setSrc] = useState<string | undefined>(undefined);
@@ -79,32 +85,57 @@ const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src }) => {
   );
 };
 
-const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
+const AttachmentPreviewDialog: FC<
+  PropsWithChildren<{ hostPath?: string }>
+> = ({ children, hostPath }) => {
   const src = useAttachmentSrc();
 
-  if (!src) return children;
+  if (!src && !hostPath) return children;
 
   return (
     <Dialog>
       <DialogTrigger
-        className="aui-attachment-preview-trigger hover:bg-accent/50 cursor-pointer transition-colors"
+        className="aui-attachment-preview-trigger cursor-pointer transition-colors sm:hover:bg-accent/50"
         asChild
       >
         {children}
       </DialogTrigger>
-      <DialogContent className="aui-attachment-preview-dialog-content [&>button]:bg-foreground/60 [&_svg]:text-background [&>button]:hover:[&_svg]:text-destructive p-2 sm:max-w-3xl [&>button]:rounded-full [&>button]:p-1 [&>button]:opacity-100 [&>button]:ring-0!">
+      <DialogContent
+        className={cn(
+          "aui-attachment-preview-dialog-content [&>button]:bg-foreground/60 [&>button_svg]:text-background [&>button:hover_svg]:text-destructive p-2 sm:max-w-3xl [&>button]:rounded-full [&>button]:p-1 [&>button]:opacity-100 [&>button]:ring-0!",
+          hostPath &&
+            "h-[min(88dvh,48rem)] w-[calc(100vw-1rem)] max-w-4xl grid-rows-[minmax(0,1fr)]",
+        )}
+      >
         <DialogTitle className="aui-sr-only sr-only">
-          Image Attachment Preview
+          Attachment preview
         </DialogTitle>
-        <div className="aui-attachment-preview bg-background relative mx-auto flex max-h-[80dvh] w-full items-center justify-center overflow-hidden">
-          <AttachmentPreview src={src} />
+        <div
+          className={cn(
+            "aui-attachment-preview bg-background relative mx-auto flex w-full items-center justify-center overflow-hidden",
+            hostPath ? "min-h-0 flex-1 self-stretch" : "max-h-[80dvh]",
+          )}
+        >
+          {hostPath ? (
+            <Suspense
+              fallback={
+                <span className="text-muted-foreground text-xs">
+                  Loading preview…
+                </span>
+              }
+            >
+              <LazyFileView path={hostPath} size="full" />
+            </Suspense>
+          ) : (
+            <AttachmentPreview src={src!} />
+          )}
         </div>
       </DialogContent>
     </Dialog>
   );
 };
 
-const AttachmentThumb: FC = () => {
+const AttachmentThumb: FC<{ compact: boolean }> = ({ compact }) => {
   const src = useAttachmentSrc();
   // A voice note has no thumbnail and never will, so it gets its own icon
   // rather than looking like a document that failed to render.
@@ -114,7 +145,14 @@ const AttachmentThumb: FC = () => {
   const Icon = isAudio ? MicIcon : FileText;
 
   return (
-    <Avatar className="aui-attachment-tile-avatar h-full w-full rounded-none">
+    <Avatar
+      className={cn(
+        "aui-attachment-tile-avatar",
+        compact
+          ? "size-7 shrink-0 rounded-md sm:h-full sm:w-full sm:rounded-none"
+          : "h-full w-full rounded-none",
+      )}
+    >
       <AvatarImage
         src={src}
         alt="Attachment preview"
@@ -179,6 +217,8 @@ const AttachmentUI: FC = () => {
   const isComposer = aui.attachment.source !== "message";
 
   const isImage = useAuiState((s) => s.attachment.type === "image");
+  const attachmentId = useAuiState((s) => s.attachment.id);
+  const hostPath = isComposer ? stagedPath(attachmentId) : undefined;
   const typeLabel = useAuiState((s) => {
     const type = s.attachment.type;
     switch (type) {
@@ -198,24 +238,41 @@ const AttachmentUI: FC = () => {
       <AttachmentPrimitive.Root
         className={cn(
           "aui-attachment-root relative shrink-0",
+          isComposer &&
+            "flex h-11 max-w-64 items-stretch overflow-hidden rounded-full border bg-muted sm:block sm:h-auto sm:max-w-none sm:overflow-visible sm:rounded-none sm:border-0 sm:bg-transparent",
           isImage &&
             !isComposer &&
             "aui-attachment-root-message only:*:first:size-24",
         )}
       >
-        <AttachmentPreviewDialog>
+        <AttachmentPreviewDialog hostPath={hostPath}>
           <TooltipTrigger asChild>
-            <div
+            <button
+              type="button"
               // `relative`, so the progress and error overlays have something
               // to sit inside.
-              className="aui-attachment-tile bg-muted relative size-14 cursor-pointer overflow-hidden rounded-md border transition-opacity hover:opacity-75"
-              role="button"
-              tabIndex={0}
-              aria-label={`${typeLabel} attachment`}
+              className={cn(
+                "aui-attachment-tile bg-muted relative cursor-pointer overflow-hidden transition-opacity hover:opacity-75",
+                isComposer
+                  ? "flex h-full min-w-0 flex-1 items-center gap-2 border-e px-2.5 text-start sm:size-14 sm:block sm:rounded-md sm:border sm:p-0"
+                  : "size-14 rounded-md border",
+              )}
+              aria-label={
+                isComposer
+                  ? `View ${typeLabel.toLowerCase()} attachment`
+                  : `${typeLabel} attachment`
+              }
+              onPointerEnter={hostPath ? preloadFileView : undefined}
+              onFocus={hostPath ? preloadFileView : undefined}
             >
-              <AttachmentThumb />
+              <AttachmentThumb compact={isComposer} />
+              {isComposer && (
+                <span className="min-w-0 truncate text-xs sm:hidden">
+                  <AttachmentPrimitive.Name />
+                </span>
+              )}
               <AttachmentProgress />
-            </div>
+            </button>
           </TooltipTrigger>
         </AttachmentPreviewDialog>
         {isComposer && <AttachmentRemove />}
@@ -232,7 +289,7 @@ const AttachmentRemove: FC = () => {
     <AttachmentPrimitive.Remove asChild>
       <TooltipIconButton
         tooltip="Remove file"
-        className="aui-attachment-tile-remove text-muted-foreground hover:[&_svg]:text-destructive absolute end-1.5 top-1.5 size-3.5 rounded-full bg-white/60 shadow-sm hover:bg-white/90! [&_svg]:text-black/70 hover:[&_svg]:text-black"
+        className="aui-attachment-tile-remove text-muted-foreground hover:[&_svg]:text-destructive relative h-full w-11 rounded-none rounded-e-full bg-transparent shadow-none hover:bg-background/45! sm:absolute sm:end-1.5 sm:top-1.5 sm:size-3.5 sm:rounded-full sm:bg-white/60 sm:shadow-sm sm:hover:bg-white/90! [&_svg]:text-black/70 hover:[&_svg]:text-black"
         side="top"
       >
         <XIcon className="aui-attachment-remove-icon size-3 dark:stroke-[2.5px]" />
@@ -253,10 +310,14 @@ export const UserMessageAttachments: FC = () => {
 
 export const ComposerAttachments: FC = () => {
   return (
-    <div className="aui-composer-attachments flex min-w-0 w-full flex-row items-center gap-2 overflow-x-auto pb-1 empty:hidden">
-      <ComposerPrimitive.Attachments>
-        {() => <AttachmentUI />}
-      </ComposerPrimitive.Attachments>
+    <div className="grid min-w-0 grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity,margin] duration-200 ease-out has-[.aui-attachment-root]:mb-2 has-[.aui-attachment-root]:grid-rows-[1fr] has-[.aui-attachment-root]:opacity-100">
+      <div className="min-h-0 overflow-hidden">
+        <div className="aui-composer-attachments flex min-w-0 w-full flex-row items-center gap-2 overflow-x-auto pb-1">
+          <ComposerPrimitive.Attachments>
+            {() => <AttachmentUI />}
+          </ComposerPrimitive.Attachments>
+        </div>
+      </div>
     </div>
   );
 };
