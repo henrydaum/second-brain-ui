@@ -8,12 +8,35 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThemePicker } from "@/components/theme-picker";
 import { THEME_KEY } from "@/lib/theme";
 
+function memoryStorage(): Storage {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => [...values.keys()][index] ?? null,
+    removeItem: (key) => {
+      values.delete(key);
+    },
+    setItem: (key, value) => {
+      values.set(key, value);
+    },
+  };
+}
+
 beforeEach(() => {
-  // Newer Node releases may expose their own partial `localStorage` global.
-  // Pin the DOM test to jsdom's real Storage implementation rather than
-  // depending on which global Vitest happened to install first.
-  vi.stubGlobal("localStorage", window.localStorage);
-  window.localStorage.clear();
+  // Node and jsdom can each install `localStorage`, and some Node/macOS
+  // combinations leave a partial object with no `clear`. This test is about
+  // theme behaviour, not either runtime's storage implementation, so give both
+  // lookup paths one complete deterministic Storage object.
+  const storage = memoryStorage();
+  vi.stubGlobal("localStorage", storage);
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
   document.documentElement.classList.remove("dark");
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
