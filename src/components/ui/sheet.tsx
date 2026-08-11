@@ -15,6 +15,7 @@ function SheetContent({
   className,
   children,
   showCloseButton = false,
+  onOpenAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   side?: "left" | "right";
@@ -32,6 +33,16 @@ function SheetContent({
             : "end-0 border-s data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
           className,
         )}
+        onOpenAutoFocus={(event) => {
+          if (onOpenAutoFocus) {
+            onOpenAutoFocus(event);
+            return;
+          }
+          // Focus the panel, not its first icon button. Auto-focusing that
+          // button opens a tooltip before the person has hovered anything.
+          event.preventDefault();
+          (event.currentTarget as HTMLElement | null)?.focus();
+        }}
         {...props}
       >
         {children}

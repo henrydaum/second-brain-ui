@@ -11,13 +11,16 @@ type MarkdownElementProps<Tag extends keyof React.JSX.IntrinsicElements> =
 /** Tables need their own surface in Settings: command output is operational
  * data, not prose, and should scan like an ordinary application table. */
 const CommandTable: FC<MarkdownElementProps<"table">> = ({ node: _node, ...props }) => (
-  <div className="my-4 w-full overflow-x-auto rounded-lg border">
+  <div className="my-4 min-w-0 max-w-full overflow-x-auto rounded-lg border">
     {/* `table` is Tailwind's `display: table` utility, and it is here on
         purpose. The chat's `.aui-md` stylesheet makes bare tables `display:
         block` so a wide one scrolls inside itself; this table already has a
         scrolling wrapper, so it needs to stay a real table. Utilities outrank
         that stylesheet's layer, which is what lets one word say so. */}
-    <table className="table w-full border-collapse text-sm" {...props} />
+    <table
+      className="table min-w-full w-max max-w-none overflow-visible border-collapse text-sm"
+      {...props}
+    />
   </div>
 );
 
@@ -81,11 +84,11 @@ export const CommandMarkdown: FC<{
 /** One command may emit several message frames. Give each logical result its
  * own renderer without wrapping the whole workflow in another card. */
 export const CommandOutput: FC<{ output: string[] }> = ({ output }) => (
-  <div className="space-y-5">
+  <div className="min-w-0 max-w-full space-y-5">
     {output.map((text, index) => (
       <section
         key={`${index}-${text.slice(0, 24)}`}
-        className={cn(index > 0 && "border-t pt-5")}
+        className={cn("min-w-0 max-w-full", index > 0 && "border-t pt-5")}
       >
         <CommandMarkdown text={text} />
       </section>

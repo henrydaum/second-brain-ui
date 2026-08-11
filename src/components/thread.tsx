@@ -241,15 +241,15 @@ const Composer: FC = () => {
               placeholder="Message Second Brain"
               className="placeholder:text-muted-foreground max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
             />
-            <div className="relative flex items-center justify-between">
-              <div className="flex items-center gap-1">
+            <div className="relative flex min-w-0 items-center gap-1">
+              <div className="flex min-w-0 items-center gap-1">
                 <ComposerAddAttachment />
                 {/* Beside the paperclip because it produces the same thing: a
                     voice note is an attachment, not a second kind of input. */}
                 <VoiceNoteButton />
                 <SecurityModePicker />
               </div>
-              <div className="flex min-w-0 items-center gap-1">
+              <div className="ms-auto flex min-w-0 flex-1 items-center justify-end gap-1">
                 <ModelSelector />
                 <ComposerAction />
               </div>

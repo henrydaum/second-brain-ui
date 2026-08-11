@@ -25,7 +25,6 @@ import {
   PanelLeftOpenIcon,
   SettingsIcon,
   Trash2Icon,
-  XIcon,
 } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -311,15 +310,16 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           opens and closes. */}
       <div className="relative grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-x-1 p-2 pt-11">
         {/* Two buttons, not one with a media query in JavaScript: on a phone
-            this closes an overlay, on a laptop it collapses a rail, and those
-            are different verbs with different icons and different labels. */}
+            this closes an overlay, on a laptop it collapses a rail. They use
+            the same panel-shaped icon because the surface is the same even
+            though the underlying action differs. */}
         <TooltipIconButton
-          tooltip="Close conversations"
+          tooltip="Hide conversations"
           side="right"
           className="absolute top-2 right-2 size-8 md:hidden"
           onClick={closeDrawer}
         >
-          <XIcon className="size-4" />
+          <PanelLeftCloseIcon className="size-4 translate-x-[0.5px]" />
         </TooltipIconButton>
         <TooltipIconButton
           tooltip={railCollapsed ? "Show conversations" : "Hide conversations"}
@@ -363,24 +363,31 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-              aria-label={`Filter conversations: ${selectedFilter.label}`}
-              className={cn(
-                "col-start-3 flex h-6 min-w-0 max-w-28 self-center items-center rounded-full px-2 text-xs font-medium transition-colors",
-                conversationFilter.type === "all"
-                  ? "bg-primary/10 text-primary"
-                  : conversationFilter.category === null
-                    ? "bg-muted text-muted-foreground hover:text-foreground"
-                    : "conversation-category-pill",
-                )}
-                style={
-                  conversationFilter.type === "category" &&
-                  conversationFilter.category !== null
-                    ? categoryColorStyle(conversationFilter.category, categoryColors)
-                    : undefined
-                }
-            >
-              <span className="truncate">{selectedFilterLabel}</span>
-            </button>
+                aria-label={`Filter conversations: ${selectedFilter.label}`}
+                className="group col-start-3 flex min-w-0 max-w-28 self-center items-center justify-center"
+              >
+                {/* Keep the 44px mobile touch target, but paint only the
+                    compact inner pill. Painting the target itself turned short
+                    labels such as All into circles. */}
+                <span
+                  className={cn(
+                    "flex h-6 min-w-0 max-w-full items-center rounded-full px-2 text-xs font-medium transition-colors",
+                    conversationFilter.type === "all"
+                      ? "bg-primary/10 text-primary"
+                      : conversationFilter.category === null
+                        ? "bg-muted text-muted-foreground group-hover:text-foreground"
+                        : "conversation-category-pill",
+                  )}
+                  style={
+                    conversationFilter.type === "category" &&
+                    conversationFilter.category !== null
+                      ? categoryColorStyle(conversationFilter.category, categoryColors)
+                      : undefined
+                  }
+                >
+                  <span className="truncate">{selectedFilterLabel}</span>
+                </span>
+              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"

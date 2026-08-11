@@ -16,12 +16,12 @@
  * Nothing here knows it is audio except the encoder.
  *
  * It lands in the composer rather than sending straight away, deliberately: a
- * voice note you cannot review or caption before it goes is a worse voice note,
- * and the discard button is the whole reason the recording is not a commitment.
+ * voice note can be reviewed, captioned, or removed as an attachment before it
+ * goes. The live state therefore needs only one action: stop and attach.
  */
 
 import { useCallback, useEffect, useRef, useState, type FC } from "react";
-import { MicIcon, SquareIcon, XIcon } from "lucide-react";
+import { MicIcon, SquareIcon } from "lucide-react";
 import { useAui } from "@assistant-ui/react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -87,12 +87,6 @@ export const VoiceNoteButton: FC = () => {
     }
   }, [aui, report]);
 
-  const discard = useCallback(() => {
-    recorder.current?.cancel();
-    recorder.current = null;
-    setRecording(false);
-  }, []);
-
   // Nothing to offer without a microphone API — which is the case on plain
   // http from anywhere but localhost, since `getUserMedia` needs a secure
   // context. Better absent than present and unexplainable.
@@ -118,25 +112,6 @@ export const VoiceNoteButton: FC = () => {
   return (
     <div className="flex items-center gap-1" data-slot="voice-note-recording">
       <TooltipIconButton
-        tooltip="Discard"
-        side="bottom"
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-7 rounded-full"
-        aria-label="Discard recording"
-        onClick={discard}
-      >
-        <XIcon className="size-4" />
-      </TooltipIconButton>
-
-      {/* Tabular figures so the seconds do not shuffle the layout as they
-          climb. */}
-      <span className="text-destructive w-8 text-xs tabular-nums">
-        {elapsed(seconds)}
-      </span>
-
-      <TooltipIconButton
         tooltip="Stop and attach"
         side="bottom"
         type="button"
@@ -148,6 +123,13 @@ export const VoiceNoteButton: FC = () => {
       >
         <SquareIcon className="size-3.5 animate-pulse fill-current" />
       </TooltipIconButton>
+
+      {/* Tabular figures so the seconds do not shuffle the layout as they
+          climb. */}
+      <span className="text-destructive w-8 text-xs tabular-nums">
+        {elapsed(seconds)}
+      </span>
+
     </div>
   );
 };

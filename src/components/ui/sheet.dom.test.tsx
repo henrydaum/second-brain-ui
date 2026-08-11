@@ -28,7 +28,9 @@ describe("Sheet", () => {
 
     const trigger = screen.getByRole("button", { name: "Open files" });
     await user.click(trigger);
-    expect(screen.getByRole("dialog", { name: "Files" })).toBeVisible();
+    const dialog = screen.getByRole("dialog", { name: "Files" });
+    expect(dialog).toBeVisible();
+    expect(dialog).toHaveFocus();
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Files" })).toBeNull();

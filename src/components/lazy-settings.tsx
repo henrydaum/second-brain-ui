@@ -87,14 +87,18 @@ export const SettingsDialog: FC<{
         className="flex h-[min(94dvh,54rem)] w-[min(calc(100vw-1rem),70rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
         overlayClassName="bg-black/45 backdrop-blur-[2px]"
         closeButtonDisabled={commandActionPending}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          (event.currentTarget as HTMLElement | null)?.focus();
+        }}
       >
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4 sm:h-16 sm:px-6">
+        <header className="flex h-14 min-w-0 shrink-0 items-center gap-3 border-b ps-4 pe-14 sm:h-16 sm:px-6 sm:pe-16">
           <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg">
             <Settings2Icon className="size-4" />
           </span>
-          <div>
-            <DialogTitle className="text-base">Second Brain settings</DialogTitle>
-            <DialogDescription className="text-xs">
+          <div className="min-w-0">
+            <DialogTitle className="truncate text-base">Second Brain settings</DialogTitle>
+            <DialogDescription className="truncate text-xs">
               Kernel, agents, security, plugins, and packages
             </DialogDescription>
           </div>

@@ -197,7 +197,7 @@ const AttachmentUI: FC = () => {
     <Tooltip>
       <AttachmentPrimitive.Root
         className={cn(
-          "aui-attachment-root relative",
+          "aui-attachment-root relative shrink-0",
           isImage &&
             !isComposer &&
             "aui-attachment-root-message only:*:first:size-24",
@@ -253,7 +253,7 @@ export const UserMessageAttachments: FC = () => {
 
 export const ComposerAttachments: FC = () => {
   return (
-    <div className="aui-composer-attachments flex w-full flex-row items-center gap-2 overflow-x-auto empty:hidden">
+    <div className="aui-composer-attachments flex min-w-0 w-full flex-row items-center gap-2 overflow-x-auto pb-1 empty:hidden">
       <ComposerPrimitive.Attachments>
         {() => <AttachmentUI />}
       </ComposerPrimitive.Attachments>

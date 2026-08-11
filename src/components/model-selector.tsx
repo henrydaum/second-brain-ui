@@ -56,7 +56,7 @@ export function ModelSelector() {
           variant="ghost"
           size="sm"
           aria-label={modelName ? `Model: ${modelName}` : "Select model"}
-          className="text-muted-foreground hover:text-foreground h-7 max-w-36 gap-1 px-2 text-xs sm:max-w-52"
+          className="text-muted-foreground hover:text-foreground h-7 min-w-0 max-w-36 flex-1 gap-1 px-2 text-xs sm:max-w-52"
         >
           {switchingModel && <LoaderCircleIcon className="size-3 animate-spin" />}
           <span className="truncate">{label}</span>

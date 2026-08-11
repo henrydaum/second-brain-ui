@@ -71,8 +71,10 @@ export const SecurityModePicker: FC = () => {
           aria-label={`Security mode: ${selected.label}`}
         >
           <ShieldCheckIcon className="size-3.5" />
-          <span>{changing ? "Changing…" : selected.label}</span>
-          <ChevronDownIcon className="size-3" />
+          <span className="hidden sm:inline">
+            {changing ? "Changing…" : selected.label}
+          </span>
+          <ChevronDownIcon className="hidden size-3 sm:block" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

@@ -40,6 +40,7 @@ export function TooltipIconButton({
   size = "icon",
   className,
   children,
+  onClick,
   ...props
 }: TooltipIconButtonProps) {
   return (
@@ -54,6 +55,14 @@ export function TooltipIconButton({
           // says "Stop and attach" — can still override it.
           aria-label={tooltip}
           className={cn("shrink-0", className)}
+          onClick={(event) => {
+            onClick?.(event);
+            // A pointer click leaves focus on the trigger. If that click also
+            // opens or changes a surface, Radix otherwise presents its focus
+            // tooltip as if the person hovered the newly labelled button.
+            // Keyboard activation has detail 0 and keeps its useful focus.
+            if (event.detail > 0) event.currentTarget.blur();
+          }}
           {...props}
         >
           {children}

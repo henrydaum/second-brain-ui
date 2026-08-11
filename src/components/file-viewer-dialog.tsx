@@ -62,10 +62,14 @@ export const FileViewerDialog: FC = () => {
   return (
     <Dialog open onOpenChange={(open) => !open && closeView()}>
       <DialogContent
-        className="h-[min(92dvh,52rem)] w-[calc(100vw-1rem)] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-3 sm:w-full sm:max-w-4xl sm:p-4"
+        className="h-[min(92dvh,52rem)] min-w-0 w-[calc(100vw-1rem)] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-3 sm:w-full sm:max-w-4xl sm:p-4"
         overlayClassName="bg-black/50"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          (event.currentTarget as HTMLElement | null)?.focus();
+        }}
       >
-        <DialogHeader className="pe-8">
+        <DialogHeader className="min-w-0 pe-12">
           <DialogTitle className="truncate text-base" title={path}>
             {nameOf(path)}
           </DialogTitle>
@@ -76,7 +80,7 @@ export const FileViewerDialog: FC = () => {
 
         {/* The file and its arrows on one row, so paging does not move the
             thing you are looking at. */}
-        <div className="flex min-h-0 items-center gap-2">
+        <div className="flex min-h-0 min-w-0 items-center gap-2">
           {many && (
             <TooltipIconButton
               tooltip="Previous file"
@@ -115,7 +119,7 @@ export const FileViewerDialog: FC = () => {
           )}
         </div>
 
-        <div className="text-muted-foreground flex items-center justify-between text-xs">
+        <div className="text-muted-foreground flex min-w-0 items-center justify-between gap-3 pb-[env(safe-area-inset-bottom)] text-xs">
           <span>
             {many
               ? `${viewing.index + 1} of ${viewing.paths.length}`
@@ -124,7 +128,7 @@ export const FileViewerDialog: FC = () => {
           <a
             href={fileUrl(path)}
             download={nameOf(path)}
-            className="hover:text-foreground inline-flex items-center gap-1.5"
+            className="hover:text-foreground inline-flex shrink-0 items-center gap-1.5"
           >
             <DownloadIcon className="size-3.5" aria-hidden />
             Download
