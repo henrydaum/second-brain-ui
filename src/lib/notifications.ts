@@ -120,6 +120,37 @@ export function settingNamesOf(body: string): string[] {
     .filter((name) => /^[a-z][a-z0-9_.]*$/i.test(name));
 }
 
+/**
+ * Whether `/config` can actually open this setting.
+ *
+ * **Being a real setting is not enough.** A declaration carrying `hidden` is
+ * left out of `/config`'s catalogue on purpose — `llm_profiles` is managed
+ * through `/llm`, `scheduled_jobs` through the timekeeper — and the command
+ * validates `setting_name` against exactly that catalogue. So the name a
+ * "Settings changed" notification carries is a name `/config` may well refuse:
+ * `announce_config_change` reports whatever was written, hidden or not, which is
+ * right for an announcement and wrong for a command line. Sending one anyway
+ * printed the enum of every settable key into the chat as an error.
+ *
+ * `config.read` with `details` is the catalogue itself, filtered server-side by
+ * `key` so the answer is one item or none rather than the whole list.
+ *
+ * **A failed read answers "no".** The fallback is the Configuration section,
+ * which is merely less specific; the other way to be wrong is a rejected
+ * command in the transcript.
+ */
+export async function settingIsBrowsable(name: string): Promise<boolean> {
+  try {
+    const found = await sdk<{ key?: string }[] | null>("config.read", {
+      details: true,
+      key: name,
+    });
+    return (found ?? []).some((item) => item.key === name);
+  } catch {
+    return false;
+  }
+}
+
 /** Newest first, like the table. `since_id` is an index seek rather than a
  *  scan, which is what makes the reconnect top-up cheap. */
 export function listNotifications(

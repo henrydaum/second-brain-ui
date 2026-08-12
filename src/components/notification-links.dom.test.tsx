@@ -14,22 +14,44 @@
  * an SSE connection between the test and the assertion.
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NotificationPanel } from "@/components/notification-panel";
 import { SettingsDialogContent } from "@/components/settings-dialog";
 import type { Notification } from "@/lib/notifications";
 import * as provider from "@/runtime/provider";
 
+/**
+ * The one Request these links make: "can `/config` open this setting?".
+ *
+ * Only `sdk` is replaced. The rest of `client.ts` — `fileUrl`, `THREAD` — is
+ * loaded by the markdown renderers underneath the panel, and a bare stub would
+ * take those away from a test that has nothing to say about them.
+ */
+const sdk = vi.fn();
+vi.mock("@/lib/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/client")>()),
+  sdk: (...args: unknown[]) => sdk(...args),
+}));
+
 afterEach(cleanup);
+
+/** Browsable unless a test says otherwise: `config.read` with a `key` answers
+ *  the one matching catalogue entry, or nothing for a hidden setting. */
+beforeEach(() => {
+  sdk.mockReset();
+  sdk.mockImplementation(async (_type: string, args: { key: string }) => [
+    { key: args.key },
+  ]);
+});
 
 const row = (over: Partial<Notification> = {}): Notification => ({
   id: 1,
   ts: 1_786_384_521,
   title: "Settings changed",
-  body: "scheduled_jobs",
+  body: "http_port",
   source: "config",
   source_id: "core",
   level: "info",
@@ -122,10 +144,47 @@ describe("the links out of a notification", () => {
 
     await user.click(screen.getByRole("button", { name: "Open settings" }));
 
-    expect(say).toHaveBeenCalledWith("/config all scheduled_jobs");
+    await waitFor(() =>
+      expect(say).toHaveBeenCalledWith("/config all http_port"),
+    );
     // And the dialog goes up now rather than a round trip later — which is also
     // where a failed submit lands.
     expect(openSettings).toHaveBeenCalledWith("config");
+  });
+
+  it("sends the setting nowhere `/config` refuses to go", async () => {
+    // `hidden` settings are announced like any other and are not in `/config`'s
+    // catalogue, so the command comes back as the enum of every settable key
+    // printed into the chat. `scheduled_jobs` belongs to the timekeeper and has
+    // no page of its own, so the section is as far as this can honestly go.
+    sdk.mockResolvedValue([]);
+    const { say, openSettings, user } = stub({
+      notifications: [row({ body: "scheduled_jobs" })],
+    });
+    render(<NotificationPanel />);
+
+    await user.click(screen.getByRole("button", { name: "Open settings" }));
+
+    await waitFor(() => expect(sdk).toHaveBeenCalled());
+    expect(say).not.toHaveBeenCalled();
+    expect(openSettings).toHaveBeenCalledWith("config");
+  });
+
+  it("sends a setting managed elsewhere to the section that manages it", async () => {
+    // `default_llm_profile` is `/llm`'s to edit, which lives on Agents and
+    // Models. Configuration is the one page that provably does not list it, and
+    // asking the kernel about it is not worth a round trip when the answer is
+    // already known.
+    const { say, openSettings, user } = stub({
+      notifications: [row({ body: "default_llm_profile" })],
+    });
+    render(<NotificationPanel />);
+
+    await user.click(screen.getByRole("button", { name: "Open settings" }));
+
+    expect(openSettings).toHaveBeenCalledWith("agents");
+    expect(say).not.toHaveBeenCalled();
+    expect(sdk).not.toHaveBeenCalled();
   });
 
   it("offers the section, once, when several settings changed", async () => {

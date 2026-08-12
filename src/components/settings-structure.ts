@@ -151,6 +151,33 @@ export function pageForNotification(source: string): SettingsPageId | null {
 }
 
 /**
+ * The section that owns a setting `/config` will not open.
+ *
+ * **These have a home; it is just not Configuration.** A `hidden` declaration
+ * means the setting is managed somewhere better than a generic key/value form —
+ * `default_llm_profile` and `llm_profiles` through `/llm`, the agent profiles
+ * through `/agent`, `frontend_profiles` through `/frontends` — and `/config`
+ * leaves every one of them out of its catalogue. Landing on Configuration for
+ * those is landing on the one page that provably does not list them.
+ *
+ * Only the settings with somewhere better to be. A hidden setting managed by
+ * nothing the UI shows — `scheduled_jobs`, which belongs to the timekeeper
+ * service — is absent on purpose and falls back to the section, where the
+ * notification body has already named it.
+ */
+const SETTING_PAGES: Record<string, SettingsPageId> = {
+  llm_profiles: "agents",
+  default_llm_profile: "agents",
+  agent_profiles: "agents",
+  active_agent_profile: "agents",
+  frontend_profiles: "plugins",
+};
+
+export function pageForSetting(setting: string): SettingsPageId | null {
+  return SETTING_PAGES[setting] ?? null;
+}
+
+/**
  * The command that opens one setting.
  *
  * `/config` takes its arguments positionally — category, then setting name — and

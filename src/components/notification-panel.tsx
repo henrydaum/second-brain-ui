@@ -24,6 +24,7 @@ import { CommandMarkdown } from "@/components/command-renderers";
 import { LevelIcon } from "@/components/notification-level";
 import {
   pageForNotification,
+  pageForSetting,
   settingCommand,
 } from "@/components/settings-structure";
 import {
@@ -35,6 +36,7 @@ import {
   atOf,
   isUnread,
   levelOf,
+  settingIsBrowsable,
   settingNamesOf,
   type Notification,
 } from "@/lib/notifications";
@@ -164,21 +166,31 @@ const Row: FC<{ row: Notification }> = ({ row }) => {
   const setting = settings.length === 1 ? settings[0] : null;
 
   /**
-   * Open Settings, then drill into the setting.
+   * Open Settings, then drill into the setting — when there is anything to
+   * drill into.
    *
-   * **Both, in that order, and the order is the point.** `openSettings` puts the
-   * dialog up now; the command is a round trip away, and a link that did nothing
-   * visible until the server answered would read as broken. It also decides
-   * where a *failed* submit lands: the Configuration section, rather than
-   * nowhere.
+   * **Three destinations, because settings have three kinds of home.** One
+   * `/config` can open, which is the drill-in this link exists for. One managed
+   * elsewhere — the model and agent profiles — where the honest destination is
+   * the section that does manage it, and `/config` would refuse the name
+   * anyway. And one managed by neither, which is the section it was announced
+   * from.
+   *
+   * **The dialog goes up before the command, and the order is the point.**
+   * `openSettings` puts it there now; the command is a round trip away, and a
+   * link that did nothing visible until the server answered would read as
+   * broken. It also decides where a *failed* submit lands: a settings page,
+   * rather than nowhere.
    *
    * They do not fight. Once the command is running, Settings' own effect keeps
    * the page on `config` because that is where `/config` belongs, so the eager
    * open and the command agree about the destination.
    */
-  const openSetting = (setting: string) => {
-    openSettings("config");
-    void say(settingCommand(setting));
+  const openSetting = async (setting: string) => {
+    const home = pageForSetting(setting);
+    openSettings(home ?? "config");
+    if (home) return;
+    if (await settingIsBrowsable(setting)) void say(settingCommand(setting));
   };
 
   /**
@@ -266,17 +278,17 @@ const Row: FC<{ row: Notification }> = ({ row }) => {
                 />
               )}
 
-              {/* One setting named: straight to its own page, which is the
-                  whole reason `/config all <name>` is worth running. Anything
-                  else — several settings, or a body that was not setting names
-                  at all — lands on the Configuration section, where the body
-                  above has already said what to look for. */}
+              {/* One setting named: straight to wherever that one setting
+                  lives, which is the whole reason `/config all <name>` is worth
+                  running. Anything else — several settings, or a body that was
+                  not setting names at all — lands on the Configuration section,
+                  where the body above has already said what to look for. */}
               {section !== null && (
                 <LinkOut
                   icon={Settings2Icon}
                   label="Open settings"
                   onClick={() =>
-                    setting ? openSetting(setting) : openSettings(section)
+                    setting ? void openSetting(setting) : openSettings(section)
                   }
                 />
               )}
