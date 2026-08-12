@@ -261,8 +261,6 @@ export type SecondBrain = {
    *  and so have nowhere else to fail — a refused microphone, say. */
   report: (error: unknown) => void;
   dismissError: () => void;
-  /** Put output from a directly invoked callable away. */
-  dismissCallableOutput: () => void;
   /** Put a finished command's panel away. */
   dismissCommand: () => void;
   /** Configured LLM profiles and the global default model. */
@@ -334,7 +332,6 @@ type SessionDomain = Pick<
   | "say"
   | "report"
   | "dismissError"
-  | "dismissCallableOutput"
   | "dismissCommand"
 >;
 type ModelDomain = Pick<
@@ -912,10 +909,6 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   );
 
   const dismissError = useCallback(() => dispatch({ type: "clearError" }), []);
-  const dismissCallableOutput = useCallback(
-    () => dispatch({ type: "clearCallableOutput" }),
-    [],
-  );
   const dismissCommand = useCallback(
     () => dispatch({ type: "clearCommand" }),
     [],
@@ -1509,7 +1502,6 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       say,
       report,
       dismissError,
-      dismissCallableOutput,
       dismissCommand,
       models,
       modelName,
@@ -1549,7 +1541,6 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       say,
       report,
       dismissError,
-      dismissCallableOutput,
       dismissCommand,
       models,
       modelName,
@@ -1578,7 +1569,6 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       say,
       report,
       dismissError,
-      dismissCallableOutput,
       dismissCommand,
     }),
     [
@@ -1587,7 +1577,6 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       say,
       report,
       dismissError,
-      dismissCallableOutput,
       dismissCommand,
     ],
   );

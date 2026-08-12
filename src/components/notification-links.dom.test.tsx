@@ -75,7 +75,6 @@ function stub(over: Partial<provider.SecondBrain>) {
     markNotificationsRead: vi.fn().mockResolvedValue(undefined),
     clearSettingsRequest: vi.fn(),
     say: vi.fn().mockResolvedValue(true),
-    dismissCallableOutput: vi.fn(),
     dismissCommand: vi.fn(),
     resolve: vi.fn().mockResolvedValue(undefined),
     cancelInputRequest: vi.fn().mockResolvedValue(undefined),
@@ -125,7 +124,6 @@ function stub(over: Partial<provider.SecondBrain>) {
     say: value.say,
     report: value.report,
     dismissError: value.dismissError,
-    dismissCallableOutput: value.dismissCallableOutput,
     dismissCommand: value.dismissCommand,
   });
   vi.spyOn(provider, "useApprovals").mockReturnValue({
@@ -341,7 +339,6 @@ describe("Settings lands where it was asked to", () => {
       state: {
         turns: [],
         typing: false,
-        callableOutput: [],
         suppressedCommand: null,
         suppressNextCancellationNotice: false,
         buttons: [],

@@ -284,14 +284,44 @@ describe("callable output", () => {
     expect(state.command?.outcome).toEqual(["| setting | value |"]);
   });
 
-  it("keeps directly invoked tool output in its separate surface", () => {
+  it("keeps directly invoked tool output in a Settings output run", () => {
     const state = run({
       kind: "callable_output",
       payload: ["Direct result"],
     });
 
     expect(state.turns).toEqual([]);
-    expect(state.callableOutput).toEqual(["Direct result"]);
+    expect(state.command).toMatchObject({
+      name: "output",
+      status: "finished",
+      outcome: ["Direct result"],
+    });
+  });
+
+  it("adopts an early synthetic output run when command status follows", () => {
+    let state = run({
+      kind: "callable_output",
+      payload: ["Project root /project"],
+    });
+    state = reduce(state, {
+      type: "frame",
+      frame: {
+        kind: "tool_status",
+        payload: {
+          kind: "command",
+          call_id: "cmd:locations:later",
+          command_name: "locations",
+          status: "finished",
+          ok: true,
+        },
+      },
+    });
+
+    expect(state.command).toMatchObject({
+      callId: "cmd:locations:later",
+      name: "locations",
+      outcome: ["Project root /project"],
+    });
   });
 
   it("keeps command output in Settings when it beats the status frame", () => {
@@ -306,7 +336,6 @@ describe("callable output", () => {
     });
 
     expect(state.turns).toEqual([]);
-    expect(state.callableOutput).toEqual([]);
     expect(state.command).toMatchObject({
       callId: "pending:locations",
       name: "locations",
@@ -351,7 +380,6 @@ describe("callable output", () => {
     });
 
     expect(state.command?.outcome).toEqual([]);
-    expect(state.callableOutput).toEqual([]);
   });
 
   it("keeps the documented cancel Request acknowledgement out of chat", () => {

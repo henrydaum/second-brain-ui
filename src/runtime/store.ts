@@ -162,10 +162,6 @@ export type State = {
    *  beside `form` rather than inside it because a command outlives its steps:
    *  it still has an outcome to show once the last question is answered. */
   command: CommandRun | null;
-  /** Output from a callable invoked without a command panel (normally a tool
-   *  invoked directly by the person). It has its own surface above the
-   *  composer and never enters the conversation. */
-  callableOutput: string[];
   /** A command the person cancelled. Frames and the HTTP response travel on
    *  independent paths, so its final status can arrive after the panel was
    *  dismissed. Keep its identity long enough to ignore that late tail. */
@@ -202,7 +198,6 @@ export const initialState: State = {
   typing: false,
   form: null,
   command: null,
-  callableOutput: [],
   suppressedCommand: null,
   suppressNextCancellationNotice: false,
   buttons: [],
@@ -237,8 +232,6 @@ export type Action =
    *  has printed something is not done being read just because it is done
    *  running. */
   | { type: "clearCommand" }
-  /** Dismiss output from a callable that had no command panel of its own. */
-  | { type: "clearCallableOutput" }
   /** Closing an approval dialog is already visible. Suppress only the kernel's
    *  next exact cancellation acknowledgement, not arbitrary errors or text. */
   | { type: "suppressNextCancellationNotice" }
@@ -579,8 +572,6 @@ export function reduce(state: State, action: Action): State {
       return { ...state, form: null };
     case "clearCommand":
       return { ...state, command: null, form: null };
-    case "clearCallableOutput":
-      return { ...state, callableOutput: [] };
     case "suppressNextCancellationNotice":
       return { ...state, suppressNextCancellationNotice: true };
     case "clearError":
@@ -731,8 +722,9 @@ function applyFrame(state: State, frame: Frame): State {
     }
 
     /* A callable's return value is operational output, never conversation.
-       Command output belongs to the open command panel. A directly invoked
-       tool has no such panel, so it goes to the separate output surface. */
+       Every such result belongs in Settings. When status has not established
+       a named command (or the person invoked a tool directly), synthesize a
+       completed run there rather than giving output a fallback in the thread. */
     case "callable_output": {
       if (
         state.command &&
@@ -743,7 +735,14 @@ function applyFrame(state: State, frame: Frame): State {
       if (!state.command) {
         return {
           ...state,
-          callableOutput: [...state.callableOutput, ...frame.payload],
+          command: {
+            callId: `callable:${nextId()}`,
+            name: "output",
+            args: {},
+            status: "finished",
+            ok: true,
+            outcome: [...frame.payload],
+          },
         };
       }
       return {
@@ -769,7 +768,12 @@ function applyFrame(state: State, frame: Frame): State {
         const same =
           state.command?.callId === p.call_id ||
           (state.command?.callId === `pending:${commandName}` &&
-            state.command.name === commandName);
+            state.command.name === commandName) ||
+          // Output can cross before both the local placeholder and the status
+          // frame (for example after a transient history reconciliation).
+          // Its synthetic Settings run is still the only callable awaiting a
+          // server identity, so adopt it without dropping what it printed.
+          state.command?.callId.startsWith("callable:") === true;
         return {
           ...state,
           suppressedCommand: null,
