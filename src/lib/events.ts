@@ -261,6 +261,24 @@ export type Frame =
 export type StreamStatus = "connecting" | "open" | "reconnecting";
 
 /**
+ * How long away makes an *apparently healthy* stream worth doubting.
+ *
+ * Only the ambiguous case needs a number. A stream the browser has given up on
+ * announces itself in `readyState` and is reopened on sight, whatever the clock
+ * says. The one this threshold is about is the stream that claims to be `OPEN`
+ * and is not — and without a heartbeat on the wire there is nothing to ask, so
+ * how long the page was away is the only evidence there is.
+ *
+ * A minute, because being wrong costs something in both directions. Reopening
+ * hands the session briefly back and forth on the server, so churning it on
+ * every glance at another window is not free; waiting too long leaves somebody
+ * looking at a green dot and an empty conversation. A pocketed phone is away
+ * for minutes and a glance at another window is away for seconds, so a minute
+ * separates them without being close to either.
+ */
+const LONG_ENOUGH_AWAY_MS = 60_000;
+
+/**
  * Open the render stream. Returns a function that closes it.
  *
  * **`EventSource`, deliberately.** It reconnects on its own and sends back the
@@ -276,38 +294,125 @@ export type StreamStatus = "connecting" | "open" | "reconnecting";
  * first, so mounting this twice silently steals the connection from the first
  * mount. React 19's development StrictMode double-invokes effects, which is
  * exactly that situation — hence the cleanup function, which must actually run.
+ *
+ * ## Coming back to a suspended page
+ *
+ * **`EventSource`'s own recovery only covers failures it noticed.** A phone that
+ * suspends a backgrounded web app tears the connection down underneath it
+ * without the page ever running the code that would see it, so the tab resumes
+ * holding a socket that is `OPEN` and dead: no `error` event, the status line
+ * still green, and nothing arriving until somebody reloads. On a tunnelled
+ * connection to a machine that may itself have been asleep, that is the ordinary
+ * way this app goes quiet rather than an exotic one.
+ *
+ * So returning to the foreground is treated as a reason to check rather than as
+ * nothing, and `reopen` below is what a check that fails does about it.
  */
 export function connect(
   onFrame: (frame: Frame) => void,
   onStatus: (status: StreamStatus) => void,
 ): () => void {
-  const url = serverUrl("/events");
-  // EventSource cannot send headers, so development puts its token in the URL.
-  // Production has no browser token: Caddy authenticates the loopback hop.
-  const authorization = authHeaders().Authorization;
-  if (authorization) url.searchParams.set("token", authorization.slice(7));
+  /** The last `id:` seen, so a reopen can ask for what it missed. */
+  let lastEventId = "";
+  /** The caller has torn this down; nothing may open another stream. */
+  let abandoned = false;
+  /** This stream has been accepted at least once. A connection still being
+   *  made for the first time is not evidence of anything having gone wrong. */
+  let everOpened = false;
+  let stream: EventSource | null = null;
 
-  const stream = new EventSource(url);
-  onStatus("connecting");
+  const open = (status: StreamStatus) => {
+    const url = serverUrl("/events");
+    // EventSource cannot send headers, so development puts its token in the URL.
+    // Production has no browser token: Caddy authenticates the loopback hop.
+    const authorization = authHeaders().Authorization;
+    if (authorization) url.searchParams.set("token", authorization.slice(7));
 
-  stream.onopen = () => onStatus("open");
+    // **A reopen has to ask for the replay by hand.** The browser sends
+    // `Last-Event-ID` only on retries it started itself; a `new EventSource` is
+    // a fresh request that carries nothing, so without this the frames that
+    // arrived while the page was suspended — which is the entire turn somebody
+    // missed — would be dropped by the very thing meant to recover them. The
+    // server reads the header first and falls back to this, so the two cannot
+    // both apply and replay twice.
+    if (lastEventId) url.searchParams.set("since", lastEventId);
 
-  // EventSource reports a dropped connection and a failed connection the same
-  // way, and retries either. "reconnecting" is honest about both.
-  stream.onerror = () => onStatus("reconnecting");
+    const source = new EventSource(url);
+    stream = source;
+    onStatus(status);
 
-  stream.onmessage = (event) => {
-    let frame: Frame;
-    try {
-      frame = JSON.parse(event.data) as Frame;
-    } catch {
-      // A frame we cannot parse is a bug on the wire, not a reason to tear down
-      // a working stream — the next frame is probably fine.
-      console.error("second brain: unparseable frame", event.data);
-      return;
-    }
-    onFrame(frame);
+    source.onopen = () => {
+      everOpened = true;
+      onStatus("open");
+    };
+
+    // EventSource reports a dropped connection and a failed connection the same
+    // way, and retries either. "reconnecting" is honest about both.
+    source.onerror = () => onStatus("reconnecting");
+
+    source.onmessage = (event) => {
+      // Kept even for a frame that will not parse: the id is the server's
+      // sequence number and is what a later reopen resumes from, so skipping it
+      // would ask for one frame that was already handled.
+      if (event.lastEventId) lastEventId = event.lastEventId;
+
+      let frame: Frame;
+      try {
+        frame = JSON.parse(event.data) as Frame;
+      } catch {
+        // A frame we cannot parse is a bug on the wire, not a reason to tear
+        // down a working stream — the next frame is probably fine.
+        console.error("second brain: unparseable frame", event.data);
+        return;
+      }
+      onFrame(frame);
+    };
   };
 
-  return () => stream.close();
+  /** Throw this stream away and take another. Closing first matters: the server
+   *  keeps one stream per thread, and leaving the old one for it to evict makes
+   *  the two racy. */
+  const reopen = () => {
+    if (abandoned) return;
+    stream?.close();
+    open("reconnecting");
+  };
+
+  /**
+   * Foregrounding the page, and what it is worth doing about it.
+   *
+   * Two rules, because the two cases are not equally certain. A stream that had
+   * been working and is no longer `OPEN` — `CLOSED`, or stuck `CONNECTING` on a
+   * backoff a suspended page never got to run down — is unambiguously carrying
+   * nothing, and is reopened however brief the absence was. A stream that says
+   * `OPEN` may be perfectly healthy, so only a long absence is taken as
+   * evidence against it. See `LONG_ENOUGH_AWAY_MS`.
+   *
+   * A connection that has never been accepted is neither: it is a first attempt
+   * still in flight, and interrupting it to start an identical one would make
+   * opening the app in a background tab slower rather than more reliable.
+   */
+  let hiddenAt = 0;
+  const onVisibilityChange = () => {
+    if (document.hidden) {
+      hiddenAt = Date.now();
+      return;
+    }
+
+    const away = hiddenAt === 0 ? 0 : Date.now() - hiddenAt;
+    hiddenAt = 0;
+
+    const dropped = everOpened && stream?.readyState !== EventSource.OPEN;
+    if (!dropped && away < LONG_ENOUGH_AWAY_MS) return;
+    reopen();
+  };
+
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  open("connecting");
+
+  return () => {
+    abandoned = true;
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    stream?.close();
+  };
 }

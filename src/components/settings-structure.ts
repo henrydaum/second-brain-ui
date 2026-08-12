@@ -116,6 +116,14 @@ export const SYSTEM_ACTION_NAMES: ReadonlySet<string> = new Set(
   SYSTEM_ACTIONS.map((action) => action.name),
 );
 
+/** Commands that remain valid in chat but already have first-class controls
+ * elsewhere in the UI. Repeating them in Miscellaneous makes Settings look
+ * like an action menu and gives two ways to perform the same immediate action. */
+const DEDICATED_UI_COMMAND_NAMES: ReadonlySet<string> = new Set([
+  "cancel",
+  "new",
+]);
+
 /**
  * Which section a notification is about, when it is about one at all.
  *
@@ -175,6 +183,7 @@ export function commandsForPage(
 ): Command[] {
   return commands.filter((command) => {
     if (SYSTEM_ACTION_NAMES.has(command.name)) return false;
+    if (DEDICATED_UI_COMMAND_NAMES.has(command.name.toLowerCase())) return false;
     return pageForCommand(command.name) === page;
   });
 }
