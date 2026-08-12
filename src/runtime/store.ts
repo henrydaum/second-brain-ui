@@ -226,9 +226,6 @@ export type Action =
   | { type: "hydrateSentAttachments"; attachments: MessageAttachment[] }
   /** Scrollback, read from `conv.read` at boot. Replaces everything. */
   | { type: "history"; turns: Turn[] }
-  /** Refresh persisted rows without dismissing the command or other transient
-   * session UI that caused the refresh. */
-  | { type: "reconcileHistory"; turns: Turn[] }
   | { type: "clearForm" }
   /** Put the finished command away. Its own affordance, because a command that
    *  has printed something is not done being read just because it is done
@@ -430,9 +427,6 @@ export function reduce(state: State, action: Action): State {
       // takes two or three, and the later dispatch threw away what had just
       // arrived. See `runtime/input-requests.ts`.
       return { ...initialState, turns: action.turns };
-
-    case "reconcileHistory":
-      return { ...state, turns: action.turns };
 
     case "said": {
       // **Command interaction never enters the transcript.** Two shapes of it:

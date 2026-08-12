@@ -1016,49 +1016,6 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     void syncSession();
   }, [state.command?.name, state.command?.status, syncSession]);
 
-  /**
-   * A revealed slash command is persisted as a user-side history note, but is
-   * deliberately not emitted as a chat render: the command output already has
-   * its own Settings surface. `tool_status: finished` is the structured signal
-   * that the command completed, and the setting says whether completion writes
-   * that extra row. Re-reading here shows the row immediately without parsing
-   * its `[SYSTEM NOTE]` rendering or inventing a second copy client-side.
-   */
-  const reconciledCommandRef = useRef<string | null>(null);
-  useEffect(() => {
-    const command = state.command;
-    if (
-      command?.status !== "finished" ||
-      command.ok !== true ||
-      reconciledCommandRef.current === command.callId
-    ) {
-      return;
-    }
-    reconciledCommandRef.current = command.callId;
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const revealed = await sdk<boolean>("config.read", {
-          key: "reveal_user_commands",
-        });
-        if (revealed !== true || cancelled) return;
-        const id = conversationIdRef.current;
-        if (id === null) return;
-        const turns = await readConversation(id);
-        if (!cancelled && conversationIdRef.current === id) {
-          dispatch({ type: "reconcileHistory", turns });
-        }
-      } catch (error) {
-        if (!cancelled) report(error);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [state.command?.callId, state.command?.ok, state.command?.status, report]);
-
   const modelNameRef = useRef<string | null>(null);
   modelNameRef.current = modelName;
   const switchingModelRef = useRef(false);

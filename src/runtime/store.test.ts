@@ -298,38 +298,3 @@ describe("sent attachment hydration", () => {
     });
   });
 });
-
-describe("command history reconciliation", () => {
-  it("refreshes persisted turns without dismissing the finished command", () => {
-    const command = {
-      callId: "cmd:update:1",
-      name: "update",
-      args: {},
-      status: "finished" as const,
-      ok: true,
-      outcome: ["Updated."],
-    };
-    const state: State = { ...initialState, command };
-    const turns = [
-      {
-        id: "stored-9",
-        role: "user" as const,
-        parts: [
-          {
-            kind: "text" as const,
-            streamId: "stored-9",
-            text: "A persisted command note",
-            done: true,
-          },
-        ],
-        running: false,
-        aborted: false,
-      },
-    ];
-
-    const reconciled = reduce(state, { type: "reconcileHistory", turns });
-
-    expect(reconciled.turns).toEqual(turns);
-    expect(reconciled.command).toBe(command);
-  });
-});

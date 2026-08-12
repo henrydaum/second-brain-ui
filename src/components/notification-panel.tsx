@@ -317,7 +317,7 @@ const LinkOut: FC<{
       // blank line above and below its row. The whole notification remains an
       // easy scroll target, while this explicit link keeps its natural line
       // height; desktop retains the existing treatment unchanged.
-      className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex shrink-0 items-center gap-1 rounded whitespace-nowrap text-xs underline underline-offset-2 outline-none focus-visible:ring-2 max-sm:min-h-0! max-sm:min-w-0!"
+      className="notification-link text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex shrink-0 items-center gap-1 rounded whitespace-nowrap text-xs underline underline-offset-2 outline-none focus-visible:ring-2"
     >
       <Icon className="size-3 shrink-0" aria-hidden />
       {label}

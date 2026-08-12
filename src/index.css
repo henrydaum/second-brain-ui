@@ -259,6 +259,26 @@
     min-width: var(--spacing-touch);
     min-height: var(--spacing-touch);
   }
+
+  /* Text actions inside a compact notification row are the exception to the
+   * global 44px control floor. That floor otherwise creates a blank line above
+   * and below only the rows which happen to contain a link. */
+  .notification-link {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  /* The mobile remove affordance sits over the attachment itself. Give it a
+   * reliably light surface in dark mode instead of relying on utility ordering
+   * against the tooltip button's background styles. */
+  .dark .aui-attachment-remove-surface {
+    background-color: rgb(255 255 255 / 88%);
+  }
+
+  .dark .aui-attachment-remove-icon {
+    color: rgb(0 0 0 / 78%);
+    stroke: currentColor;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

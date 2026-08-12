@@ -311,7 +311,7 @@ const AttachmentRemove: FC = () => {
         className="aui-attachment-tile-remove group text-muted-foreground absolute end-0.5 top-1/2 z-10 size-11 -translate-y-1/2 rounded-full bg-transparent shadow-none sm:end-1.5 sm:top-1.5 sm:size-3.5 sm:translate-y-0 sm:bg-white/60 sm:shadow-sm sm:hover:bg-white/90! sm:hover:[&_svg]:text-destructive"
         side="top"
       >
-        <span className="bg-background/85 dark:bg-white/85 flex size-9 items-center justify-center rounded-full shadow-sm backdrop-blur-[2px] group-active:bg-background/95 dark:group-active:bg-white/95 sm:size-full sm:bg-transparent sm:shadow-none sm:backdrop-blur-none dark:sm:bg-transparent dark:sm:group-active:bg-transparent">
+        <span className="aui-attachment-remove-surface bg-background/85 flex size-9 items-center justify-center rounded-full shadow-sm backdrop-blur-[2px] group-active:bg-background/95 sm:size-full sm:bg-transparent sm:shadow-none sm:backdrop-blur-none">
           <XIcon className="aui-attachment-remove-icon size-4 text-black/70 sm:size-3 dark:stroke-[2.5px]" />
         </span>
       </TooltipIconButton>
@@ -323,7 +323,7 @@ export const ComposerAttachments: FC = () => {
   return (
     <div className="grid min-w-0 grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity,margin] duration-200 ease-out has-[.aui-attachment-root]:mb-2 has-[.aui-attachment-root]:grid-rows-[1fr] has-[.aui-attachment-root]:opacity-100">
       <div className="min-h-0 overflow-hidden">
-        <div className="aui-composer-attachments flex min-w-0 w-full flex-row items-center gap-2 overflow-x-auto px-2.5 pt-2.5 pb-1">
+        <div className="aui-composer-attachments flex min-w-0 w-full flex-row items-center gap-2 overflow-x-auto px-2 pt-2 pb-1">
           <ComposerPrimitive.Attachments>
             {() => <AttachmentUI />}
           </ComposerPrimitive.Attachments>
