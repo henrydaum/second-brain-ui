@@ -1,5 +1,5 @@
 ﻿import { type PropsWithChildren, useEffect, useState, type FC } from "react";
-import { AlertCircleIcon, FileText, MicIcon, PlusIcon, XIcon } from "lucide-react";
+import { AlertCircleIcon, MicIcon, PlusIcon, XIcon } from "lucide-react";
 import { Suspense } from "react";
 import {
   AttachmentPrimitive,
@@ -25,6 +25,7 @@ import {
 } from "@/components/lazy-file-view";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { FileKindIcon } from "@/components/file-kind-icon";
 import { cn } from "@/lib/utils";
 import { useStagedPath } from "@/runtime/staged-attachments";
 
@@ -141,7 +142,7 @@ const AttachmentThumb: FC<{ compact: boolean }> = ({ compact }) => {
   const isAudio = useAuiState((s) =>
     Boolean(s.attachment.contentType?.startsWith("audio/")),
   );
-  const Icon = isAudio ? MicIcon : FileText;
+  const fileName = useAuiState((s) => s.attachment.name);
 
   return (
     <Avatar
@@ -160,12 +161,22 @@ const AttachmentThumb: FC<{ compact: boolean }> = ({ compact }) => {
         className="aui-attachment-tile-image object-cover"
       />
       <AvatarFallback>
-        <Icon
-          className={cn(
-            "aui-attachment-tile-fallback-icon text-muted-foreground",
-            compact ? "size-5 sm:size-8" : "size-8",
-          )}
-        />
+        {isAudio ? (
+          <MicIcon
+            className={cn(
+              "aui-attachment-tile-fallback-icon text-muted-foreground",
+              compact ? "size-5 sm:size-8" : "size-8",
+            )}
+          />
+        ) : (
+          <FileKindIcon
+            path={fileName}
+            className={cn(
+              "aui-attachment-tile-fallback-icon text-muted-foreground",
+              compact ? "size-5 sm:size-8" : "size-8",
+            )}
+          />
+        )}
       </AvatarFallback>
     </Avatar>
   );

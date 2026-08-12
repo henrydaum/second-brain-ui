@@ -88,8 +88,75 @@ export type FileKind =
   | "embed"
   | "download";
 
+/** The renderer kinds plus the one visual-only distinction worth making.
+ * Code is still rendered as text; it simply should not look like prose in a
+ * file list or attachment tile. */
+export type FileIconKind = FileKind | "code";
+
 /** Extensions a person wants as a table, whatever the model wants. */
 const TABLE = new Set([".csv", ".tsv"]);
+
+/** Programming and source/config formats that benefit from a code glyph.
+ * This is deliberately icon-only: `kindOf` still asks the kernel how to open
+ * them, while lists can identify them immediately without a Request each. */
+const CODE = new Set([
+  ".astro",
+  ".bash",
+  ".bat",
+  ".c",
+  ".cc",
+  ".clj",
+  ".cljs",
+  ".cmd",
+  ".cpp",
+  ".cs",
+  ".css",
+  ".cxx",
+  ".dart",
+  ".ex",
+  ".exs",
+  ".fish",
+  ".fs",
+  ".fsx",
+  ".go",
+  ".h",
+  ".hpp",
+  ".html",
+  ".htm",
+  ".ipynb",
+  ".java",
+  ".js",
+  ".json",
+  ".jsx",
+  ".kt",
+  ".kts",
+  ".less",
+  ".lua",
+  ".m",
+  ".php",
+  ".ps1",
+  ".py",
+  ".pyw",
+  ".r",
+  ".rb",
+  ".rs",
+  ".sass",
+  ".scala",
+  ".scss",
+  ".sh",
+  ".sql",
+  ".svelte",
+  ".swift",
+  ".toml",
+  ".ts",
+  ".tsx",
+  ".vb",
+  ".vue",
+  ".xml",
+  ".yaml",
+  ".yml",
+  ".zsh",
+]);
 
 /** Extensions the browser draws natively and the kernel has no parser for.
  *  Modality-blind on purpose: both answer `"unknown"`. */
@@ -199,6 +266,12 @@ export function guessKind(path: string): FileKind {
     default:
       return "download";
   }
+}
+
+/** Immediate classification for shared file icons. */
+export function guessIconKind(path: string): FileIconKind {
+  if (CODE.has(suffixOf(path))) return "code";
+  return guessKind(path);
 }
 
 /* ── Getting the bytes ──────────────────────────────────────────────── */

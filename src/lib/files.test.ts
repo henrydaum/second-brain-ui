@@ -19,11 +19,24 @@ const {
   FileUnavailable,
   forgetFile,
   formatBytes,
+  guessIconKind,
   kindOf,
   nameOf,
   readText,
   suffixOf,
 } = await import("@/lib/files");
+
+describe("guessIconKind", () => {
+  it.each([
+    ["Demo.mp4", "video"],
+    ["results.csv", "table"],
+    ["analysis.PY", "code"],
+    ["component.tsx", "code"],
+    ["notes.md", "download"],
+  ])("classifies %s as %s", (path, kind) => {
+    expect(guessIconKind(path)).toBe(kind);
+  });
+});
 
 /** One `/files` answer. `total` present means a `206` with a `Content-Range`,
  *  which is what a file too big for one wire message looks like. */

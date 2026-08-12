@@ -1,5 +1,6 @@
 import type { FC } from "react";
 import {
+  FileCode2Icon,
   FileIcon,
   FileTextIcon,
   ImageIcon,
@@ -8,9 +9,10 @@ import {
   VideoIcon,
 } from "lucide-react";
 
-import { guessKind, type FileKind } from "@/lib/files";
+import { guessIconKind, type FileIconKind } from "@/lib/files";
 
-const KIND_ICONS: Record<FileKind, typeof FileIcon> = {
+const KIND_ICONS: Record<FileIconKind, typeof FileIcon> = {
+  code: FileCode2Icon,
   image: ImageIcon,
   video: VideoIcon,
   audio: MusicIcon,
@@ -24,6 +26,6 @@ export const FileKindIcon: FC<{ path: string; className?: string }> = ({
   path,
   className,
 }) => {
-  const Icon = KIND_ICONS[guessKind(path)];
+  const Icon = KIND_ICONS[guessIconKind(path)];
   return <Icon className={className} aria-hidden />;
 };
