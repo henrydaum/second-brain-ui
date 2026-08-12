@@ -257,15 +257,54 @@ describe("a backend that went away", () => {
     close();
   });
 
-  it("leaves the browser to its own retry while it is still trying", () => {
+  it("takes over an attempt that reports nothing at all", () => {
     const close = connect(vi.fn(), vi.fn());
     latest().accept();
     latest().drop();
 
-    // `CONNECTING` means the browser has this in hand. Opening a second stream
-    // beside it is a connection the server keeps replacing with itself.
-    vi.advanceTimersByTime(A_WHILE);
+    // **The failure that stranded this client.** `drop` is `CONNECTING` with no
+    // further event — the browser waiting on a request Caddy is holding while
+    // its backend restarts. There is no `CLOSED` coming, so a retry that waits
+    // for one waits forever, which is what the manual refresh was working
+    // around.
     expect(openedCount()).toBe(1);
+    vi.advanceTimersByTime(3_000);
+    expect(openedCount()).toBe(2);
+    close();
+  });
+
+  it("keeps taking over, for as long as nothing answers", () => {
+    const close = connect(vi.fn(), vi.fn());
+    latest().accept();
+    latest().drop();
+
+    // Each replacement is itself on a deadline, so silence never becomes rest.
+    // A backend down for half a minute is found within three seconds of
+    // returning, with nobody touching the page.
+    vi.advanceTimersByTime(30_000);
+    expect(openedCount()).toBe(11);
+
+    latest().accept();
+    vi.advanceTimersByTime(A_WHILE);
+    expect(openedCount()).toBe(11);
+    close();
+  });
+
+  it("stops replacing attempts the moment one is accepted", () => {
+    const onStatus = vi.fn();
+    const close = connect(vi.fn(), onStatus);
+    latest().accept();
+    latest().drop();
+
+    vi.advanceTimersByTime(3_000);
+    latest().accept();
+    onStatus.mockClear();
+
+    // An accepted stream is the one state worth trusting, so the deadline is
+    // cancelled rather than left to churn a working connection.
+    vi.advanceTimersByTime(A_WHILE);
+    expect(openedCount()).toBe(2);
+    expect(onStatus).not.toHaveBeenCalled();
     close();
   });
 
