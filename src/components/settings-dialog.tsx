@@ -74,7 +74,6 @@ const SystemActions: FC<{
         </p>
       )}
       <ThemePicker settings />
-      <div className={cn("border-t", compact ? "my-1" : "mx-2 my-2")} />
       {SYSTEM_ACTIONS.map((action) => {
         const Icon = action.icon;
         return (

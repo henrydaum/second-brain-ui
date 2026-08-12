@@ -35,9 +35,6 @@ export const ThemePicker: FC<{ settings?: boolean }> = ({
   // The trigger shows what you are *looking at*, not what you *chose* — on
   // "System" a sun icon at night would be simply wrong.
   const TriggerIcon = resolved === "dark" ? MoonIcon : SunIcon;
-  const selected =
-    OPTIONS.find((option) => option.id === theme)?.label ?? "System";
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -51,16 +48,13 @@ export const ThemePicker: FC<{ settings?: boolean }> = ({
           aria-label="Appearance"
           className={
             settings
-              ? "text-muted-foreground hover:text-foreground h-8 w-full justify-start gap-2 px-2 font-normal"
+              ? "text-muted-foreground hover:text-foreground h-8 w-full justify-start gap-2 px-3 font-normal"
               : "text-muted-foreground hover:text-foreground size-8"
           }
         >
           <TriggerIcon className="size-4" />
           {settings && (
-            <>
-              <span className="text-foreground">Appearance</span>
-              <span className="ms-auto text-xs">{selected}</span>
-            </>
+            <span>Appearance</span>
           )}
         </Button>
       </DropdownMenuTrigger>
