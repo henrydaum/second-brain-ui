@@ -312,7 +312,12 @@ const LinkOut: FC<{
       }}
       // `shrink-0` and `whitespace-nowrap`: the row gives up the source's width
       // before a link's, and a link that wrapped mid-label would read as two.
-      className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex shrink-0 items-center gap-1 rounded whitespace-nowrap text-xs underline underline-offset-2 outline-none focus-visible:ring-2"
+      // Coarse-pointer controls normally receive a 44px minimum hit area. In
+      // this dense mobile list that turns an optional text link into an extra
+      // blank line above and below its row. The whole notification remains an
+      // easy scroll target, while this explicit link keeps its natural line
+      // height; desktop retains the existing treatment unchanged.
+      className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex shrink-0 items-center gap-1 rounded whitespace-nowrap text-xs underline underline-offset-2 outline-none focus-visible:ring-2 max-sm:min-h-0! max-sm:min-w-0!"
     >
       <Icon className="size-3 shrink-0" aria-hidden />
       {label}
