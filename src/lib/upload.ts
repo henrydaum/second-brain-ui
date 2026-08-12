@@ -28,6 +28,24 @@ import { sdk } from "@/lib/client";
  */
 const CHUNK_BYTES = 2 * 1024 * 1024;
 
+/**
+ * The largest file this composer will take.
+ *
+ * **A limit is not a policy decision here, it is the honest edge of what the
+ * route can do.** Every byte crosses as base64 inside a JSON Request, so the
+ * transfer is a third larger than the file and takes a round trip per two
+ * megabytes; a phone on a tunnelled connection is the client that finds the
+ * ceiling first. Without a stated one the failure was a tab that stopped
+ * responding and then died, with nothing said about why.
+ *
+ * A hundred megabytes covers a long voice note, any document, and video worth
+ * sending to a model. It is checked before the first byte is read, so an
+ * oversized file costs nothing but the sentence explaining it.
+ */
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+const megabytes = (bytes: number) => Math.round(bytes / (1024 * 1024));
+
 /** `btoa` takes a string, so the bytes have to become one first. Done in small
  *  slices because `String.fromCharCode(...bytes)` with a multi-megabyte spread
  *  overflows the call stack. */
@@ -98,10 +116,30 @@ export function attachmentSubmitArgs(
  * with `.next()` and turns each yielded fraction into a redraw of the
  * attachment chip — which is the only way to report progress out of a loop
  * without a callback that cannot itself cause a render.
+ *
+ * **The file is read one window at a time, not all at once.** `file.arrayBuffer()`
+ * — which this used to open with — decodes the whole thing into memory before a
+ * single byte is sent, and then each window is copied again into a base64
+ * string a third larger. A video attached from a phone therefore needed several
+ * times its own size in headroom, and the tab died before anything explained
+ * why. `slice` is a view rather than a copy, so peak memory is now one window
+ * regardless of the file, and the size the caller sees is the size on disk.
+ *
+ * **Nothing is thrown before the first `next()`.** An async generator's body
+ * does not run until it is driven, so the size refusal below reaches the caller
+ * after it has already claimed the attachment chip — which is what makes an
+ * oversized file show up as a chip that failed, wearing the reason, rather than
+ * as a click that did nothing.
  */
 export async function* uploadToHost(
   file: File,
 ): AsyncGenerator<number, string, void> {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(
+      `This file is ${megabytes(file.size)} MB. Second Brain takes attachments up to ${megabytes(MAX_UPLOAD_BYTES)} MB.`,
+    );
+  }
+
   // `fs.temp` is always allowed — it is the one filesystem call that never
   // raises a dialog, which is what makes this chain usable at all.
   const answer = await sdk<string | { path?: string }>("fs.temp", {
@@ -110,13 +148,13 @@ export async function* uploadToHost(
   const path = typeof answer === "string" ? answer : (answer?.path ?? "");
   if (!path) throw new Error("fs.temp did not answer with a path");
 
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
   // An empty file still needs creating, hence the do/while shape: one write
   // always happens, even at length zero.
   let offset = 0;
   do {
-    const window = bytes.subarray(offset, offset + CHUNK_BYTES);
+    const window = new Uint8Array(
+      await file.slice(offset, offset + CHUNK_BYTES).arrayBuffer(),
+    );
     await sdk("fs.write_bytes", {
       path,
       data: base64(window),
@@ -125,8 +163,8 @@ export async function* uploadToHost(
       mode: offset === 0 ? "overwrite" : "append",
     });
     offset += CHUNK_BYTES;
-    yield Math.min(1, offset / Math.max(1, bytes.length));
-  } while (offset < bytes.length);
+    yield Math.min(1, offset / Math.max(1, file.size));
+  } while (offset < file.size);
 
   return path;
 }

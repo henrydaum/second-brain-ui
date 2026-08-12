@@ -289,10 +289,22 @@ const Row: FC<{
   entry: FileEntry;
   onOpen: (entry: FileEntry) => void;
 }> = ({ entry, onOpen }) => {
+  /**
+   * A picture that would not load, remembered rather than removed.
+   *
+   * The obvious version — `event.currentTarget.remove()` — takes a node out of
+   * the document that React still has in its tree, and the bill arrives later:
+   * unmounting the row throws `NotFoundError` from `removeChild` and the error
+   * boundary replaces the entire app with a stack trace. A file that has moved
+   * since it was recorded is the *common* case in this panel, which made a
+   * white screen one stale row away.
+   */
+  const [broken, setBroken] = useState(false);
+
   // Any image still on disk gets its own picture, whether the agent showed it
   // to you or merely wrote it — a thumbnail identifies a file faster than its
   // name does, and there is no reason the two cases should look different.
-  const thumbnail = !entry.gone && guessKind(entry.path) === "image";
+  const thumbnail = !entry.gone && !broken && guessKind(entry.path) === "image";
 
   const inside = (
     <>
@@ -303,8 +315,8 @@ const Row: FC<{
           loading="lazy"
           decoding="async"
           // A broken thumbnail is noisier than no thumbnail; fall back to the
-          // icon underneath by simply removing this.
-          onError={(event) => event.currentTarget.remove()}
+          // icon this would otherwise be standing in front of.
+          onError={() => setBroken(true)}
           className="size-9 shrink-0 rounded border object-cover"
         />
       ) : (

@@ -130,6 +130,56 @@ longer needed.
 - `http_allowed_origins` stays empty because the browser uses one origin.
 - Do not bind port 4173 to the LAN or forward it through a router.
 
+### `/sdk` is refused unless the request came from this app
+
+Caddy attaches the bearer token to everything that reaches `/sdk`, so *what
+reaches it* is the perimeter. Loopback binding is not that perimeter: a page on
+any site, open in a tab of the same browser, can POST to
+`http://127.0.0.1:4173/sdk/…` — such a request needs no preflight and no token,
+because the gateway supplies the token itself. The reply is unreadable to
+whoever sent it and the action has already happened.
+
+The gateway therefore refuses any `/sdk` request whose `Origin` is not this
+origin. Browsers send `Origin` on every POST, including same-origin ones, so
+the app is unaffected. Two consequences worth knowing:
+
+- `curl http://127.0.0.1:4173/sdk/...` answers `403` unless you send a matching
+  `Origin` header. Talk to `127.0.0.1:8787` directly with the bearer token when
+  you want to drive the backend by hand.
+- Putting another proxy in front — Cloudflare Access, say — must preserve the
+  `Host` header, or the check compares the browser's `Origin` against the wrong
+  name and refuses everything.
+
+`/events` and `/files` carry no such check. Both are GETs, which send no
+`Origin`, and a cross-origin read of either is already refused by the browser
+because no CORS headers ever come back.
+
+### Files are served, never executed
+
+`/files` responses carry `Content-Security-Policy: sandbox`, and the file
+viewer loads anything it frames inside a `sandbox=""` iframe. Both exist for
+one case: an SVG is a *document*, not a picture, whenever a framing element
+loads it, so a script inside one would otherwise run at this origin — with the
+gateway attaching the backend credential to whatever it then called. Neither
+mechanism affects images, audio, video, or the PDF viewer, which fetches bytes
+and renders them from a blob.
+
+### Content-Security-Policy
+
+The app document is served with a policy that keeps scripts, styles, XHR and
+framing on this origin. Two directives are deliberately looser:
+
+- `style-src 'unsafe-inline'` is required — Radix positions popovers, tooltips
+  and dialogs with inline styles computed at runtime.
+- `img-src` additionally allows `https:`, so a remote picture in an agent's
+  reply still draws. Tighten it to `'self'` if you would rather no reply could
+  ever cause an outbound image request.
+
+The one inline script — the theme bootstrap in `index.html`, which must run
+before the first paint — is admitted by SHA-256 hash.
+`deploy/macos/csp-hash.test.ts` fails the test run, and therefore the release,
+if the script is edited without updating the hash in the Caddyfile.
+
 ## Private remote access with Tailscale
 
 Install Tailscale on the Mac Mini, iPhone, and Windows PC and sign all three in

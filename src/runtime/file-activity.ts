@@ -76,6 +76,75 @@ export type FileSection = {
   touched: FileEntry[];
 };
 
+/* ── What the panel actually reads out of a conversation ─────────────── */
+
+/**
+ * Assistant turns, reduced to the two facts everything below needs.
+ *
+ * **This exists because a reply arrives one token at a time.** Every
+ * `stream_delta` produces a new `turns` array, and the derivation underneath —
+ * bucket, merge, collapse, sort — was re-running on each one, for the whole
+ * conversation, in a provider whose value re-renders a chip inside every
+ * message. None of that work can change from a token: `bindByTime` reads a
+ * turn's identity and start time, `withStoreAttachments` reads its `attachments`
+ * frames, and `toSections` reads the same identity and time again. Text is not
+ * in that list.
+ *
+ * So the projection is the input the derivation really has, and `sameFileTurns`
+ * below is how a token is told from a change. A `Turn[]` rather than a shape of
+ * its own so the three functions keep the signatures their tests describe.
+ *
+ * User turns are dropped: no event ever binds to one — the person did not do
+ * any of this — and their own files are `sent` and belong to their message.
+ */
+export function fileTurns(turns: Turn[]): Turn[] {
+  const projected: Turn[] = [];
+  for (const turn of turns) {
+    if (turn.role !== "assistant") continue;
+    projected.push({
+      ...turn,
+      parts: turn.parts.filter(
+        (part) => part.kind === "files" && part.sent !== true,
+      ),
+    });
+  }
+  return projected;
+}
+
+/**
+ * Whether a new conversation state would project to the same thing.
+ *
+ * Walks the raw turns against an existing projection so that the common
+ * answer — "yes, that was just another token" — costs one pass and allocates
+ * nothing. Only a `false` is worth building a new array for.
+ */
+export function sameFileTurns(previous: Turn[], turns: Turn[]): boolean {
+  let at = 0;
+  for (const turn of turns) {
+    if (turn.role !== "assistant") continue;
+
+    const before = previous[at++];
+    if (!before || before.id !== turn.id || before.createdAt !== turn.createdAt) {
+      return false;
+    }
+
+    let part = 0;
+    for (const candidate of turn.parts) {
+      if (candidate.kind !== "files" || candidate.sent === true) continue;
+      const held = before.parts[part++];
+      if (!held || held.kind !== "files") return false;
+      if (held.paths.length !== candidate.paths.length) return false;
+      for (let path = 0; path < candidate.paths.length; path++) {
+        if (held.paths[path] !== candidate.paths[path]) return false;
+      }
+    }
+    // A file part that went away is a change too — the projection would be
+    // shorter than what is held.
+    if (part !== before.parts.length) return false;
+  }
+  return at === previous.length;
+}
+
 /**
  * Bucket events onto the turn that was running when they happened.
  *

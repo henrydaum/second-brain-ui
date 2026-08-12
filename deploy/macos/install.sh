@@ -76,10 +76,7 @@ umask 077
 chmod 600 "$PLIST"
 plutil -lint "$PLIST"
 
-SB_HTTP_TOKEN=$(runtime_token)
-SB_UI_CURRENT=$CURRENT_LINK
-export SB_HTTP_TOKEN SB_UI_CURRENT
-caddy validate --config "$CADDYFILE" --adapter caddyfile
+validate_gateway
 
 domain="gui/$(id -u)"
 launchctl bootout "$domain/$LABEL" >/dev/null 2>&1 || true

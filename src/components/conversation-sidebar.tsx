@@ -12,6 +12,8 @@
  */
 
 import {
+  memo,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -55,7 +57,7 @@ import {
   orderedCategories,
   type ConversationFilter,
 } from "@/lib/conversation-categories";
-import { conversationTitle } from "@/lib/conversations";
+import { conversationTitle, type Conversation } from "@/lib/conversations";
 import { MD_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import {
@@ -105,6 +107,118 @@ function readConversationFilter(): ConversationFilter {
   }
   return MAIN_CONVERSATIONS_FILTER;
 }
+
+/**
+ * The list itself, kept out of the streaming render.
+ *
+ * **Its own component because the sidebar around it reads the whole session
+ * state.** That is legitimate — the rail locks itself while a turn is running,
+ * while a form is open, while a question is waiting — but it means the sidebar
+ * re-renders on every token of every reply, and the list is the expensive part
+ * of it: a row per conversation, each with a tooltip-wrapped button. Nothing
+ * here changes token by token, so `memo` and a stable set of props are enough
+ * to take the whole list out of that path. Everything it draws is what it drew
+ * before, prop for prop.
+ */
+const ConversationList = memo(function ConversationList({
+  conversations,
+  activeId,
+  locked,
+  showCategories,
+  categoryColors,
+  emptyMessage,
+  onOpen,
+  onDelete,
+}: {
+  conversations: Conversation[];
+  activeId: number | null;
+  locked: boolean;
+  showCategories: boolean;
+  categoryColors: Map<string, number>;
+  emptyMessage: string;
+  onOpen: (id: number) => void;
+  onDelete: (id: number) => void;
+}) {
+  return (
+    <nav className="flex-1 overflow-y-auto p-2 pt-0">
+      {conversations.length === 0 && (
+        <p className="text-muted-foreground px-2 py-4 text-xs">
+          {emptyMessage}
+        </p>
+      )}
+
+      {conversations.map((conversation) => {
+        const active = conversation.id === activeId;
+        const category = conversationCategory(conversation.category);
+        const showCategory = showCategories && category !== null;
+        return (
+          <div
+            key={conversation.id}
+            data-slot="conversation"
+            data-active={active || undefined}
+            className={cn(
+              "group flex items-center gap-1 rounded-md",
+              active ? "bg-accent" : "hover:bg-accent/50",
+            )}
+          >
+            <button
+              type="button"
+              disabled={locked}
+              onClick={() => onOpen(conversation.id)}
+              className="min-w-0 flex-1 px-2 py-1.5 text-start disabled:opacity-50"
+            >
+              <span className="block truncate text-sm">
+                {conversationTitle(conversation)}
+              </span>
+              {(conversation.updated_ago || showCategory) && (
+                // The server's own wording, rather than a second notion of
+                // "recent" computed here that could disagree with it — and
+                // relative wording rather than a date, because a list read by
+                // recency wants "how recent" answered without arithmetic.
+                <span className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs">
+                  {conversation.updated_ago && (
+                    <span className="truncate">{conversation.updated_ago}</span>
+                  )}
+                  {showCategory && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          role="img"
+                          aria-label={`Category: ${categoryLabel(category)}`}
+                          className="conversation-category-dot size-2 shrink-0 rounded-full"
+                          style={categoryColorStyle(category, categoryColors)}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent variant="subtle" side="right">
+                        {categoryLabel(category)}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </span>
+              )}
+            </button>
+
+            <TooltipIconButton
+              tooltip="Delete"
+              side="right"
+              className={cn(
+                "me-1 size-7",
+                // Present on hover or focus only — a destructive control
+                // sitting permanently beside every row is one that gets hit
+                // by accident. It stays keyboard-reachable.
+                "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+              )}
+              disabled={locked}
+              onClick={() => onDelete(conversation.id)}
+            >
+              <Trash2Icon className="size-3.5" />
+            </TooltipIconButton>
+          </div>
+        );
+      })}
+    </nav>
+  );
+});
 
 export type ConversationSidebarProps = {
   /** Whether the overlay drawer is showing. Only meaningful below `md`, where
@@ -239,7 +353,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
   }, [railCollapsed]);
 
   // Picking a conversation on a phone means you are done with the drawer.
-  const closeDrawer = () => onOpenChange(false);
+  const closeDrawer = useCallback(() => onOpenChange(false), [onOpenChange]);
 
   // Settings is a secondary chunk. Warm it after the first paint, and again on
   // intent below, so code-splitting does not turn the familiar gear into a
@@ -264,14 +378,30 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     if (name) setSettingsOpen(true);
   }, [state.form?.name, state.command?.name, setSettingsOpen]);
 
-  const run = async (work: () => Promise<void>) => {
+  const run = useCallback(async (work: () => Promise<void>) => {
     setBusy(true);
     try {
       await work();
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
+
+  /**
+   * The list's two actions, held still.
+   *
+   * `ConversationList` below is memoised, and a handler rebuilt on every render
+   * would defeat that entirely — which matters because this component reads the
+   * whole session state and therefore re-renders on every streamed token.
+   */
+  const openAndClose = useCallback(
+    (id: number) => void run(() => openConversation(id)).then(closeDrawer),
+    [run, openConversation, closeDrawer],
+  );
+  const removeConversation = useCallback(
+    (id: number) => void run(() => deleteConversation(id)),
+    [run, deleteConversation],
+  );
 
   const selectConversationFilter = (filter: ConversationFilter) => {
     initialFilterChecked.current = true;
@@ -452,92 +582,20 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           rather than hidden, so a long list is not still being laid out behind
           a 48px rail. */}
       {railCollapsed ? null : (
-      <nav className="flex-1 overflow-y-auto p-2 pt-0">
-        {visibleConversations.length === 0 && (
-          <p className="text-muted-foreground px-2 py-4 text-xs">
-            {conversations.length === 0
+        <ConversationList
+          conversations={visibleConversations}
+          activeId={conversationId}
+          locked={locked}
+          showCategories={conversationFilter.type === "all"}
+          categoryColors={categoryColors}
+          emptyMessage={
+            conversations.length === 0
               ? "No conversations yet."
-              : `No ${selectedFilter.label} conversations.`}
-          </p>
-        )}
-
-        {visibleConversations.map((conversation) => {
-          const active = conversation.id === conversationId;
-          const category = conversationCategory(conversation.category);
-          const showCategory =
-            conversationFilter.type === "all" && category !== null;
-          return (
-            <div
-              key={conversation.id}
-              data-slot="conversation"
-              data-active={active || undefined}
-              className={cn(
-                "group flex items-center gap-1 rounded-md",
-                active ? "bg-accent" : "hover:bg-accent/50",
-              )}
-            >
-              <button
-                type="button"
-                disabled={locked}
-                onClick={() =>
-                  void run(() => openConversation(conversation.id)).then(
-                    closeDrawer,
-                  )
-                }
-                className="min-w-0 flex-1 px-2 py-1.5 text-start disabled:opacity-50"
-              >
-                <span className="block truncate text-sm">
-                  {conversationTitle(conversation)}
-                </span>
-                {(conversation.updated_ago || showCategory) && (
-                  // The server's own wording, rather than a second notion of
-                  // "recent" computed here that could disagree with it — and
-                  // relative wording rather than a date, because a list read by
-                  // recency wants "how recent" answered without arithmetic.
-                  <span className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs">
-                    {conversation.updated_ago && (
-                      <span className="truncate">
-                        {conversation.updated_ago}
-                      </span>
-                    )}
-                    {showCategory && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span
-                            role="img"
-                            aria-label={`Category: ${categoryLabel(category)}`}
-                            className="conversation-category-dot size-2 shrink-0 rounded-full"
-                            style={categoryColorStyle(category, categoryColors)}
-                          />
-                        </TooltipTrigger>
-                        <TooltipContent variant="subtle" side="right">
-                          {categoryLabel(category)}
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </span>
-                )}
-              </button>
-
-              <TooltipIconButton
-                tooltip="Delete"
-                side="right"
-                className={cn(
-                  "me-1 size-7",
-                  // Present on hover or focus only — a destructive control
-                  // sitting permanently beside every row is one that gets hit
-                  // by accident. It stays keyboard-reachable.
-                  "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
-                )}
-                disabled={locked}
-                onClick={() => void run(() => deleteConversation(conversation.id))}
-              >
-                <Trash2Icon className="size-3.5" />
-              </TooltipIconButton>
-            </div>
-          );
-        })}
-      </nav>
+              : `No ${selectedFilter.label} conversations.`
+          }
+          onOpen={openAndClose}
+          onDelete={removeConversation}
+        />
       )}
 
       {/* `mt-auto` is what pins this to the bottom in both states — with the

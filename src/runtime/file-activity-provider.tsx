@@ -42,6 +42,8 @@ import { readLedger, toFileEvents, type FileEvent } from "@/lib/ledger";
 import {
   bindByTime,
   countOf,
+  fileTurns,
+  sameFileTurns,
   toSections,
   UNATTRIBUTED,
   withStoreAttachments,
@@ -219,19 +221,44 @@ export function FileActivityProvider({ children }: PropsWithChildren) {
 
   /* ── What the surfaces read ───────────────────────────────────────── */
 
+  /**
+   * The conversation as this panel sees it, which is a far slower-moving thing
+   * than the conversation.
+   *
+   * `state.turns` is a new array on every streamed token, and the derivation
+   * below is not cheap — it buckets every ledger event, merges, collapses each
+   * section and sorts it — while this provider's value re-renders a chip inside
+   * every message in the transcript. A token cannot change any of its inputs;
+   * see `fileTurns`. Holding the last projection and replacing it only when it
+   * genuinely differs is what turns "per token" back into "per file".
+   */
+  const projection = useRef<Turn[]>([]);
+  if (!sameFileTurns(projection.current, state.turns)) {
+    projection.current = fileTurns(state.turns);
+  }
+  const turnsForFiles = projection.current;
+
   const sections = useMemo(() => {
     // Derived rather than stored, so the historical read and the conversation
     // read can land in either order. They race, and this is what makes the
     // race not matter: whichever arrives second re-runs the binding.
-    const bound = bindByTime(historical, state.turns);
+    const bound = bindByTime(historical, turnsForFiles);
     for (const [turnId, events] of live) {
       bound.set(turnId, [...events, ...(bound.get(turnId) ?? [])]);
     }
-    return toSections(withStoreAttachments(bound, state.turns), state.turns);
-  }, [historical, live, state.turns]);
+    return toSections(withStoreAttachments(bound, turnsForFiles), turnsForFiles);
+  }, [historical, live, turnsForFiles]);
 
   const byTurn = useMemo(
     () => new Map(sections.map((section) => [section.turnId, section])),
+    [sections],
+  );
+
+  /** Distinct files across the whole conversation — the header button's dot.
+   *  Behind the same memo as everything else, because `countOf` rebuilds a map
+   *  and sorts it once per section and used to do so on every render. */
+  const total = useMemo(
+    () => sections.reduce((sum, section) => sum + countOf(section), 0),
     [sections],
   );
 
@@ -239,7 +266,7 @@ export function FileActivityProvider({ children }: PropsWithChildren) {
     () => ({
       sections,
       sectionFor: (turnId) => byTurn.get(turnId) ?? null,
-      total: sections.reduce((sum, section) => sum + countOf(section), 0),
+      total,
       failure,
 
       filesOpen,
@@ -264,7 +291,7 @@ export function FileActivityProvider({ children }: PropsWithChildren) {
         }),
       closeView: () => setViewing(null),
     }),
-    [sections, byTurn, failure, filesOpen, focusTurn, viewing],
+    [sections, byTurn, total, failure, filesOpen, focusTurn, viewing],
   );
 
   return (

@@ -20,6 +20,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PendingAttachment } from "@assistant-ui/react";
 
 const sdk = vi.fn();
 const connect = vi.fn();
@@ -49,9 +50,8 @@ vi.mock("@/lib/notifications", () => ({
   markRead: async () => undefined,
 }));
 
-const { SecondBrainProvider, useModels, useSession } = await import(
-  "@/runtime/provider"
-);
+const { SecondBrainProvider, attachmentAdapter, useModels, useSession } =
+  await import("@/runtime/provider");
 
 /** Reads the one field under test out of the context. */
 const Probe = () => {
@@ -202,6 +202,69 @@ describe("global model synchronization", () => {
       key: "default_llm_profile",
       value: "openrouter/gpt-5.4",
       scope: "plugin",
+    });
+  });
+});
+
+/**
+ * What the composer is told when an attachment cannot be uploaded.
+ *
+ * **Yielded, never thrown**, and that is a fact about assistant-ui rather than
+ * a preference: `ComposerPrimitive.AddAttachment` and the dropzone both await
+ * `add` inside a `try {} catch {}` whose body is empty, so an exception is
+ * discarded and the chip stays frozen on whatever it last showed. A file
+ * refused for its size would then look exactly like one still uploading, for
+ * ever. The red tile and its tooltip in `attachment.tsx` are drawn from the
+ * status below and from nothing else.
+ */
+describe("an attachment that cannot be uploaded", () => {
+  // The adapter's `add` is typed as "generator or promise", which is how
+  // assistant-ui drives it too. Ours is always the generator.
+  const drain = async (file: File) => {
+    const states: PendingAttachment[] = [];
+    const added = attachmentAdapter.add({ file });
+    if (Symbol.asyncIterator in added) {
+      for await (const state of added) states.push(state);
+    } else {
+      states.push(await added);
+    }
+    return states;
+  };
+
+  const fileOfSize = (bytes: number, name = "film.mov"): File =>
+    ({
+      name,
+      type: "video/quicktime",
+      size: bytes,
+      slice: () => ({ arrayBuffer: async () => new ArrayBuffer(0) }),
+    }) as unknown as File;
+
+  it("reports the reason on the chip rather than throwing it away", async () => {
+    // Over the cap in `lib/upload.ts`, which refuses before reading anything.
+    const states = await drain(fileOfSize(200 * 1024 * 1024));
+
+    expect(states.at(-1)?.status).toMatchObject({
+      type: "incomplete",
+      reason: "error",
+      message: expect.stringContaining("100 MB"),
+    });
+  });
+
+  it("claims the chip before it can fail, so there is somewhere to say so", async () => {
+    const states = await drain(fileOfSize(200 * 1024 * 1024));
+    expect(states[0]?.status).toMatchObject({ type: "running" });
+  });
+
+  it("finishes ready to send when the upload works", async () => {
+    sdk.mockImplementation(async (type: string) =>
+      type === "fs.temp" ? "/tmp/scratch.mov" : true,
+    );
+
+    const states = await drain(fileOfSize(1024));
+
+    expect(states.at(-1)?.status).toEqual({
+      type: "requires-action",
+      reason: "composer-send",
     });
   });
 });

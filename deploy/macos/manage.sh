@@ -27,6 +27,10 @@ case "${1:-}" in
     ;;
   restart)
     [ -f "$PLIST" ] || die "not installed; run install.sh"
+    # Checked before the restart rather than discovered after it. `KeepAlive` is
+    # true, so a Caddyfile that will not load does not fail once — it fails
+    # every five seconds with the UI down, and the reason is only in a log.
+    validate_gateway
     launchctl kickstart -k "$domain/$LABEL"
     ;;
   rollback)

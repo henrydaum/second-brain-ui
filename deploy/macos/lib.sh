@@ -64,6 +64,20 @@ prompt_token() {
   printf '%s' "$entered"
 }
 
+validate_gateway() {
+  # The Caddyfile is the security perimeter — the Origin check that stands in
+  # front of a route Caddy itself credentials — so a config that will not load
+  # must be caught while the old one is still serving.
+  #
+  # Both variables have to be present or the parse fails on the placeholders
+  # rather than on anything worth knowing about.
+  command -v caddy >/dev/null 2>&1 || die "Caddy is not installed"
+  SB_HTTP_TOKEN=$(runtime_token)
+  SB_UI_CURRENT=$CURRENT_LINK
+  export SB_HTTP_TOKEN SB_UI_CURRENT
+  caddy validate --config "$CADDYFILE" --adapter caddyfile
+}
+
 backend_status() {
   # An unauthenticated frontend_http request must finish immediately with 401.
   # 503 means the kernel owns the socket but no frontend owns its request queue;

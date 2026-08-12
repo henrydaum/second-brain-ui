@@ -7,6 +7,19 @@ require_macos
 command -v node >/dev/null 2>&1 || die "Node.js is not installed"
 command -v npm >/dev/null 2>&1 || die "npm is not installed"
 
+# `engines` in package.json says what the toolchain needs and npm only warns
+# about it. A release built on a Node that Vite does not support fails in ways
+# that read as application bugs, so it is checked here — while this build can
+# still be abandoned without touching the one currently being served.
+#
+# Kept in step with the `engines` field by hand; there are two numbers and one
+# other place they live.
+node -e 'const [a,b]=process.versions.node.split(".").map(Number);
+  if (!((a===20&&b>=19)||(a===22&&b>=12)||a>=23)) {
+    console.error("Node "+process.versions.node+" is too old; package.json wants ^20.19.0 || >=22.12.0");
+    process.exit(1);
+  }' || die "upgrade Node.js, then run this again"
+
 mkdir -p "$RELEASES_DIR"
 release_name="$(date -u '+%Y%m%dT%H%M%SZ')-$$"
 release_dir="$RELEASES_DIR/$release_name"

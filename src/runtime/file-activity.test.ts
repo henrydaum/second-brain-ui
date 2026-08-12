@@ -8,6 +8,8 @@ import {
   collapse,
   countOf,
   entriesOf,
+  fileTurns,
+  sameFileTurns,
   toSections,
   UNATTRIBUTED,
   withStoreAttachments,
@@ -269,5 +271,90 @@ describe("withStoreAttachments", () => {
       turn("u1", "user", 1000, [files("/theirs.png")]),
     ]);
     expect(merged.size).toBe(0);
+  });
+});
+
+/**
+ * The projection that keeps a streamed reply out of the file panel's
+ * derivation. Its whole job is to answer "no, nothing changed" cheaply and
+ * often — and to be exactly right the rest of the time, since a missed change
+ * is a file that never appears.
+ */
+describe("fileTurns and sameFileTurns", () => {
+  const text = (body: string): Part => ({
+    kind: "text",
+    streamId: "s1",
+    text: body,
+    done: false,
+  });
+  const files = (...paths: string[]): Part => ({ kind: "files", paths });
+
+  it("keeps only assistant turns and their agent file parts", () => {
+    const projected = fileTurns([
+      turn("u1", "user", 1000, [
+        { kind: "files", paths: ["/theirs.png"], sent: true },
+      ]),
+      turn("a1", "assistant", 1100, [text("hello"), files("/chart.png")]),
+    ]);
+
+    expect(projected).toHaveLength(1);
+    expect(projected[0].id).toBe("a1");
+    expect(projected[0].parts).toEqual([files("/chart.png")]);
+  });
+
+  it("calls another token the same conversation", () => {
+    const before = fileTurns([turn("a1", "assistant", 1100, [text("hel")])]);
+    const after = [turn("a1", "assistant", 1100, [text("hello there")])];
+    expect(sameFileTurns(before, after)).toBe(true);
+  });
+
+  it("notices a file the agent has just shown", () => {
+    const before = fileTurns([turn("a1", "assistant", 1100, [text("hi")])]);
+    const after = [
+      turn("a1", "assistant", 1100, [text("hi"), files("/chart.png")]),
+    ];
+    expect(sameFileTurns(before, after)).toBe(false);
+  });
+
+  it("notices a new turn, a dropped turn and a re-read conversation", () => {
+    const one = fileTurns([turn("a1", "assistant", 1100)]);
+    expect(sameFileTurns(one, [])).toBe(false);
+    expect(
+      sameFileTurns(one, [
+        turn("a1", "assistant", 1100),
+        turn("a2", "assistant", 2100),
+      ]),
+    ).toBe(false);
+    // A history read mints new ids for the same prose.
+    expect(sameFileTurns(one, [turn("stored-7", "assistant", 1100)])).toBe(
+      false,
+    );
+  });
+
+  it("notices a file part that changed its paths", () => {
+    const before = fileTurns([
+      turn("a1", "assistant", 1100, [files("/one.png")]),
+    ]);
+    expect(
+      sameFileTurns(before, [
+        turn("a1", "assistant", 1100, [files("/two.png")]),
+      ]),
+    ).toBe(false);
+  });
+
+  it("ignores a user turn being patched with its stored attachments", () => {
+    // `hydrateSentAttachments` rewrites a user turn after the fact. Nothing in
+    // this panel reads those, so it must not invalidate the derivation.
+    const before = fileTurns([
+      turn("u1", "user", 1000),
+      turn("a1", "assistant", 1100),
+    ]);
+    const after = [
+      turn("u1", "user", 1000, [
+        { kind: "files", paths: ["/cache/theirs.png"], sent: true },
+      ]),
+      turn("a1", "assistant", 1100),
+    ];
+    expect(sameFileTurns(before, after)).toBe(true);
   });
 });

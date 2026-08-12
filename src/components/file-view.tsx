@@ -419,15 +419,37 @@ const PdfView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
   );
 };
 
-/** SVG can stay on its real URL; unlike Chrome's PDF viewer it does not cross
- * into an extension origin while rendering. */
+/**
+ * SVG can stay on its real URL; unlike Chrome's PDF viewer it does not cross
+ * into an extension origin while rendering.
+ *
+ * **But it must not be given a scripting context, and `<embed>` gave it one.**
+ * An SVG is a document, not a picture, whenever a framing element loads it: the
+ * browser makes it a page *at this app's origin*, so a `<script>` inside one
+ * ran as the app. That is not a hypothetical — the file could be anything the
+ * agent generated, downloaded, or that somebody attached — and the consequence
+ * is not a defaced pane: the production gateway attaches the backend bearer
+ * token to same-origin `/sdk` calls, so such a script could read any file on
+ * the host and write anywhere, without ever learning the token.
+ *
+ * `sandbox=""` — every permission withheld, `allow-scripts` above all — is what
+ * takes that away. The document renders into an opaque origin with scripting
+ * off, which for a picture costs nothing at all. `<iframe>` rather than
+ * `<embed>` because only an iframe honours the attribute; the box, the border
+ * and the radius are the same ones this always had.
+ *
+ * The gateway sends `Content-Security-Policy: sandbox` on `/files` as well, so
+ * the same file opened at its own URL is neutered too. Two independent
+ * mechanisms, because this one is worth not getting wrong once.
+ */
 const EmbedView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) =>
   suffixOf(path) === ".pdf" ? (
     <PdfView path={path} size={size} />
   ) : (
-    <embed
+    <iframe
       src={fileUrl(path)}
       title={nameOf(path)}
+      sandbox=""
       className={cn(
         "w-full rounded-lg border",
         size === "full" ? "h-full" : "h-80",

@@ -1,6 +1,6 @@
 /** Files a user message carried, above the prose rather than inside it. */
 
-import type { FC, ReactNode } from "react";
+import { useState, type FC, type ReactNode } from "react";
 import { useAuiState } from "@assistant-ui/react";
 
 import { FileKindIcon } from "@/components/file-kind-icon";
@@ -79,6 +79,22 @@ export const UserMessageAttachments: FC = () => {
 const AttachmentTile: FC<{ attachment: MessageAttachment }> = ({
   attachment,
 }) => {
+  /**
+   * Whether the picture failed, kept as state rather than acted on directly.
+   *
+   * This used to be `event.currentTarget.remove()`, which takes a node out of
+   * the document that React still believes it owns — and React finds out when
+   * the message unmounts, where `removeChild` throws `NotFoundError` and the
+   * error boundary takes the whole app down with it. A thumbnail failing is the
+   * ordinary case here, since a path in a message is a record of what happened
+   * rather than a promise the file is still there, so the crash was one deleted
+   * file away.
+   *
+   * Rendering nothing has exactly the same appearance: the icon it used to
+   * uncover is already painted underneath.
+   */
+  const [broken, setBroken] = useState(false);
+
   const image =
     attachment.modality === "image" ||
     guessKind(attachment.fileName) === "image";
@@ -92,13 +108,13 @@ const AttachmentTile: FC<{ attachment: MessageAttachment }> = ({
   return (
     <span className="bg-muted/60 relative flex size-14 items-center justify-center overflow-hidden rounded-md border shadow-sm">
       {icon}
-      {image && attachment.path && (
+      {image && attachment.path && !broken && (
         <img
           src={fileUrl(attachment.path)}
           alt=""
           loading="lazy"
           decoding="async"
-          onError={(event) => event.currentTarget.remove()}
+          onError={() => setBroken(true)}
           className="absolute inset-0 size-full object-cover"
         />
       )}

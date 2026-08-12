@@ -111,7 +111,9 @@ import {
  *  runtime's own memos over it never see a changed identity. */
 const NO_QUEUED_MESSAGES: readonly QueueItemState[] = [];
 
-const attachmentAdapter: AttachmentAdapter = {
+/** Exported for its own test. Nothing else should reach for it: it is handed
+ *  to the runtime below, and the composer is the only thing that drives it. */
+export const attachmentAdapter: AttachmentAdapter = {
   // Everything.
   //
   // **A bare star, not the MIME wildcard.** assistant-ui treats this as a
@@ -135,28 +137,52 @@ const attachmentAdapter: AttachmentAdapter = {
     };
 
     // **Yielded before anything is attempted.** assistant-ui shows the chip on
-    // the first yield and, if this throws, marks whatever it last saw as
-    // failed — so work done before the first yield fails invisibly. Claiming
-    // the chip up front means a refused write shows up as a broken attachment
-    // rather than as a click that did nothing.
+    // the first yield, so work done before it happens behind nothing at all.
+    // Claiming the chip up front is what gives a failure somewhere to be drawn.
     yield {
       ...base,
       status: { type: "running", reason: "uploading", progress: 0 },
     } satisfies PendingAttachment;
 
-    // Uploading here rather than in `send` so the progress bar means something:
-    // by the time the person hits send, the bytes are already across and the
-    // send is one small Request.
-    const upload = uploadToHost(file);
-    let step = await upload.next();
-    while (!step.done) {
+    // **A failure is yielded, never thrown.** Both of assistant-ui's call sites
+    // — the paperclip and the dropzone — await this inside a `try {} catch {}`
+    // with an empty body, so an exception from here is discarded and the chip
+    // is left frozen at whatever it last showed: 0%, forever, with nothing
+    // said. The library's own upload adapter yields an `incomplete` status for
+    // the same reason. That status is what `AttachmentProgress` draws as a red
+    // tile and `AttachmentLabel` explains in the tooltip; without this, both
+    // were unreachable code.
+    try {
+      // Uploading here rather than in `send` so the progress bar means
+      // something: by the time the person hits send, the bytes are already
+      // across and the send is one small Request.
+      const upload = uploadToHost(file);
+      let step = await upload.next();
+      while (!step.done) {
+        yield {
+          ...base,
+          status: { type: "running", reason: "uploading", progress: step.value },
+        } satisfies PendingAttachment;
+        step = await upload.next();
+      }
+      rememberStagedPath(id, step.value);
+    } catch (error) {
       yield {
         ...base,
-        status: { type: "running", reason: "uploading", progress: step.value },
+        status: {
+          type: "incomplete",
+          reason: "error",
+          // The sentence the person reads. `uploadToHost` writes the one about
+          // size; a refused or failed write arrives here as its own Request
+          // failure, which until now was equally silent.
+          message:
+            error instanceof Error
+              ? error.message
+              : "This file could not be attached.",
+        },
       } satisfies PendingAttachment;
-      step = await upload.next();
+      return;
     }
-    rememberStagedPath(id, step.value);
 
     yield {
       ...base,
@@ -1231,7 +1257,19 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     // The HTTP frontend acknowledges a background submit before the runtime
     // stores its row. Read only until that row appears, then patch the local
     // user turn without replacing the assistant turn that may be streaming.
-    for (let attempt = 0; attempt < 12; attempt++) {
+    //
+    // **Backing off rather than hammering.** Each attempt is a whole
+    // `conv.read` — every row of the conversation, re-parsed by `toTurns` — and
+    // twelve of them at a flat 150ms went out while the reply to that very
+    // message was streaming, over the same tunnel. The row lands on the first
+    // or second look in practice; the later attempts exist for the case where
+    // the runtime is busy, and that case is not helped by asking more often.
+    let wait = 150;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (attempt > 0) {
+        await new Promise((settle) => setTimeout(settle, wait));
+        wait = Math.min(wait * 2, 1200);
+      }
       try {
         const turns = await readConversation(id);
         const user = [...turns].reverse().find((turn) => turn.role === "user");
@@ -1260,7 +1298,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         // This is an optimistic enhancement; the normal history path reports
         // persistent read failures and a later reload can still hydrate it.
       }
-      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // Nothing to wait for once the conversation has moved on — the patch
+      // would land on somebody else's transcript, and the check above already
+      // declines to dispatch it.
+      if (conversationIdRef.current !== id) return;
     }
   }, []);
 
