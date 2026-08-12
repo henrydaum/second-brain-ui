@@ -5,6 +5,11 @@ import { useAuiState } from "@assistant-ui/react";
 
 import { FileKindIcon } from "@/components/file-kind-icon";
 import { preloadFileViewer } from "@/components/lazy-file-viewer";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { fileUrl } from "@/lib/client";
 import { guessKind } from "@/lib/files";
 import { SENT_ATTACHMENTS } from "@/runtime/convert";
@@ -40,25 +45,31 @@ export const UserMessageAttachments: FC = () => {
         const tile = <AttachmentTile attachment={attachment} />;
         if (!path) {
           return (
-            <div key={`${attachment.fileName}-${position}`} title={attachment.fileName}>
-              {tile}
-            </div>
+            <Tooltip key={`${attachment.fileName}-${position}`}>
+              <TooltipTrigger asChild>
+                <div>{tile}</div>
+              </TooltipTrigger>
+              <TooltipContent side="top">{attachment.fileName}</TooltipContent>
+            </Tooltip>
           );
         }
         const index = paths.indexOf(path);
         return (
-          <button
-            key={`${path}-${position}`}
-            type="button"
-            aria-label={`View ${attachment.fileName}`}
-            title={attachment.fileName}
-            onClick={() => view(paths, index)}
-            onPointerEnter={preloadFileViewer}
-            onFocus={preloadFileViewer}
-            className="focus-visible:ring-ring rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2"
-          >
-            {tile}
-          </button>
+          <Tooltip key={`${path}-${position}`}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={`View ${attachment.fileName}`}
+                onClick={() => view(paths, index)}
+                onPointerEnter={preloadFileViewer}
+                onFocus={preloadFileViewer}
+                className="focus-visible:ring-ring rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2"
+              >
+                {tile}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">{attachment.fileName}</TooltipContent>
+          </Tooltip>
         );
       })}
     </div>

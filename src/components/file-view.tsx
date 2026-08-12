@@ -34,6 +34,7 @@ import { fileUrl } from "@/lib/client";
 import { delimiterFor, parseDelimited } from "@/lib/csv";
 import {
   describeStatus,
+  fetchWholeBytes,
   FileUnavailable,
   formatBytes,
   kindOf,
@@ -48,6 +49,10 @@ import { cn } from "@/lib/utils";
 /** How much of a table anybody reads in a pane. Past this it is a data set
  *  rather than a document, and the download link is the honest offer. */
 const ROW_CAP = 200;
+
+/** Uploads currently top out below this. Keeping a bound prevents a corrupt
+ *  range response from turning a preview into unbounded browser memory. */
+const PDF_CAP = 64 * 1024 * 1024;
 
 export type FileViewSize = "inline" | "full";
 
@@ -355,16 +360,80 @@ const TextView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
   );
 };
 
-/** PDFs and SVGs: the browser already knows how, and the kernel has no parser
- *  for either. Modality answers `"unknown"` for both, which is exactly the case
- *  `kindOf` refuses to take as "not renderable". */
-const EmbedView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => (
-  <embed
-    src={fileUrl(path)}
-    title={nameOf(path)}
-    className={cn("w-full rounded-lg border", size === "full" ? "h-full" : "h-80")}
-  />
-);
+/**
+ * PDFs need a blob URL rather than `/files` directly. Chrome's native PDF
+ * viewer runs in an extension frame, so the gateway's SAMEORIGIN protection
+ * can reject the otherwise same-origin response. Fetching the bytes first
+ * keeps that protection intact and gives the extension a local blob instead.
+ */
+const PdfView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setUrl(null);
+    setFailure(null);
+
+    void (async () => {
+      try {
+        const whole = await fetchWholeBytes(path, PDF_CAP);
+        if (whole.truncated) {
+          throw new Error("This PDF is too large to preview; download it instead.");
+        }
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(
+          new Blob([whole.bytes as BlobPart], { type: "application/pdf" }),
+        );
+        setUrl(objectUrl);
+      } catch (error) {
+        if (!cancelled) {
+          setFailure(
+            error instanceof Error
+              ? error.message
+              : "This PDF could not be read.",
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [path]);
+
+  if (failure) return <Unavailable path={path} reason={failure} size={size} />;
+  if (!url) return <Loading path={path} size={size} />;
+  return (
+    <embed
+      src={url}
+      type="application/pdf"
+      title={nameOf(path)}
+      className={cn(
+        "w-full rounded-lg border",
+        size === "full" ? "h-full" : "h-80",
+      )}
+    />
+  );
+};
+
+/** SVG can stay on its real URL; unlike Chrome's PDF viewer it does not cross
+ * into an extension origin while rendering. */
+const EmbedView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) =>
+  suffixOf(path) === ".pdf" ? (
+    <PdfView path={path} size={size} />
+  ) : (
+    <embed
+      src={fileUrl(path)}
+      title={nameOf(path)}
+      className={cn(
+        "w-full rounded-lg border",
+        size === "full" ? "h-full" : "h-80",
+      )}
+    />
+  );
 
 /** Everything with no better answer. `/files` serves it as
  *  `application/octet-stream`, which is a download, so this offers one. */

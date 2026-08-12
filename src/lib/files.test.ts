@@ -15,6 +15,7 @@ const {
   describeStatus,
   dirOf,
   fetchWhole,
+  fetchWholeBytes,
   FileUnavailable,
   forgetFile,
   formatBytes,
@@ -168,6 +169,19 @@ describe("fetchWhole", () => {
       ([, init]) => (init.headers as Record<string, string>).Range,
     );
     expect(ranges).toEqual([undefined, "bytes=4-", "bytes=8-"]);
+  });
+
+  it("preserves arbitrary bytes for binary viewers", async () => {
+    const bytes = new Uint8Array([0, 255, 37, 80, 68, 70]);
+    const response = { ...reply("", 200) };
+    response.arrayBuffer = async () => bytes.buffer;
+    fetchMock.mockResolvedValueOnce(response);
+
+    await expect(fetchWholeBytes("/srv/paper.pdf")).resolves.toEqual({
+      bytes,
+      truncated: false,
+      total: bytes.length,
+    });
   });
 
   it("stops at the cap and says it was truncated", async () => {

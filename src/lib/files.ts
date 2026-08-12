@@ -257,6 +257,14 @@ export type WholeText = {
   total: number;
 };
 
+export type WholeBytes = {
+  bytes: Uint8Array;
+  /** The file is longer than the caller's cap and this is only its front. */
+  truncated: boolean;
+  /** The file's real length in bytes, as the server reports it. */
+  total: number;
+};
+
 /** `bytes 0-8191/40000` → 40000. Null when the header is absent or unparseable,
  *  which is how a `200` is told from a `206`. */
 function totalFrom(header: string | null): number | null {
@@ -276,10 +284,10 @@ function totalFrom(header: string | null): number | null {
  * window separately would corrupt any multi-byte character that straddled a
  * boundary — a rare bug that looks like a corrupt file rather than a bad read.
  */
-export async function fetchWhole(
+export async function fetchWholeBytes(
   path: string,
   cap: number = TEXT_CAP,
-): Promise<WholeText> {
+): Promise<WholeBytes> {
   const url = fileUrl(path);
   const windows: Uint8Array[] = [];
   let at = 0;
@@ -316,9 +324,22 @@ export async function fetchWhole(
   }
 
   return {
-    text: new TextDecoder().decode(joined),
+    bytes: joined,
     truncated: at < total,
     total: Number.isFinite(total) ? total : joined.length,
+  };
+}
+
+/** Text-flavoured wrapper around the byte-preserving range loop above. */
+export async function fetchWhole(
+  path: string,
+  cap: number = TEXT_CAP,
+): Promise<WholeText> {
+  const whole = await fetchWholeBytes(path, cap);
+  return {
+    text: new TextDecoder().decode(whole.bytes),
+    truncated: whole.truncated,
+    total: whole.total,
   };
 }
 
