@@ -30,7 +30,7 @@ const MODES = [
   {
     id: "yolo" as const,
     label: "YOLO",
-    description: "Approve those actions automatically while attended.",
+    description: "Approve actions automatically.",
   },
 ];
 
