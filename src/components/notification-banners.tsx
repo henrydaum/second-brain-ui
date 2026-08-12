@@ -25,7 +25,9 @@ import { XIcon } from "lucide-react";
 
 import { LevelIcon } from "@/components/notification-level";
 import { levelOf } from "@/lib/notifications";
+import { useMediaQuery, XL_QUERY } from "@/lib/media";
 import { cn } from "@/lib/utils";
+import { useFileActivity } from "@/runtime/file-activity-provider";
 import { useNotifications } from "@/runtime/provider";
 import type { Banner } from "@/runtime/notifications";
 
@@ -43,6 +45,20 @@ const STAYS = new Set(["warning", "error"]);
 export const NotificationBanners: FC = () => {
   const { banners, dismissBanner, notificationsOpen } = useNotifications();
 
+  /**
+   * Clear of the files drawer when it is a *rail* rather than an overlay.
+   *
+   * From `xl` the drawer takes width out of the thread and lives in the flow at
+   * the end edge — so a stack pinned to `end-4` lands on top of it, and since
+   * the drawer is opaque the banner is simply lost behind it. Stepping the
+   * offset over by the drawer's own width (`xl:w-96`, plus the same 1rem gutter)
+   * puts the stack beside the panel instead. Below `xl` the drawer is an
+   * overlay that the banners are meant to sit in front of, so the offset stays
+   * at the edge there.
+   */
+  const { filesOpen } = useFileActivity();
+  const besideDrawer = useMediaQuery(XL_QUERY) && filesOpen;
+
   // Nothing to say out here while the panel is open — every persisted one is in
   // the list being read, and a banner about a row three inches away is noise.
   // Transient ones are the honest loss here, and they are the ones that matter
@@ -55,7 +71,15 @@ export const NotificationBanners: FC = () => {
       // `end-4` rather than `right-4`: the drawers and the sidebar are all
       // written for both directions, and a stack pinned to the physical right
       // would sit under the sidebar in RTL.
-      className="pointer-events-none fixed bottom-4 end-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2"
+      className={cn(
+        "pointer-events-none fixed bottom-4 z-50 flex w-80 flex-col gap-2",
+        // Matching the drawer's own 200ms width animation, so the stack travels
+        // with the panel edge instead of jumping once it has finished opening.
+        "transition-[inset-inline-end] duration-200",
+        besideDrawer
+          ? "end-[25rem] max-w-[calc(100vw-27rem)]"
+          : "end-4 max-w-[calc(100vw-2rem)]",
+      )}
     >
       {banners.slice(0, AT_ONCE).map((banner) => (
         // `dismissBanner` is passed through rather than closed over here. An
