@@ -27,6 +27,7 @@ export type Theme = "system" | "light" | "dark";
 export const THEME_KEY = "second-brain:theme";
 
 const DARK_QUERY = "(prefers-color-scheme: dark)";
+const THEME_CHANGE_EVENT = "second-brain:theme-change";
 
 /** The stored preference, or "system" for anything unrecognised — including a
  *  browser that refuses `localStorage` entirely, which throws rather than
@@ -46,7 +47,10 @@ export function readTheme(): Theme {
 /** What "system" actually resolves to right now. */
 export function resolveTheme(theme: Theme): "light" | "dark" {
   if (theme !== "system") return theme;
-  return window.matchMedia(DARK_QUERY).matches ? "dark" : "light";
+  return typeof window.matchMedia === "function" &&
+    window.matchMedia(DARK_QUERY).matches
+    ? "dark"
+    : "light";
 }
 
 function applyTheme(theme: Theme) {
@@ -66,6 +70,20 @@ function applyTheme(theme: Theme) {
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>(readTheme);
 
+  // Settings has separate desktop and mobile layouts which are both mounted
+  // and hidden responsively. Keep their controls in lockstep when either one
+  // changes the preference, including across a viewport resize.
+  useEffect(() => {
+    const onThemeChange = (event: Event) => {
+      const next = (event as CustomEvent<Theme>).detail;
+      if (next === "system" || next === "light" || next === "dark") {
+        setThemeState(next);
+      }
+    };
+    window.addEventListener(THEME_CHANGE_EVENT, onThemeChange);
+    return () => window.removeEventListener(THEME_CHANGE_EVENT, onThemeChange);
+  }, []);
+
   useEffect(() => {
     applyTheme(theme);
     try {
@@ -75,13 +93,19 @@ export function useTheme() {
     }
 
     if (theme !== "system") return;
+    if (typeof window.matchMedia !== "function") return;
     const media = window.matchMedia(DARK_QUERY);
     const onChange = () => applyTheme("system");
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
   }, [theme]);
 
-  const setTheme = useCallback((next: Theme) => setThemeState(next), []);
+  const setTheme = useCallback((next: Theme) => {
+    setThemeState(next);
+    window.dispatchEvent(
+      new CustomEvent<Theme>(THEME_CHANGE_EVENT, { detail: next }),
+    );
+  }, []);
 
   return { theme, setTheme, resolved: resolveTheme(theme) };
 }

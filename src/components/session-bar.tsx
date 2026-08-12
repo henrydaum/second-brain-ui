@@ -14,7 +14,6 @@ import { FilesIcon, PanelLeftOpenIcon, XIcon } from "lucide-react";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { NotificationPanel } from "@/components/notification-panel";
 import { preloadFilesDrawer } from "@/components/lazy-files-drawer";
-import { ThemePicker } from "@/components/theme-picker";
 import { conversationTitle } from "@/lib/conversations";
 import { cn } from "@/lib/utils";
 import { useFileActivity } from "@/runtime/file-activity-provider";
@@ -84,8 +83,6 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
         <span className="hidden sm:inline">{label}</span>
         <span className="sr-only sm:hidden">{label}</span>
       </span>
-
-      <ThemePicker />
 
       {/* Before Files, which keeps Files hard against the edge its drawer comes
           out of. The bell's panel is a popover and has no edge of its own to

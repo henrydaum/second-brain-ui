@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FC } from "react";
 import { ChevronRightIcon, LoaderCircleIcon } from "lucide-react";
 
 import { CommandPanel } from "@/components/command-panel";
+import { ThemePicker } from "@/components/theme-picker";
 import {
   SETTINGS_PAGES,
   SYSTEM_ACTIONS,
@@ -72,6 +73,8 @@ const SystemActions: FC<{
           System
         </p>
       )}
+      <ThemePicker settings />
+      <div className={cn("border-t", compact ? "my-1" : "mx-2 my-2")} />
       {SYSTEM_ACTIONS.map((action) => {
         const Icon = action.icon;
         return (

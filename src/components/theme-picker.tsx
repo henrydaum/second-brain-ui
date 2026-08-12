@@ -3,9 +3,8 @@
  *
  * A three-way menu rather than a two-state toggle, because "System" is a real
  * answer and the one most people are already on — see `lib/theme.ts`. The shape
- * is deliberately the same as `SecurityModePicker`: a small ghost trigger and a
- * radio menu in a popover, so the two controls in the chrome do not each invent
- * their own idiom.
+ * is deliberately the same as the other Settings controls: a quiet row opening
+ * a radio menu, with the current choice visible before the menu is opened.
  */
 
 import type { FC } from "react";
@@ -28,12 +27,16 @@ const OPTIONS: { id: Theme; label: string; icon: typeof SunIcon }[] = [
   { id: "dark", label: "Dark", icon: MoonIcon },
 ];
 
-export const ThemePicker: FC = () => {
+export const ThemePicker: FC<{ settings?: boolean }> = ({
+  settings = false,
+}) => {
   const { theme, setTheme, resolved } = useTheme();
 
   // The trigger shows what you are *looking at*, not what you *chose* — on
   // "System" a sun icon at night would be simply wrong.
   const TriggerIcon = resolved === "dark" ? MoonIcon : SunIcon;
+  const selected =
+    OPTIONS.find((option) => option.id === theme)?.label ?? "System";
 
   return (
     <DropdownMenu>
@@ -44,16 +47,33 @@ export const ThemePicker: FC = () => {
         <Button
           type="button"
           variant="ghost"
-          size="icon"
+          size={settings ? "sm" : "icon"}
           aria-label="Appearance"
-          className="text-muted-foreground hover:text-foreground size-8"
+          className={
+            settings
+              ? "text-muted-foreground hover:text-foreground h-8 w-full justify-start gap-2 px-2 font-normal"
+              : "text-muted-foreground hover:text-foreground size-8"
+          }
         >
           <TriggerIcon className="size-4" />
+          {settings && (
+            <>
+              <span className="text-foreground">Appearance</span>
+              <span className="ms-auto text-xs">{selected}</span>
+            </>
+          )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={8} className="w-44">
+      <DropdownMenuContent
+        align={settings ? "start" : "end"}
+        sideOffset={8}
+        className="w-44"
+      >
         <DropdownMenuLabel>Appearance</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={theme} onValueChange={(value) => setTheme(value as Theme)}>
+        <DropdownMenuRadioGroup
+          value={theme}
+          onValueChange={(value) => setTheme(value as Theme)}
+        >
           {OPTIONS.map((option) => {
             const Icon = option.icon;
             return (
