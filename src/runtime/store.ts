@@ -681,6 +681,19 @@ function applyFrame(state: State, frame: Frame): State {
         return { ...state, suppressNextCancellationNotice: false };
       }
 
+      // `session.cancel` deliberately keeps its acknowledgement on
+      // `messages`: `/cancel` reads that Request result to distinguish a real
+      // cancellation from "Nothing to cancel." A command cancelled from
+      // Settings already disappeared visibly, so suppress only its exact
+      // acknowledgement. This is not command-output routing; every other
+      // message still belongs to the conversation even while a command exists.
+      if (
+        state.suppressedCommand &&
+        frame.payload.every((text) => /^cancelled\.?$/i.test(text.trim()))
+      ) {
+        return state;
+      }
+
       let turns = state.turns;
       let turn: Turn | null = null;
       for (const text of frame.payload) {

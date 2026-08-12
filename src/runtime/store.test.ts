@@ -313,6 +313,44 @@ describe("callable output", () => {
     expect(state.command?.outcome).toEqual([]);
     expect(state.callableOutput).toEqual([]);
   });
+
+  it("keeps the documented cancel Request acknowledgement out of chat", () => {
+    let state = run({
+      kind: "tool_status",
+      payload: {
+        kind: "command",
+        call_id: "cmd-1",
+        command_name: "locations",
+        status: "started",
+      },
+    });
+    state = reduce(state, { type: "said", text: "/cancel", isCommand: true });
+    state = reduce(state, {
+      type: "frame",
+      frame: { kind: "messages", payload: ["Cancelled."] },
+    });
+
+    expect(state.turns).toEqual([]);
+  });
+
+  it("does not swallow a non-cancellation message after command cancellation", () => {
+    let state = run({
+      kind: "tool_status",
+      payload: {
+        kind: "command",
+        call_id: "cmd-1",
+        command_name: "locations",
+        status: "started",
+      },
+    });
+    state = reduce(state, { type: "said", text: "/cancel", isCommand: true });
+    state = reduce(state, {
+      type: "frame",
+      frame: { kind: "messages", payload: ["An overlapping agent reply."] },
+    });
+
+    expect(said(state)).toEqual(["An overlapping agent reply."]);
+  });
 });
 
 describe("sent attachment hydration", () => {
