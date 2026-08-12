@@ -161,6 +161,10 @@ export type State = {
    *  beside `form` rather than inside it because a command outlives its steps:
    *  it still has an outcome to show once the last question is answered. */
   command: CommandRun | null;
+  /** Output from a callable invoked without a command panel (normally a tool
+   *  invoked directly by the person). It has its own surface above the
+   *  composer and never enters the conversation. */
+  callableOutput: string[];
   /** A command the person cancelled. Frames and the HTTP response travel on
    *  independent paths, so its final status can arrive after the panel was
    *  dismissed. Keep its identity long enough to ignore that late tail. */
@@ -197,6 +201,7 @@ export const initialState: State = {
   typing: false,
   form: null,
   command: null,
+  callableOutput: [],
   suppressedCommand: null,
   suppressNextCancellationNotice: false,
   buttons: [],
@@ -231,6 +236,8 @@ export type Action =
    *  has printed something is not done being read just because it is done
    *  running. */
   | { type: "clearCommand" }
+  /** Dismiss output from a callable that had no command panel of its own. */
+  | { type: "clearCallableOutput" }
   /** Closing an approval dialog is already visible. Suppress only the kernel's
    *  next exact cancellation acknowledgement, not arbitrary errors or text. */
   | { type: "suppressNextCancellationNotice" }
@@ -554,6 +561,8 @@ export function reduce(state: State, action: Action): State {
       return { ...state, form: null };
     case "clearCommand":
       return { ...state, command: null, form: null };
+    case "clearCallableOutput":
+      return { ...state, callableOutput: [] };
     case "suppressNextCancellationNotice":
       return { ...state, suppressNextCancellationNotice: true };
     case "clearError":
@@ -672,27 +681,6 @@ function applyFrame(state: State, frame: Frame): State {
         return { ...state, suppressNextCancellationNotice: false };
       }
 
-      if (
-        state.suppressedCommand &&
-        frame.payload.every((text) => /^cancelled\.?$/i.test(text.trim()))
-      ) {
-        return state;
-      }
-
-      // A running command's output belongs to the command, not the chat. This
-      // is how "Cancelled." and a command's results stay out of a conversation
-      // that has nothing to do with them — and it is why the panel keeps the
-      // command after it finishes, since the output arrives just after.
-      if (state.command) {
-        return {
-          ...state,
-          command: {
-            ...state.command,
-            outcome: [...state.command.outcome, ...frame.payload],
-          },
-        };
-      }
-
       let turns = state.turns;
       let turn: Turn | null = null;
       for (const text of frame.payload) {
@@ -709,6 +697,31 @@ function applyFrame(state: State, frame: Frame): State {
         turns = replace(turns, turn.id, turn);
       }
       return { ...state, turns };
+    }
+
+    /* A callable's return value is operational output, never conversation.
+       Command output belongs to the open command panel. A directly invoked
+       tool has no such panel, so it goes to the separate output surface. */
+    case "callable_output": {
+      if (
+        state.command &&
+        state.suppressedCommand?.callId === state.command.callId
+      ) {
+        return state;
+      }
+      if (!state.command) {
+        return {
+          ...state,
+          callableOutput: [...state.callableOutput, ...frame.payload],
+        };
+      }
+      return {
+        ...state,
+        command: {
+          ...state.command,
+          outcome: [...state.command.outcome, ...frame.payload],
+        },
+      };
     }
 
     /* Tools and slash commands, which the wire reports the same way but which

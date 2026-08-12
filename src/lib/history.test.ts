@@ -97,3 +97,25 @@ describe("stored user attachments", () => {
     ]);
   });
 });
+
+describe("stored message authorship", () => {
+  it("does not render kernel-authored user-role rows as the person's words", () => {
+    const turns = toTurns([
+      user({
+        content: "[Conversation summary from earlier] not a person",
+        author: "compaction",
+      }),
+      user({ id: 2, content: "Actually from the person", author: null }),
+    ]);
+
+    expect(turns).toHaveLength(1);
+    expect(turns[0]).toMatchObject({ id: "stored-2", role: "user" });
+  });
+
+  it("keeps old rows whose author field is absent", () => {
+    const turns = toTurns([user({ content: "An old real message" })]);
+
+    expect(turns).toHaveLength(1);
+    expect(turns[0]?.role).toBe("user");
+  });
+});

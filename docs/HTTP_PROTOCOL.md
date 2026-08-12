@@ -8,11 +8,12 @@ Served by the `frontend_http` store package. Hand this document to whoever is
 building the client; `docs/http_reference_client.html` is a working example to
 check the bridge against when the client misbehaves.
 
-There are two endpoints.
+There are three endpoints.
 
 ```
 GET  /events?thread=<t>&token=<T>      every render, as it happens (SSE)
 POST /sdk/<request.type>?thread=<t>    any of the 121 Requests
+GET  /files?path=<absolute path>       one host file, as a real HTTP body
 ```
 
 Plus static hosting on `GET /*` when `http_static_dir` is configured, and
@@ -69,7 +70,7 @@ outright. No stream, no dialogs.
 **One stream per thread.** A second `GET /events` for the same thread replaces
 the first.
 
-### The ten kinds
+### The twelve kinds
 
 Handle what you can show and ignore the rest; a client that only renders
 `messages` is a working client.
@@ -79,6 +80,12 @@ Handle what you can show and ignore the rest; a client that only renders
 GitHub-flavored markdown, including tables and fenced code blocks. This is the
 interchange format everywhere in Second Brain; it is also what the model emits,
 so one rendering path covers both.
+
+**This kind is the conversation and nothing else** — the agent's replies and
+the person's own words. Everything that used to be smuggled through it now has
+its own kind: a refusal is `error`, an announcement is `notification`, and what
+a slash command answered with is `callable_output`. If you are drawing a chat
+transcript, `messages` is the only kind that belongs in it.
 
 #### `stream_delta` — `dict`
 
@@ -289,6 +296,80 @@ Filesystem paths on the host, not URLs and not bytes. A browser client cannot
 open them directly; fetch the contents with `POST /sdk/fs.read_bytes`
 (base64-encoded in the response) if you want to display them.
 
+#### `notification` — `dict`
+
+The system telling the user something, as distinct from the conversation
+saying it: a plugin registering, a scheduled agent finishing, a setting
+changing, a background write completing.
+
+```json
+{"title": "Nightly index finished", "body": "Indexed 12 files.",
+ "source": "session", "source_id": "spawn_subagent:41", "level": "info",
+ "conversation_id": 41, "notification_id": 108,
+ "load_hint": "/conversations Main 41 'Load conversation'",
+ "sent_at": 1765412880.4}
+```
+
+**You only get this kind if you ask for it.** Declare
+`supports_notifications` in `capabilities`; without it the kernel flattens
+each notification into markdown and sends it as a `messages` render, which is
+what every frontend saw before this kind existed. That is the same bargain
+`stream_delta` offers, and for the same reason — a client that quietly ignored
+the kind would look merely quiet rather than broken.
+
+`source` is stamped by the kernel, never by whoever raised it. For a plugin it
+is read off the live provenance chain, so a plugin cannot claim to be the
+plugin watcher. Treat it as trustworthy attribution and show it.
+
+`level` is `info` | `success` | `warning` | `error` and only styles the result.
+
+`load_hint` is a pre-rendered slash command, there for surfaces with no better
+way to reach a conversation. **Ignore it** — you have `conversation_id` and can
+open the conversation yourself; rendering a terminal command in a web UI is the
+failure it exists to avoid.
+
+`notification_id` is absent when the notification was not persisted (transient
+progress, e.g. "Compacting conversation…"). Everything else is in the
+`notifications` table and can be read back — see below.
+
+#### `callable_output` — `list[str]`
+
+What a slash command or a user-invoked tool **returned**: a `/config` listing,
+a `/conversations` table, a `/debug` dump. GitHub-flavored markdown, same wire
+convention as `messages`.
+
+Separate because it is the answer to something the person typed rather than
+something anybody said. It was much the largest population making `messages`
+unreadable to a client — the agent's reply and a settings table arrived as the
+same kind of thing, with no field to tell them apart.
+
+**You only get this kind if you ask for it.** Declare
+`supports_callable_output` in `capabilities`, which `frontend_http` does;
+without it the kernel sends command output as a `messages` render, exactly as
+every frontend saw it before this kind existed. Same bargain as
+`notification` and `stream_delta` above.
+
+A good client gives this its own treatment — a collapsible block, a monospace
+panel beside the transcript — rather than a chat bubble. It is output, not
+speech.
+
+#### Filling the panel on a fresh load
+
+The stream only ever answers "what happened since you connected". A panel that
+draws notifications needs the rest:
+
+```
+POST /sdk/notification.list    {"limit": 50}
+POST /sdk/notification.list    {"since_id": 108}      # incremental
+POST /sdk/notification.list    {"unread_only": true}
+POST /sdk/notification.mark_read {"ids": [108, 109]}
+POST /sdk/notification.mark_read {"before_id": 109}   # mark all read
+```
+
+Both are scoped to the thread's own user in SQL — there is no `user_id`
+argument to pass and none to get wrong. `mark_read` answers with how many rows
+actually changed, so calling it twice is idempotent rather than double-counted.
+
 ---
 
 ## 3. `POST /sdk/<type>` — doing things
@@ -357,12 +438,42 @@ catalogues all of them with their policy inputs. The useful subset:
 | `conv.clear` | `id` |
 | `conv.delete` | `id` — **unsafe, raises a dialog** |
 
+A `conv.read` message row is
+`{id, conversation_id, role, content, tool_call_id, tool_name, timestamp,
+attachments, author}`.
+
+**`author` is who actually wrote the row**, and it is `null` for almost all of
+them, which is the answer "the row is what its `role` says". A non-null value
+means the kernel synthesized the row wearing somebody else's role — the values
+it uses are `cancel_notice`, `doorman_note`, `command_note`, `compaction` and
+`truncation`, and a plugin's `conv.append` is stamped with the plugin's own
+name. `role` cannot carry this because `role: "system"` was already taken by
+state and compaction markers, which are not messages at all and should be
+skipped. Do not render an authored row as something the person said; hiding
+them outright is a reasonable default, since each one is addressed to the
+model rather than to a reader.
+
+**`attachments` is the files that message carried** — a list of
+`{path, file_name, modality, extension}`, empty for the overwhelming majority
+of rows — and `content` is what the person actually typed. They used to be one
+field: the pointer line `[Attached image file: chart.png (cached at …)]` was
+welded onto the text, so the only way to know a message had a file was to parse
+prose, and a person typing those characters looked exactly like an attachment.
+Render them however your UI renders a file; `GET /files?path=` turns one into
+something an `<img>` or a `<video>` can load.
+
+Conversations written before the column keep the old welded line in `content`
+and have no `attachments`. Nothing rewrote them — guessing where prose ends and
+a file begins is not worth doing to somebody's own words — so a client that
+wants to show those has to accept the sentence as-is.
+
 **Talking**
 
 | Request | Arguments |
 |---|---|
 | `frontend.submit` | `input_kind: "text"`, `text` — chat and slash commands alike |
-| `frontend.submit` | `input_kind: "attachment"`, `path`, `file_name`, `caption`, `ingest` |
+| `frontend.submit` | `input_kind: "attachment"`, `path`, `file_name`, `caption`, `ingest` — one file |
+| `frontend.submit` | `input_kind: "attachment"`, `files: [{path, file_name, extension, is_photo, caption}]`, `caption`, `ingest` — one message, several files |
 | `frontend.resolve` | `value`, `request_id` |
 | `frontend.cancel` | — stop the current turn |
 | `frontend.pending` | — the id of the approval still waiting, or `null`. With `details: true`, the question itself as `{kind, payload}` — approval **or** form step — which is how a reconnecting client gets back to one |
@@ -398,12 +509,156 @@ successive `offset`/`length` windows and join them; a short read means you
 reached the end, so the loop terminates without your having to learn the size
 first.
 
+### Sending files
+
+There is no upload route, and there does not need to be one: a file becomes a
+path first, and the path is what a submit carries.
+
+```
+POST /sdk/fs.temp        {"suffix": ".png"}          → a scratch path
+POST /sdk/fs.write_bytes {"path": …, "data": "<base64>"}
+POST /sdk/fs.write_bytes {"path": …, "data": "<base64>", "mode": "append"}
+POST /sdk/frontend.submit {"input_kind": "attachment",
+                           "files": [{"path": …, "file_name": "chart.png"},
+                                     {"path": …, "file_name": "notes.pdf"}],
+                           "caption": "what do these have in common?",
+                           "ingest": true}
+```
+
+Scratch is a safe write, so none of this raises a dialog. One `write_bytes`
+message is capped exactly as one `read_bytes` answer is, so a large file goes
+up in `append` chunks. `ingest` then moves each file into the attachment cache
+— a watched directory, so the pipeline indexes it like anything else — and
+removes the scratch copy.
+
+**Attach several files in one submit, not several submits.** A submitted
+attachment hands the turn to the agent immediately, so a second submit arrives
+at a session that is already busy and comes back `busy`. `files` is the whole
+message: one action, one turn, and the model sees every file in the same call.
+`caption` is the line the person typed and belongs to the message — it is
+recorded once, on the first file, rather than repeated per file. A file may
+still carry its own `caption` when the transport gave it one (Telegram does).
+
+The one-file form (`path`, `file_name`, `caption`, `ingest` at the top level)
+is unchanged and still works; `files` with one entry means exactly the same
+thing.
+
+## 4. `GET /files` — a host file as a URL
+
+Everything else here answers JSON. This answers **bytes**, because some things
+are not renderable any other way.
+
+`fs.read_bytes` already reads any file a client is allowed to read, so this
+grants nothing new — it is the same read, through the same policy, recorded in
+the same ledger. What it adds is a *transport*. A Request answers base64 inside
+JSON, and `<img>`, `<video>` and `<audio>` want a URL. Rebuilding a Blob works
+for a picture and is hopeless for media: it buffers the whole file before the
+first frame and cannot seek.
+
+```
+GET /files?path=%2Fsrv%2Fapp%2Fchart.png
+Authorization: Bearer <secret_http_token>
+```
+
+Percent-encode the path (`encodeURIComponent`) — it is an absolute host path,
+and on Windows it contains `\` and `:`. Same bearer token as every other route.
+
+| Answer | When |
+|---|---|
+| `200` + body | The whole file, when it fits in one message |
+| `206` + `Content-Range` | A `Range` was asked for, **or** the file is larger than one message |
+| `400` | No `?path=`, or it names a directory |
+| `401` | Missing or wrong token |
+| `403` | Policy refused the read |
+| `404` | No such file |
+| `416` + `Content-Range: bytes */<size>` | The range starts past the end |
+
+`Accept-Ranges: bytes` is always sent, and `Range` is honored in the single-range
+forms (`bytes=0-1023`, `bytes=1024-`, `bytes=-4`). That is what lets a `<video>`
+seek instead of downloading everything before the point you clicked.
+
+**A large file always comes back `206`, even with no `Range` header.** One
+response body crosses the box boundary in one wire message and that message is
+capped, so the route serves the first window and advertises the real total in
+`Content-Range`. Media elements follow up on their own; a plain `fetch` should
+loop on `Content-Range` until it has the whole length. `HEAD` answers the full
+`Content-Length` without a body, which is the cheap way to size a file first.
+
+**Every extension works.** The bytes are served whatever the file is; the
+extension only decides the `Content-Type` label. A small explicit table is
+consulted first — so the answer is identical on every host — then Python's
+`mimetypes`, then `application/octet-stream`, which the browser treats as a
+download rather than a guess.
+
+Every extension in the kernel's own modality map (`parsing._NATIVE_DEFAULTS`,
+what `parse.modality` answers from) is guaranteed a label whose top-level type
+matches its modality, so a client that categorises by modality and then picks
+an element will never hand a `<video>` something it refuses to play. That
+agreement is pinned by
+`test_every_native_modality_gets_a_playable_type` — two tables answering one
+question is how they drift.
+
+Use it for anything the browser renders natively: images, video, audio, PDF,
+SVG, plain text. For formats it cannot — `.docx`, `.xlsx`, `.pptx` — use
+`parse.file` with `modality: "text"` instead; that is what the parser packages
+are for, and text is one of the two things a parse result may carry.
+
+---
+
+**What the agent did** — the flight recorder, and the only place some of it is
+kept.
+
+| Request | Arguments |
+|---|---|
+| `ledger.read` | `conversation_id`, `action_types`, `since_id`, `origin`, `session_key`, `limit` |
+
+Renders are events, not state, so anything a frontend only *saw* is gone on
+reload — and two of those things are worth getting back. Files the agent
+**edited** arrive as `attachments` render frames and are recorded as
+`origin: "sandbox"` rows for `fs.write` / `fs.write_bytes` / `fs.delete` /
+`fs.move`; files it **showed** you are on the `origin: "agent_enact"` row for the
+tool call, under `data_json.attachments`. Neither is in `conv.read` — they are
+things the agent *did*, not part of any message.
+
+Files the **person** sent are the opposite case and are on the message itself:
+`conv.read` gives every row an `attachments` list (see below). Don't go to the
+ledger for those.
+
+Shell commands count too. A successful `proc.run` / `proc.start` whose line is
+a recognised file command — `rm`, `mv`, `cp`, `mkdir`, `touch`, `rmdir`, `ln`
+and the Windows spellings — records the paths it touched, tagged
+`data_json.via: "shell"` because a path read out of a command line is a weaker
+claim than one the kernel serviced. `data_json.deleted` is the subset that no
+longer exists. Anything it cannot read honestly records no paths at all: an
+unlisted program, a glob (`rm *.log` names nothing until a shell expands it),
+a redirect, `$(…)`, a subshell, or a command that exited non-zero.
+
+Read the paths from `data_json.paths`, never by parsing `args_json` — that field
+is capped, and past the cap the object is replaced by a `head`/`tail` wrapper.
+The argument that blows the cap is the file's own contents, so parsing it would
+lose exactly the largest edits. `data_json.bytes` carries the size of a
+successful write.
+
+```jsonc
+// "which files has this conversation touched?"
+POST /sdk/ledger.read
+{"conversation_id": 7, "action_types": ["fs.write", "fs.delete", "fs.move"]}
+```
+
+Rows come back newest first. Keep the highest `id` you have seen and pass it as
+`since_id` to ask only for what followed, rather than re-reading the
+conversation every time a `tool_status` frame lands. A row with `ok: 0` and
+`error_code: "approval_declined"` is a change you refused — worth showing, since
+nothing else records that it was attempted.
+
+Naming a conversation you do not own is refused, not asked about.
+
 **Consequential** — all raise a dialog: `config.write`, `plugin.install`,
 `plugin.uninstall`, `proc.run`, `session.set_mode`, `agent.spawn`.
 
 ---
 
-## 4. Building a client: the short version
+## 5. Building a client: the short version
 
 1. `GET /events?thread=main&token=…` with `EventSource`. Handle `messages`,
    `stream_delta` and `typing` first — that is a working chat.
@@ -420,6 +675,17 @@ first.
    question does not survive a page reload.
 6. Build the rest of the UI from `conv.list`, `command.list`, `session.get`.
 7. Render `messages` as GitHub markdown.
+8. Declare `supports_notifications` and give `notification` its own area —
+   otherwise plugin registrations and scheduled-agent results land in the chat
+   alongside the agent's replies, which is where they used to have to go.
+   Backfill the area with `notification.list` on load; the stream only carries
+   what happened while you were connected.
+9. Declare `supports_callable_output` and give it somewhere that is not a chat
+   bubble. Between this and step 8, `messages` is left meaning exactly one
+   thing — the conversation — which is what makes a transcript view possible
+   at all.
+10. When you read history back with `conv.read`, honour `author` (below).
+    A row with one is not something the person said.
 
 ### Things that will bite
 
@@ -436,6 +702,20 @@ first.
   `frontend.pending {details: true}`.
 - **`approval` is not only permission.** The same kind carries any question a
   tool asks, so do not word the dialog as a permission grant.
+- **`notification` needs `supports_notifications`, and `callable_output` needs
+  `supports_callable_output`.** Without them you still get everything,
+  flattened into `messages` renders — which looks like nothing is wrong and is
+  the reason the opt-ins are worth checking.
+- **`role` does not tell you who wrote a history row.** `conv.read` returns
+  rows the kernel synthesized in the person's slot — a cancel notice, a
+  doorman's note, the summary bridge compaction leaves behind, a note that a
+  slash command ran. Every one of them has a non-empty `author`; a row the
+  person actually typed has `author: null`. Drawing a transcript on `role`
+  alone puts the kernel's own bookkeeping in the user's bubble. Note
+  `role: "system"` is separate again — those are state markers, not messages,
+  and should be skipped outright.
+- **Not every notification is persisted.** `notification_id` is absent for
+  transient progress, so keying a panel's list on it will silently drop those.
 - **You are not the only one who can answer.** A question raised on your session
   can be settled from another client or by the 300s timeout, which is what
   `approval_settled` is for.

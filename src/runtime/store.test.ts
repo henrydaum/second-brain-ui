@@ -264,6 +264,57 @@ describe("approval cancellation acknowledgements", () => {
   });
 });
 
+describe("callable output", () => {
+  it("routes command output to its panel while messages stay in chat", () => {
+    const state = run(
+      {
+        kind: "tool_status",
+        payload: {
+          kind: "command",
+          call_id: "cmd-1",
+          command_name: "config",
+          status: "started",
+        },
+      },
+      { kind: "messages", payload: ["An agent reply."] },
+      { kind: "callable_output", payload: ["| setting | value |"] },
+    );
+
+    expect(said(state)).toEqual(["An agent reply."]);
+    expect(state.command?.outcome).toEqual(["| setting | value |"]);
+  });
+
+  it("keeps directly invoked tool output in its separate surface", () => {
+    const state = run({
+      kind: "callable_output",
+      payload: ["Direct result"],
+    });
+
+    expect(state.turns).toEqual([]);
+    expect(state.callableOutput).toEqual(["Direct result"]);
+  });
+
+  it("structurally ignores output from a cancelled command", () => {
+    let state = run({
+      kind: "tool_status",
+      payload: {
+        kind: "command",
+        call_id: "cmd-1",
+        command_name: "config",
+        status: "started",
+      },
+    });
+    state = reduce(state, { type: "said", text: "/cancel", isCommand: true });
+    state = reduce(state, {
+      type: "frame",
+      frame: { kind: "callable_output", payload: ["Cancelled."] },
+    });
+
+    expect(state.command?.outcome).toEqual([]);
+    expect(state.callableOutput).toEqual([]);
+  });
+});
+
 describe("sent attachment hydration", () => {
   it("replaces optimistic names with the cached paths from conv.read", () => {
     let state = reduce(initialState, {

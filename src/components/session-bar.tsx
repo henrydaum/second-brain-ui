@@ -12,6 +12,7 @@ import { useEffect, type FC } from "react";
 import { FilesIcon, PanelLeftOpenIcon, XIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { CommandOutput } from "@/components/command-renderers";
 import { NotificationPanel } from "@/components/notification-panel";
 import { preloadFilesDrawer } from "@/components/lazy-files-drawer";
 import { conversationTitle } from "@/lib/conversations";
@@ -199,5 +200,36 @@ export const ErrorBanner: FC = () => {
         <XIcon className="size-4" />
       </button>
     </div>
+  );
+};
+
+/** Output from a tool the person invoked directly, with no command panel to
+ * own it. It is deliberately adjacent to errors and the composer rather than
+ * inside the message list: callable output is not something either speaker
+ * said. */
+export const CallableOutputPanel: FC = () => {
+  const { state, dismissCallableOutput } = useSession();
+  if (state.callableOutput.length === 0) return null;
+
+  return (
+    <section
+      data-slot="callable-output"
+      aria-label="Tool output"
+      className="bg-muted/25 max-h-[min(50dvh,28rem)] min-w-0 overflow-y-auto rounded-lg border p-4 shadow-sm"
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+          Tool output
+        </h2>
+        <button
+          onClick={dismissCallableOutput}
+          aria-label="Dismiss tool output"
+          className="focus-visible:ring-ring shrink-0 rounded-md opacity-70 outline-none hover:opacity-100 focus-visible:ring-2"
+        >
+          <XIcon className="size-4" />
+        </button>
+      </div>
+      <CommandOutput output={state.callableOutput} />
+    </section>
   );
 };

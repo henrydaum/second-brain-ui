@@ -493,6 +493,24 @@ expands to the current user. Reading the base table is refused:
 sdk.db.query("SELECT * FROM my_conversations WHERE title LIKE ?", ["%tax%"])
 ```
 
+**A `conv.read` message row carries `author`, and `role` alone will mislead
+you.** The kernel writes `role='user'` rows the person never typed — a cancel
+notice, a doorman's note, the summary bridge compaction leaves behind, a note
+that a slash command ran — and each carries a non-empty `author`; a row
+somebody actually typed has `author` of `None`. `sdk.conv.append` stamps the
+calling plugin's name, read off the provenance chain rather than accepted as an
+argument. When you want what the *user* said, filter for it:
+
+```python
+sdk.db.query("SELECT content FROM conversation_messages"
+             " WHERE conversation_id = ? AND role = 'user'"
+             "   AND COALESCE(author, '') = ''"
+             " ORDER BY id DESC LIMIT 1", [conversation_id])
+```
+
+(`role = 'system'` is a separate exclusion again: those rows are state and
+compaction markers, not messages.)
+
 **Writing: rows yes, schemas no.** You may write rows in the kernel's own
 tables — data cannot change how the kernel works, only structure can. Prefer
 the named Request where one exists (`sdk.conv.set_title` over an `UPDATE`,
@@ -553,6 +571,8 @@ sdk.ui.render(paths, caption="")     # show files in the chat
 sdk.session.get(key="")              # defaults to this session
 sdk.session.list()
 sdk.session.push(message, key="")    # message the user out of band
+sdk.session.push(message, title="Indexed", notify=True, level="success")
+                                     # ...or as a *notification*: see below
 sdk.session.state_get(namespace="sandbox")
 sdk.session.state_set(value, namespace="sandbox")
 sdk.session.cancel(key="")
@@ -584,6 +604,46 @@ You never need to check whether the model can read the modality. If it cannot,
 the kernel substitutes the file's parsed text, and failing that a line naming
 where the file is — so staging is always the right call, and a capability test
 in your plugin would only get the answer wrong.
+
+### Notifications
+
+`notify=True` turns a push into a **notification**: the system telling the user
+something, rather than something said in the conversation. A frontend with
+somewhere to put those — a panel, a badge, a toast — draws it there; one
+without shows it in the chat exactly as a plain push would. Nothing is lost by
+asking, so the question is only which it *is*.
+
+```python
+sdk.session.push("Indexed 12 files.", title="Nightly index",
+                 notify=True, level="success")
+```
+
+Reach for it when the user did not just ask for this and is not watching: a
+background write finishing, something needing their attention later. A plain
+push is right when you are speaking *into* the conversation — a tool narrating
+what it is doing mid-turn is not a notification.
+
+`level` is `info` | `success` | `warning` | `error` and only styles the result.
+`title` is what a collapsed panel shows, so make it say what happened.
+
+**You cannot state who sent it.** The kernel stamps `source` from the
+provenance chain, so a plugin cannot claim to be the plugin watcher and a
+reader can trust the attribution. Same reason a box cannot state its own chain
+root.
+
+Reading them back is for a frontend drawing a panel, not for an ordinary tool:
+
+```python
+sdk.notifications.list(limit=50, since_id=None, unread_only=False)
+sdk.notifications.mark_read(ids=None, before_id=None)
+```
+
+Both are scoped to the calling user in SQL — there is no `user_id` argument to
+pass and none to get wrong. `mark_read` answers with how many rows actually
+changed, so calling it twice is idempotent. Persisted notifications survive a
+restart and are swept by `data_retention_days` like everything else; transient
+ones (progress, e.g. "Compacting conversation…") are delivered and never
+stored.
 
 ### Other code
 
@@ -957,11 +1017,15 @@ Carrying what a person *does* back the other way is:
 sdk.frontend.submit_text(session_key, text)
 sdk.frontend.submit_attachment(session_key, path, extension="", file_name="",
                                caption="", is_photo=False, ingest=False)
+sdk.frontend.submit_attachments(session_key, files, caption="", ingest=False)
 sdk.frontend.submit_action(session_key, action_type, payload=None)
 sdk.frontend.cancel(session_key)
 sdk.frontend.bind(session_key, external_id=None, user_type="user", config=None)
 sdk.frontend.attended(session_key, present=True)
-sdk.frontend.pending_approval(session_key)      # an id, or None
+sdk.frontend.pending_input(session_key, details=False)      # an id, or None
+                                                # details=True: the question,
+                                                # {"kind": "approval"|"form_field",
+                                                #  "payload": {...}}, or None
 sdk.frontend.resolve(session_key, value, request_id="")
 ```
 
@@ -995,6 +1059,21 @@ temp = sdk.fs.temp(suffix=sdk.path.suffix(name))
 await handle.download_to_drive(temp)
 sdk.frontend.submit_attachment(key, temp, file_name=name,
                                caption=caption, ingest=True)
+```
+
+**Several files are one message, so they are one submit.** A person who picks
+three files and types a line has not sent three messages, and sending them as
+three does not work: a `send_attachment` hands the turn to the agent, so the
+second one arrives at a session that is already busy and is told to wait.
+`submit_attachments` carries the whole message, and the model sees every file
+in the same call. `caption` and `ingest` are the message's; a file may still
+say its own.
+
+```python
+sdk.frontend.submit_attachments(key, [
+    {"path": first, "file_name": "chart.png"},
+    {"path": second, "file_name": "notes.pdf"},
+], caption="what do these have in common?", ingest=True)
 ```
 
 ### Acting as one of your sessions
@@ -1053,10 +1132,33 @@ which belongs to your transport rather than to any session.
 by typing "yes" has to know whether a yes/no is what the next line means. You
 are told an approval exists — you were handed one to render — but not when it
 stops existing: another frontend can answer it, or it can time out. Call
-`sdk.frontend.pending_approval(key)` at the moment you need to decide, and
+`sdk.frontend.pending_input(key)` at the moment you need to decide, and
 check `sdk.session.get(key)["phase"]` too: when the state machine is already
 collecting the answer itself, interpreting the line as well consumes one
 keystroke twice.
+
+**And say what an answer did — the kernel no longer does.** An approval's
+outcome crosses as the phase leaving `approving_request` and as
+`ActionResult.data`, not as prose. It used to be a sentence on the `messages`
+kind, which is what the agent's own words ride, so a frontend that draws its own
+dialog could not tell them apart and printed "Approval required." into the chat
+beside the dialog that already said so. Word it however your transport should.
+
+**A render is an event, not state.** Nothing is re-sent because you asked. A
+transport that can reconnect — a browser, a socket that dropped — needs
+`pending_input(key, details=True)` to get back to a question it was never
+handed, and it covers a suspended form as well as an approval, because both are
+"this session is blocked until a person answers". It is answered from the
+session's own persisted phase stack when you have no record of one, so a restart
+does not report a blocked session as an idle one.
+
+**And you are told when a question stops waiting.** `render_approval_settled`
+is the counterpart to `render_approval_request`, and the only way a surface that
+drew a dialog learns it may take it down: another frontend can answer the same
+question, and the approver denies by name after 300 seconds. Neither is
+something you did. It is defaulted to nothing rather than raising, so a frontend
+written before it existed is correct as it stands — just chattier than it needs
+to be, since it has to keep asking to find out.
 
 ### The console
 
@@ -1334,6 +1436,9 @@ sdk.parse.modality(extension)
 
 sdk.ledger.record(action, ok=True, data=None)
 sdk.ledger.read(limit=50)
+
+sdk.notifications.list(limit=50, since_id=None, unread_only=False)
+sdk.notifications.mark_read(ids=None, before_id=None)
 ```
 
 ---

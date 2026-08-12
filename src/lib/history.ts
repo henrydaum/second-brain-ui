@@ -43,6 +43,9 @@ export type StoredMessage = {
   content: string;
   tool_call_id: string | null;
   tool_name: string | null;
+  /** Who actually wrote this row. Non-null means the kernel synthesized it
+   *  for the model, even when its role is `user`. */
+  author?: string | null;
   /** Files this message carried. New kernels always return a list; optional so
    * conversations from the older row shape remain readable. */
   attachments?: StoredAttachment[] | null;
@@ -216,6 +219,10 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
     }
 
     if (message.role === "user") {
+      // Kernel notes deliberately wear the user's role because they are
+      // addressed to the model. `author` is the wire's attribution; rendering
+      // these as something the person said would misrepresent the transcript.
+      if (message.author) continue;
       open = null;
       pending = new Map();
       const text = prose(message.content);

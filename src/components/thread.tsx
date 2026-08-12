@@ -52,7 +52,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { UserMessageAttachments } from "@/components/host-file";
-import { ErrorBanner } from "@/components/session-bar";
+import { CallableOutputPanel, ErrorBanner } from "@/components/session-bar";
 import { ModelSelector } from "@/components/model-selector";
 import { SecurityModePicker } from "@/components/security-mode-picker";
 import { TurnFilesButton, TurnShownFile } from "@/components/turn-files";
@@ -180,6 +180,7 @@ export const Thread: FC = () => {
         >
           <ScrollToBottom />
           <Suggestions />
+          <CallableOutputPanel />
           <ErrorBanner />
           <Composer />
         </ThreadPrimitive.ViewportFooter>

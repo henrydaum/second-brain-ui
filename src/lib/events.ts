@@ -2,8 +2,8 @@
  * The inbound half of the bridge: `GET /events`.
  *
  * Every frame is one `render` call the kernel made, verbatim. There is no
- * translation layer — these are the same eleven payloads a native Python
- * frontend receives, which is why a client that handles all eleven can do what
+ * translation layer — these are the same twelve payloads a native Python
+ * frontend receives, which is why a client that handles all twelve can do what
  * the REPL can.
  *
  * **Opening this stream is the attendance signal.** It declares that a person is
@@ -30,6 +30,10 @@ import { authHeaders, serverUrl } from "@/lib/client";
  *  the interchange format everywhere in Second Brain and also what the model
  *  emits, so one rendering path covers both. */
 export type MessagesPayload = string[];
+
+/** Markdown returned by a slash command or a tool the person invoked
+ *  directly. This is output, not part of the conversation. */
+export type CallableOutputPayload = string[];
 
 /** The reply arriving token by token. */
 export type StreamDeltaPayload = {
@@ -244,6 +248,7 @@ export type NotificationPayload = {
 /** One frame off the stream, discriminated by `kind`. */
 export type Frame =
   | { kind: "messages"; payload: MessagesPayload }
+  | { kind: "callable_output"; payload: CallableOutputPayload }
   | { kind: "stream_delta"; payload: StreamDeltaPayload }
   | { kind: "typing"; payload: boolean }
   | { kind: "tool_status"; payload: ToolStatusPayload }
