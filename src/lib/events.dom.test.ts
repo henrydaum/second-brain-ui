@@ -54,6 +54,25 @@ class FakeEventSource {
     } as MessageEvent);
   }
 
+  /**
+   * The answer was not an event stream, so the browser gives up for good.
+   *
+   * What a restarting backend looks like from the page: Caddy stays up and
+   * answers `502`, and the spec's rule for a response that is not
+   * `200 text/event-stream` is to fail the connection permanently — one
+   * `error`, `readyState` `CLOSED`, and no retry of its own ever again.
+   */
+  fail() {
+    this.readyState = FakeEventSource.CLOSED;
+    this.onerror?.();
+  }
+
+  /** The connection dropped mid-stream, which the browser retries itself. */
+  drop() {
+    this.readyState = FakeEventSource.CONNECTING;
+    this.onerror?.();
+  }
+
   close() {
     this.readyState = FakeEventSource.CLOSED;
   }
@@ -213,6 +232,151 @@ describe("returning to a foregrounded page", () => {
     // StrictMode unmounts and remounts this in development. A listener that
     // outlived its stream would open a second one against the same thread and
     // quietly evict the live mount's.
+    expect(openedCount()).toBe(1);
+  });
+});
+
+/**
+ * Restarting Second Brain while the page is open and being looked at.
+ *
+ * The old failure needed no suspension and no phone: Caddy answers `502` for
+ * the seconds its backend is missing, the browser reads that as "not an event
+ * stream" and stops for good, and the status line goes on saying
+ * "Reconnecting…" about a client that has stopped reconnecting. Nothing but a
+ * manual refresh brought it back.
+ */
+describe("a backend that went away", () => {
+  it("tries again once the browser has given up", () => {
+    const close = connect(vi.fn(), vi.fn());
+    latest().accept();
+    latest().fail();
+
+    expect(openedCount()).toBe(1);
+    vi.advanceTimersByTime(1_000);
+    expect(openedCount()).toBe(2);
+    close();
+  });
+
+  it("leaves the browser to its own retry while it is still trying", () => {
+    const close = connect(vi.fn(), vi.fn());
+    latest().accept();
+    latest().drop();
+
+    // `CONNECTING` means the browser has this in hand. Opening a second stream
+    // beside it is a connection the server keeps replacing with itself.
+    vi.advanceTimersByTime(A_WHILE);
+    expect(openedCount()).toBe(1);
+    close();
+  });
+
+  it("backs off, so an outage measured in hours is not a request a second", () => {
+    const close = connect(vi.fn(), vi.fn());
+    latest().accept();
+
+    const gaps = [1_000, 2_000, 4_000, 5_000, 5_000];
+    let expected = 1;
+    for (const gap of gaps) {
+      latest().fail();
+      vi.advanceTimersByTime(gap - 1);
+      expect(openedCount()).toBe(expected);
+      vi.advanceTimersByTime(1);
+      expect(openedCount()).toBe(++expected);
+    }
+    close();
+  });
+
+  it("comes back on its own, and says so", () => {
+    const onStatus = vi.fn();
+    const close = connect(vi.fn(), onStatus);
+    latest().accept();
+    onStatus.mockClear();
+
+    latest().fail();
+    vi.advanceTimersByTime(1_000);
+    latest().accept();
+
+    // "open" is what the provider keys the catalogue re-read, the pending-input
+    // reconcile and the conversation resync on. Without it the page is
+    // connected to a server it has not spoken to since before the restart.
+    expect(onStatus.mock.calls.map(([status]) => status)).toEqual([
+      "reconnecting",
+      "reconnecting",
+      "open",
+    ]);
+    close();
+  });
+
+  it("asks the restarted server for the frames it missed", () => {
+    const close = connect(vi.fn(), vi.fn());
+    latest().accept();
+    latest().deliver("41", { kind: "typing", payload: true });
+
+    latest().fail();
+    vi.advanceTimersByTime(1_000);
+
+    expect(latest().url).toContain("since=41");
+    close();
+  });
+
+  it("starts quick again after a recovery, rather than inheriting the ceiling", () => {
+    const close = connect(vi.fn(), vi.fn());
+    latest().accept();
+
+    // A long first outage, which walks the delay up to its cap.
+    for (const gap of [1_000, 2_000, 4_000, 5_000]) {
+      latest().fail();
+      vi.advanceTimersByTime(gap);
+    }
+    latest().accept();
+
+    // A second, unrelated restart must not be five seconds slower to notice
+    // just because an earlier one went on for a while.
+    const recovered = openedCount();
+    latest().fail();
+    vi.advanceTimersByTime(1_000);
+    expect(openedCount()).toBe(recovered + 1);
+    close();
+  });
+
+  it("recovers a page that was opened before the server was up", () => {
+    // The LaunchAgent order on a cold boot: Caddy serves the build and answers
+    // 502 for Second Brain until it is listening. Nothing here has ever been
+    // connected, so there is no "reconnection" — but it is the same wait.
+    const close = connect(vi.fn(), vi.fn());
+    latest().fail();
+    vi.advanceTimersByTime(1_000);
+
+    expect(openedCount()).toBe(2);
+    latest().accept();
+    close();
+  });
+
+  it("ignores a failure from a stream it has already replaced", () => {
+    const close = connect(vi.fn(), vi.fn());
+    latest().accept();
+
+    const superseded = latest();
+    hide();
+    vi.advanceTimersByTime(A_WHILE);
+    show();
+    latest().accept();
+
+    superseded.fail();
+    vi.advanceTimersByTime(A_WHILE);
+
+    // Booking a retry against the live stream would throw away a working
+    // connection because a dead one finally noticed it was dead.
+    expect(openedCount()).toBe(2);
+    close();
+  });
+
+  it("books nothing once the caller has closed it", () => {
+    const close = connect(vi.fn(), vi.fn());
+    latest().accept();
+    latest().fail();
+    close();
+
+    vi.advanceTimersByTime(A_WHILE);
     expect(openedCount()).toBe(1);
   });
 });

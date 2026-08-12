@@ -284,12 +284,46 @@ export type StreamStatus = "connecting" | "open" | "reconnecting";
 const LONG_ENOUGH_AWAY_MS = 60_000;
 
 /**
+ * How soon to try again after the browser has given up, and the ceiling.
+ *
+ * The thing being waited for is a backend coming back, which takes seconds —
+ * so the first retry is quick enough to feel like nothing happened, and the
+ * backoff exists only so an outage measured in hours is not also a request per
+ * second for hours. Five seconds is the longest anybody should sit looking at
+ * "Reconnecting…" after the server is actually up.
+ */
+const FIRST_RETRY_MS = 1_000;
+const LONGEST_RETRY_MS = 5_000;
+
+/**
  * Open the render stream. Returns a function that closes it.
  *
  * **`EventSource`, deliberately.** It reconnects on its own and sends back the
  * last `id:` it saw as `Last-Event-ID`, and the server replays from there — so a
  * page refresh resumes instead of losing the turn it happened during. A
  * fetch-based reader would have to reimplement both halves of that.
+ *
+ * ## Where its own reconnection stops, and why that is the common case here
+ *
+ * **`EventSource` retries a dropped connection and gives up on a bad answer.**
+ * The distinction is in the spec: a stream that dies mid-flight is reopened on
+ * a timer, but a *response* that is not `200 text/event-stream` fails the
+ * connection permanently — `error` fires once, `readyState` goes `CLOSED`, and
+ * nothing further is attempted.
+ *
+ * That second branch is what a Second Brain restart looks like from here.
+ * Caddy stays up and answers `502` for the seconds its backend is missing (see
+ * `docs/MACOS_DEPLOYMENT.md`), and `503` while the kernel listener exists with
+ * no frontend behind it. Both are ordinary answers, so the browser concludes
+ * the endpoint is not an event stream and stops — leaving the status line
+ * saying "Reconnecting…" about a client that has stopped reconnecting, and a
+ * manual refresh as the only way back.
+ *
+ * So the retry below is not a second implementation of the browser's: it picks
+ * up exactly where the browser's mandate ends, at `CLOSED`. While the
+ * `readyState` is `CONNECTING` the browser is still on the job and nothing here
+ * interferes, because two clients racing to open one stream is a connection the
+ * server keeps replacing with itself.
  *
  * The replay buffer holds the last 500 frames per session, so a long disconnect
  * drops the middle. A client that has been away a while should re-read state
@@ -325,6 +359,17 @@ export function connect(
    *  made for the first time is not evidence of anything having gone wrong. */
   let everOpened = false;
   let stream: EventSource | null = null;
+  /** A retry already booked, so an error arriving twice books one attempt. */
+  let retryTimer: number | null = null;
+  /** Grows per consecutive failure and resets the moment a stream is accepted,
+   *  so the delay describes the current outage rather than the page's history. */
+  let retryDelay = FIRST_RETRY_MS;
+
+  const cancelRetry = () => {
+    if (retryTimer === null) return;
+    window.clearTimeout(retryTimer);
+    retryTimer = null;
+  };
 
   const open = (status: StreamStatus) => {
     const url = serverUrl("/events");
@@ -348,12 +393,23 @@ export function connect(
 
     source.onopen = () => {
       everOpened = true;
+      // The outage is over, so the delay it accumulated describes nothing. A
+      // later one starts quick again rather than inheriting this one's ceiling.
+      retryDelay = FIRST_RETRY_MS;
+      cancelRetry();
       onStatus("open");
     };
 
     // EventSource reports a dropped connection and a failed connection the same
-    // way, and retries either. "reconnecting" is honest about both.
-    source.onerror = () => onStatus("reconnecting");
+    // way here. "reconnecting" is honest about both — but only one of them is
+    // something the browser will act on, so `readyState` decides who retries.
+    source.onerror = () => {
+      // A stream we have already replaced can still deliver its own failure.
+      // Acting on it would book a retry against a connection that is fine.
+      if (source !== stream) return;
+      onStatus("reconnecting");
+      if (source.readyState === EventSource.CLOSED) scheduleRetry();
+    };
 
     source.onmessage = (event) => {
       // Kept even for a frame that will not parse: the id is the server's
@@ -379,8 +435,28 @@ export function connect(
    *  the two racy. */
   const reopen = () => {
     if (abandoned) return;
+    cancelRetry();
     stream?.close();
     open("reconnecting");
+  };
+
+  /**
+   * Try again once the browser has stopped trying.
+   *
+   * Booked rather than looped: each attempt either opens — which resets the
+   * delay in `onopen` — or fails, and a failure lands back in `onerror` with a
+   * `CLOSED` stream and books the next one. So the cadence is driven by what
+   * actually happened rather than by a timer running alongside the connection,
+   * and there is never more than one attempt outstanding.
+   */
+  const scheduleRetry = () => {
+    if (abandoned || retryTimer !== null) return;
+    const delay = retryDelay;
+    retryDelay = Math.min(retryDelay * 2, LONGEST_RETRY_MS);
+    retryTimer = window.setTimeout(() => {
+      retryTimer = null;
+      reopen();
+    }, delay);
   };
 
   /**
@@ -417,6 +493,7 @@ export function connect(
 
   return () => {
     abandoned = true;
+    cancelRetry();
     document.removeEventListener("visibilitychange", onVisibilityChange);
     stream?.close();
   };

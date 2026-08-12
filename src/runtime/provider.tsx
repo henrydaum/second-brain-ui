@@ -660,13 +660,65 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   }, []);
 
   /**
+   * Put the session back on the conversation that is on screen.
+   *
+   * **A restart can leave the two disagreeing, and nothing says so.** The
+   * transcript, the sidebar and the composer all go on looking right while
+   * every `frontend.submit` answers "No conversation loaded. Try /new." — a
+   * session with no conversation cannot be talked to, and that state is only
+   * visible by asking. This is the half of "just refresh the page" that
+   * re-reading the catalogue does not cover.
+   *
+   * Three answers, and the ordering between them is the point:
+   *
+   * - **The server agrees.** Much the commonest, since a session normally
+   *   comes back from `persistence` still holding its conversation. Nothing is
+   *   done, and that is load-bearing: `history` resets everything transient, so
+   *   re-reading on every reconnection would wipe a half-answered form or a
+   *   command's output because the connection blinked.
+   * - **The server names a different one.** It is the source of truth, so
+   *   follow it and read the scrollback that goes with it.
+   * - **The server names none.** Point it back at what is on screen rather
+   *   than making a new one. The conversation still exists and the person is
+   *   still reading it; `conv.create` here would strand it and leave an empty
+   *   row in the sidebar for every restart.
+   */
+  const resyncConversation = useCallback(async () => {
+    try {
+      const session = await sdk<{ conversation_id?: number | null } | null>(
+        "session.get",
+        { details: true },
+      );
+      const bound = session?.conversation_id ?? null;
+      const showing = conversationIdRef.current;
+      if (bound === showing) return;
+
+      if (bound === null) {
+        if (showing === null) return;
+        await sdk("conv.load", { id: showing });
+        return;
+      }
+
+      // Written eagerly as well as through `setConversationId`, because the
+      // render that copies state into it has not happened yet and the effects
+      // reading it must not see the conversation this one replaced.
+      conversationIdRef.current = bound;
+      setConversationId(bound);
+      dispatch({ type: "history", turns: await readConversation(bound) });
+    } catch (error) {
+      report(error);
+    }
+  }, [report]);
+
+  /**
    * Come back to life when the connection does.
    *
-   * `EventSource` reconnects on its own, so a server restart is invisible to
-   * the transport — but everything fetched over `/sdk` was read once at boot
-   * and is now stale or, if the boot failed, still empty. Re-reading on the
-   * *transition* back to open is what turns "restart Second Brain" into a fix
-   * the person sees, rather than one that also requires reloading the page.
+   * The stream recovers itself — see `connect`, which takes over retrying at
+   * the point `EventSource` gives up — but everything fetched over `/sdk` was
+   * read once at boot and is now stale or, if the boot failed, still empty.
+   * Re-reading on the *transition* back to open is what turns "restart Second
+   * Brain" into a fix the person sees, rather than one that also requires
+   * reloading the page.
    *
    * The ref skips the first open, which boot has already covered.
    */
@@ -678,7 +730,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       return;
     }
     void loadCatalogue();
-  }, [status, loadCatalogue]);
+    void resyncConversation();
+  }, [status, loadCatalogue, resyncConversation]);
 
   /* ── Questions the kernel is blocking on ────────────────────────── */
 
