@@ -294,6 +294,46 @@ describe("callable output", () => {
     expect(state.callableOutput).toEqual(["Direct result"]);
   });
 
+  it("keeps command output in Settings when it beats the status frame", () => {
+    let state = reduce(initialState, {
+      type: "said",
+      text: "/locations",
+      isCommand: true,
+    });
+    state = reduce(state, {
+      type: "frame",
+      frame: { kind: "callable_output", payload: ["Project root /project"] },
+    });
+
+    expect(state.turns).toEqual([]);
+    expect(state.callableOutput).toEqual([]);
+    expect(state.command).toMatchObject({
+      callId: "pending:locations",
+      name: "locations",
+      outcome: ["Project root /project"],
+    });
+
+    state = reduce(state, {
+      type: "frame",
+      frame: {
+        kind: "tool_status",
+        payload: {
+          kind: "command",
+          call_id: "cmd:locations:1234",
+          command_name: "locations",
+          status: "finished",
+          ok: true,
+        },
+      },
+    });
+
+    expect(state.command).toMatchObject({
+      callId: "cmd:locations:1234",
+      status: "finished",
+      outcome: ["Project root /project"],
+    });
+  });
+
   it("structurally ignores output from a cancelled command", () => {
     let state = run({
       kind: "tool_status",

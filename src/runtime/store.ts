@@ -105,7 +105,8 @@ export type FilesPart = {
  * collected so far", with no bookkeeping of our own.
  */
 export type CommandRun = {
-  /** `cmd:<name>:<hash>`, stable for the whole run. */
+  /** `cmd:<name>:<hash>`, stable for the whole server run. A local
+   *  `pending:<name>` identity exists only until its started frame arrives. */
   callId: string;
   name: string;
   /** Arguments collected so far. Cumulative, straight off the wire. */
@@ -466,10 +467,27 @@ export function reduce(state: State, action: Action): State {
       if (answering || action.isCommand) {
         // The step has been sent, so the form goes; the command itself stays,
         // because it is about to say what it did.
+        const commandName = action.isCommand
+          ? action.text.trim().split(/\s/, 1)[0]?.slice(1).toLowerCase()
+          : null;
         return {
           ...state,
           form: null,
           buttons: [],
+          // Establish ownership before the server's status frame arrives.
+          // `callable_output` and command status travel independently; without
+          // this placeholder, output that wins the race is mistaken for a
+          // directly invoked tool and sent to the chat-area fallback.
+          command:
+            commandName
+              ? {
+                  callId: `pending:${commandName}`,
+                  name: commandName,
+                  args: {},
+                  status: "started",
+                  outcome: [],
+                }
+              : state.command,
           // Starting another slash command retires the previous tombstone.
           suppressedCommand: answering ? state.suppressedCommand : null,
         };
@@ -747,13 +765,17 @@ function applyFrame(state: State, frame: Frame): State {
       // genuinely part of what it said.
       if (p.kind === "command") {
         if (state.suppressedCommand?.callId === p.call_id) return state;
-        const same = state.command?.callId === p.call_id;
+        const commandName = p.command_name ?? state.command?.name ?? "command";
+        const same =
+          state.command?.callId === p.call_id ||
+          (state.command?.callId === `pending:${commandName}` &&
+            state.command.name === commandName);
         return {
           ...state,
           suppressedCommand: null,
           command: {
             callId: p.call_id,
-            name: p.command_name ?? state.command?.name ?? "command",
+            name: commandName,
             // Cumulative on the wire, so the latest frame is the whole answer
             // set — this is what makes the panel update as each one is given.
             args: p.args ?? (same ? state.command!.args : {}),
