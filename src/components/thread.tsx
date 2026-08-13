@@ -236,23 +236,19 @@ const WELCOME_SUGGESTIONS = [
   { label: "About Henry", prompt: "Tell me about Henry Daum" },
   { label: "Art Demo", prompt: "Show me a cool art demo" },
   {
-    label: "How It Works",
-    // Two failed drafts are worth recording, because they failed in opposite
-    // directions and the fix for each was the cause of the other.
+    label: "Daily Uses",
+    // Asks what it is *for*, not what it is. Three drafts went the other way —
+    // read your source, check your tools, read your README — chasing visible
+    // tool calls, and each one answered in the register of whatever it had just
+    // read. The README draft was the clearest lesson: a README is written for
+    // people who already build software, so grounding the answer in one
+    // guarantees the vocabulary this button most needs to avoid.
     //
-    // "Read your own source code" is not a task with an end: it spent twenty-odd
-    // calls exploring and answered at a length nobody standing at a booth will
-    // read. Narrowing it to "check your tool list" then produced *no* calls at
-    // all — the tool list is already in the system prompt, so there was nothing
-    // to go and find. Asking about capability can never force a call; the agent
-    // is told what it can do before the conversation starts.
-    //
-    // A README is the shape that satisfies both ends. It is one file, so the
-    // read cannot sprawl, and it is not in the context, so it has to actually
-    // be fetched. That it is also the document written to explain the system is
-    // what keeps the answer plain — the summarizing was done in prose long
-    // before the demo.
-    prompt: "Read your own README, then tell me about yourself in a few sentences.",
+    // So this one deliberately asks for no lookup at all. The other two
+    // openers already put tool calls on screen; the gap they leave is a plain
+    // answer to "what would I use this for", and a stranger who cannot picture
+    // that is not going to be won over by watching a file get read.
+    prompt: "Tell me how Second Brain can be used in daily life",
   },
 ] as const;
 

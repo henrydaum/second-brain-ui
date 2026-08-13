@@ -54,10 +54,7 @@ describe("WelcomeSuggestions", () => {
   it.each([
     ["About Henry", "Tell me about Henry Daum"],
     ["Art Demo", "Show me a cool art demo"],
-    [
-      "How It Works",
-      "Read your own README, then tell me about yourself in a few sentences.",
-    ],
+    ["Daily Uses", "Tell me how Second Brain can be used in daily life"],
   ])("puts %s's prompt in the composer unsent", async (label, prompt) => {
     const user = userEvent.setup();
     render(
