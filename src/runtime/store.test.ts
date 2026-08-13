@@ -363,6 +363,54 @@ describe("callable output", () => {
     });
   });
 
+  it("narrates a long command's progress on the command, not in chat", () => {
+    // A package install reports what it is doing from deep inside the kernel.
+    // It used to reach the person on `messages`, which put the progress of a
+    // command run from Settings into the transcript — and, since a push writes
+    // no history row, took it away again on the next reload.
+    let state = reduce(initialState, {
+      type: "said",
+      text: "/packages",
+      isCommand: true,
+    });
+    const frames: Frame[] = [
+      {
+        kind: "tool_status",
+        payload: {
+          kind: "command",
+          call_id: "cmd:packages:1",
+          command_name: "packages",
+          status: "started",
+          args: { action: "install", package_id: "memory" },
+        },
+      },
+      {
+        kind: "tool_status",
+        payload: {
+          kind: "command",
+          call_id: "cmd:packages:1",
+          command_name: "packages",
+          status: "progressed",
+          narration: "Copying package files",
+        },
+      },
+    ];
+    state = frames.reduce(
+      (current, frame) => reduce(current, { type: "frame", frame }),
+      state,
+    );
+
+    expect(said(state)).toEqual([]);
+    expect(state.command).toMatchObject({
+      callId: "cmd:packages:1",
+      status: "progressed",
+      narration: "Copying package files",
+      // A progress frame says nothing about the answers already given, so it
+      // must not blank them out — the panel is still showing them.
+      args: { action: "install", package_id: "memory" },
+    });
+  });
+
   it("structurally ignores output from a cancelled command", () => {
     let state = run({
       kind: "tool_status",

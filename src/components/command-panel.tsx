@@ -59,6 +59,9 @@ export const CommandPanel: FC = () => {
   // actual Back button already communicated.
   const visibleOutcome =
     command?.outcome.filter((text) => !/^back\.?$/i.test(text.trim())) ?? [];
+  // What the command is doing right now, when it bothered to say. Only while
+  // it runs: once it has finished, what it *did* is the outcome below.
+  const running = finished ? undefined : command?.narration?.trim() || undefined;
 
   /**
    * A question is up, so this form must not send anything.
@@ -294,7 +297,14 @@ export const CommandPanel: FC = () => {
         !finished && (
         <div className="text-muted-foreground flex items-center gap-2 py-8">
           <LoaderCircleIcon className="size-4 animate-spin" />
-          {advancing ? "Loading next step…" : "Running command…"}
+          {/* A command long enough to narrate itself says what it is doing
+              here, in the panel that started it. Before this it had nowhere
+              to say it but the chat — a package install announcing "Copying
+              package files" into the transcript, from a settings screen. The
+              generic line still covers every command that says nothing. */}
+          {advancing
+            ? "Loading next step…"
+            : (running ?? "Running command…")}
         </div>
       )}
 
