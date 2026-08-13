@@ -58,15 +58,14 @@ import { connect, type StreamStatus } from "@/lib/events";
 import { readConversation } from "@/lib/history";
 import { isPendingInput, type InputRequest } from "@/lib/input-requests";
 // `Notification` deliberately shadows the DOM global of that name here. Ours is
-// a row in the kernel's table; the browser's is the device popup, which only
-// `lib/push.ts` ever touches. Leaving the global reachable under the same
-// spelling is how a missing import turns into a type error nobody can read.
+// a row in the kernel's table; the browser's is a desktop popup this app does
+// not use, and leaving the global reachable under the same spelling is how a
+// missing import turns into a type error nobody can read.
 import {
   listNotifications,
   markRead,
   type Notification,
 } from "@/lib/notifications";
-import { refreshPush } from "@/lib/push";
 import {
   attachmentSubmitArgs,
   extensionOf,
@@ -1301,99 +1300,6 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     },
     [conversationId, createConversation, refreshConversations, report],
   );
-
-  /* ── Device notifications ───────────────────────────────────────── */
-
-  /**
-   * Re-post this device's push subscription, once per launch.
-   *
-   * **Not a reconnect concern, which is why it is not keyed on `status`.** The
-   * thing that goes stale is the browser's subscription, and browsers rotate
-   * one at their own pace — Safari most of all, and without reliably firing
-   * `pushsubscriptionchange` to say so. Once per launch is the cadence that
-   * matches what it is guarding against.
-   *
-   * Does nothing at all unless push was turned on in Settings; see
-   * `refreshPush`. It also swallows its own failures, because a push service
-   * that is not loaded is not something this app should raise a banner about.
-   */
-  useEffect(() => {
-    void refreshPush();
-  }, []);
-
-  /**
-   * The number on the app icon.
-   *
-   * Only meaningful for an installed PWA, and iOS is the platform where it
-   * matters — a phone that has been notified overnight should say so on the
-   * home screen without being opened. Clearing at zero is as important as
-   * setting it: `setAppBadge(0)` is specified to remove the badge, but being
-   * explicit is cheaper than depending on that.
-   */
-  useEffect(() => {
-    if (!("setAppBadge" in navigator)) return;
-    const count = unreadCount(notifications);
-    void (count > 0
-      ? navigator.setAppBadge(count)
-      : navigator.clearAppBadge()
-    ).catch(() => {
-      // Unsupported in this context, or refused. A badge is decoration.
-    });
-  }, [notifications]);
-
-  /**
-   * Opening the conversation a tapped notification was about.
-   *
-   * Two arrivals, one destination. A cold start carries it in the query string
-   * — the only channel `sw.js` has into a document that does not exist yet —
-   * and a running app is told by `postMessage` instead, because focusing a
-   * window that is already open must not also reload it.
-   *
-   * **Waits for the stream.** `openConversation` calls `conv.load`, which
-   * re-points the session; issued before the stream is open it would be an
-   * unsafe Request with no attendance behind it. `status` gates it for the same
-   * reason the notification backfill is gated.
-   *
-   * The parameter is consumed once and then erased with `replaceState`, so a
-   * reload does not drag the session back to a conversation the user has since
-   * navigated away from. Erasing it also keeps it away from `selectThread`,
-   * which reads its own `?thread=` out of this same query string.
-   */
-  const deepLinked = useRef(false);
-  useEffect(() => {
-    if (status !== "open" || deepLinked.current) return;
-
-    const params = new URLSearchParams(window.location.search);
-    const requested = Number(params.get("conversation"));
-    if (!Number.isInteger(requested) || requested <= 0) return;
-
-    deepLinked.current = true;
-    params.delete("conversation");
-    const query = params.toString();
-    window.history.replaceState(
-      null,
-      "",
-      `${window.location.pathname}${query ? `?${query}` : ""}`,
-    );
-    void openConversation(requested);
-  }, [status, openConversation]);
-
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as
-        | { type?: string; conversation_id?: number }
-        | null;
-      if (data?.type !== "second-brain:open-conversation") return;
-      const id = Number(data.conversation_id);
-      if (Number.isInteger(id) && id > 0) void openConversation(id);
-    };
-
-    navigator.serviceWorker.addEventListener("message", onMessage);
-    return () =>
-      navigator.serviceWorker.removeEventListener("message", onMessage);
-  }, [openConversation]);
 
   /* ── The runtime ────────────────────────────────────────────────── */
 

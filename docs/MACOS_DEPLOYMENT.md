@@ -219,14 +219,11 @@ location. Tailscale Serve may prompt once to enable HTTPS certificates.
   Second Brain** (or use the install icon in the address bar), then choose the
   taskbar/Start options you want.
 
-The service worker (`public/sw.js`) handles push notifications and nothing
-else. It registers no `fetch` listener, so it never enters the request path and
-caches nothing: private conversations, files, SSE, and frontend code all stay
-live, exactly as they did before it existed. It is registered only after you
-turn device notifications on, so an installation that never asks for them never
-gets a worker at all. Consequently the app still requires the Mac Mini and
-Tailscale connection to be available; offline mode can be designed separately if
-it ever becomes useful.
+The first PWA release intentionally has no service worker. The manifest gives
+it a standalone window and app icon, while every UI and API request remains
+live. This avoids caching private conversations, files, SSE, or stale frontend
+code. Consequently the app requires the Mac Mini and Tailscale connection to be
+available; offline mode can be designed separately if it ever becomes useful.
 
 Each browser installation stores its own session identity locally. This lets
 the Mac, iPhone, and Windows clients keep independent event streams while still
@@ -237,56 +234,6 @@ places at once, because the backend permits one event stream per thread.
 For a later Cloudflare deployment, put Access in front of the tunnel before
 forwarding to `http://127.0.0.1:4173`. It does not require changing the frontend
 build.
-
-### Device notifications
-
-Scheduled agents can push their results to the phone. Nothing else does: the
-filter is described in `docs/NOTIFICATIONS.md` and enforced server-side by the
-`push` service in the store repository.
-
-**The app must be installed from the `https://...ts.net` URL.** iOS refuses web
-push in a Safari tab, and a service worker needs a secure context, so the
-loopback `http://127.0.0.1:4173` origin cannot be used for this. Requires iOS
-16.4 or later. If the app was installed before this feature existed, delete it
-from the home screen and add it again.
-
-Generate one VAPID key pair and configure the `push` service:
-
-```bash
-npx web-push generate-vapid-keys
-```
-
-| Setting | Value |
-| --- | --- |
-| `push_vapid_public_key` | The public key printed above |
-| `secret_push_vapid_private_key` | The private key printed above |
-| `push_contact_email` | An address you actually read |
-| `push_categories` | Leave empty for the default scheduled categories |
-
-`push_contact_email` becomes the VAPID `sub` claim. Apple and Mozilla both
-reject pushes without one, and its failure mode is a push that is accepted
-nowhere with no clear reason given.
-
-Then, on each device, open **Settings** in the app and click **Notify this
-device**. The row is not shown where push cannot work, which is most desktop
-browsers and any iPhone that has not installed the app. Verify without waiting
-for a scheduled job by calling the service's `send_test` method from the REPL.
-
-Two things worth knowing before relying on it:
-
-- The push is delivered by Apple over APNs, so it arrives wherever the phone has
-  internet — but tapping it opens an app that still needs Tailscale to load. Off
-  the tailnet you get the notification text and then a connection error.
-- Turning the toggle off, deleting the app, or revoking permission in iOS
-  Settings all eventually prune the subscription server-side, because the push
-  service answers `410` for a dead endpoint and the service drops the row.
-
-The `push` service imports `pywebpush`, which performs its own network I/O.
-It therefore loads with a disclaimer and runs in a subprocess, and that outbound
-request is not mediated by the kernel. This is unavoidable: Web Push bodies are
-encrypted binary and `sdk.net.http` sends text only. Adding
-`web.push.apple.com` to `net_allowed_hosts` accomplishes nothing, since the
-request never goes through that Request.
 
 ## Port 8787 troubleshooting
 

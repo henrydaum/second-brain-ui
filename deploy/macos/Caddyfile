@@ -125,17 +125,11 @@ http://:4173 {
 		# fetches bytes and renders them from an object URL, and the composer's
 		# previews of files staged but not yet sent.
 		#
-		# `worker-src 'self'` admits `sw.js`, the push worker. Named explicitly
-		# rather than left to reach `default-src` through the `child-src` fallback
-		# chain, because a later tightening of `default-src` would then take device
-		# notifications out silently — a service worker that fails to register
-		# breaks nothing else and reports nowhere anybody looks.
-		#
 		# The hash pins the one inline script there is — the theme bootstrap in
 		# `index.html`, which must run before first paint and so cannot move to a
 		# file without reintroducing the flash it exists to prevent.
 		# `deploy/macos/csp-hash.test.ts` fails the build if the two drift apart.
-		header Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-0Csnp3pN6nPOOM7x87rY3BQZ3PplR1m1Q1STa9ux/u4='; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; object-src 'self' blob:; frame-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+		header Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-0Csnp3pN6nPOOM7x87rY3BQZ3PplR1m1Q1STa9ux/u4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; object-src 'self' blob:; frame-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
 		root * "{$SB_UI_CURRENT}"
 		try_files {path} /index.html

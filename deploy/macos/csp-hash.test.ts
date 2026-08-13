@@ -71,17 +71,4 @@ describe("the production Content-Security-Policy", () => {
     expect(caddyfile).toContain("base-uri 'none'");
     expect(caddyfile).toContain("connect-src 'self'");
   });
-
-  /**
-   * `sw.js` is admitted.
-   *
-   * Its own failure mode is the reason this is pinned rather than left to the
-   * fallback chain: a blocked service worker registration throws inside a
-   * `catch` in `lib/push.ts`, the Settings toggle simply reads "off", and the
-   * only real symptom is a phone that stops being notified — weeks later,
-   * silently, with nothing in any log.
-   */
-  it("admits the push service worker", () => {
-    expect(caddyfile).toContain("worker-src 'self'");
-  });
 });
