@@ -182,6 +182,11 @@ export const Thread: FC = () => {
           <Suggestions />
           <ErrorBanner />
           <Composer />
+          {/* Only on an empty conversation, and only once history has settled —
+              the same two conditions the greeting above is under, for the same
+              reason: an opener that appears under a loaded transcript is not an
+              opener. */}
+          {centerComposer && !isLoading && <WelcomeSuggestions />}
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
 
@@ -213,6 +218,47 @@ const Suggestions: FC = () => (
       </ThreadPrimitive.Suggestions>
     </div>
   </AuiIf>
+);
+
+/**
+ * Openers for a conversation that has not started yet.
+ *
+ * Fixed, unlike `Suggestions` above: those come from the runtime and answer
+ * whatever the agent just asked, these are the two things a stranger at a demo
+ * wants to type and would not think to. Same primitive either way —
+ * `ThreadPrimitive.Suggestion` owns "put this prompt in the thread" — but
+ * deliberately **without** `send`, so pressing one fills the composer and leaves
+ * the cursor there. That is the difference that makes them a demo rather than a
+ * kiosk: whoever pressed it can see the question, edit it, and send it
+ * themselves.
+ */
+const WELCOME_SUGGESTIONS = [
+  { label: "About Henry", prompt: "Tell me about Henry Daum" },
+  { label: "Art Demo", prompt: "Show me a cool art demo" },
+  {
+    label: "How It Works",
+    // Every clause is load-bearing. "Read your own source code" is what makes
+    // the tool calls happen, and the tool calls are the demo — a self-
+    // description written from context alone reads like any other chatbot's.
+    // "In plain English" is the only thing standing between a stranger and the
+    // kernel's vocabulary. And asking what happens to *one message* gets a
+    // walkthrough with an end, where "how do you work" gets a feature list that
+    // stops whenever the model runs out of features.
+    prompt:
+      "Read your own source code and explain, in plain English, what happens when I send you a message.",
+  },
+] as const;
+
+export const WelcomeSuggestions: FC = () => (
+  <div className="flex flex-wrap justify-center gap-2">
+    {WELCOME_SUGGESTIONS.map(({ label, prompt }) => (
+      <ThreadPrimitive.Suggestion key={prompt} asChild prompt={prompt}>
+        <Button variant="outline" size="sm" className="rounded-full">
+          {label}
+        </Button>
+      </ThreadPrimitive.Suggestion>
+    ))}
+  </div>
 );
 
 const ScrollToBottom: FC = () => (
