@@ -53,6 +53,12 @@ const PRESENTATION: Record<
     title:
       "This browser refused notification permission. Re-allow it in the browser or system settings for this app.",
   },
+  unconfigured: {
+    label: "Notifications not set up",
+    icon: BellOffIcon,
+    title:
+      "Second Brain has no VAPID key, so this device cannot be subscribed. Generate a key pair and set push_vapid_public_key and secret_push_vapid_private_key on the push service.",
+  },
 };
 
 export const PushToggle: FC = () => {
@@ -95,7 +101,7 @@ export const PushToggle: FC = () => {
       size="sm"
       variant="ghost"
       title={title}
-      disabled={busy || state === "blocked"}
+      disabled={busy || state === "blocked" || state === "unconfigured"}
       aria-pressed={state === "on"}
       onClick={() => void toggle()}
       className="text-muted-foreground hover:text-foreground w-full justify-start gap-2 font-normal"

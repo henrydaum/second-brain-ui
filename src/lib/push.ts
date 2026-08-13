@@ -27,10 +27,25 @@ import { sdk } from "@/lib/client";
  *  cold-started window the conversation a notification was about. */
 const WORKER_URL = "/sw.js";
 
-/** What the toggle draws. `blocked` is terminal from here — a page cannot
- *  re-prompt once permission is denied, and saying so is better than a control
- *  that silently does nothing. */
-export type PushState = "unsupported" | "off" | "on" | "blocked";
+/**
+ * What the toggle draws.
+ *
+ * `blocked` is terminal from here — a page cannot re-prompt once permission is
+ * denied, and saying so is better than a control that silently does nothing.
+ *
+ * `unconfigured` earns its place the hard way. The server had no VAPID key, so
+ * `subscribe` was handed an empty application server key, threw, and the toggle
+ * caught it and re-read itself as plain "off" — permission granted, nothing
+ * subscribed, no error anywhere. Every layer behaved, and the only symptom was
+ * a phone that never buzzed. A state that names the cause is the difference
+ * between reading one row of Settings and bisecting the whole feature.
+ */
+export type PushState =
+  | "unsupported"
+  | "off"
+  | "on"
+  | "blocked"
+  | "unconfigured";
 
 /** One call into the store's push service. `service.call` gates on the
  *  service's own `exports` list, so a method name that is not public there
@@ -162,16 +177,29 @@ export async function enablePush(): Promise<PushState> {
   // returns the same subscription, but asking for the existing one keeps the
   // common "already on, just re-confirming" path off the push service.
   const existing = await registration.pushManager.getSubscription();
-  const subscription =
-    existing ??
-    (await registration.pushManager.subscribe({
-      // Non-negotiable, and not merely required by the type: a subscription
-      // that takes silent pushes is one Safari will revoke.
-      userVisibleOnly: true,
-      applicationServerKey: applicationServerKey(
-        await call<string>("public_key"),
-      ),
-    }));
+
+  if (!existing) {
+    // **Checked before subscribing, not left to fail inside it.** An empty key
+    // decodes to zero bytes and `subscribe` rejects with a message that names
+    // neither the key nor the service — which is how a missing VAPID setting
+    // spent an evening looking like a broken service worker.
+    const key = (await call<string>("public_key")) || "";
+    if (!key.trim()) return "unconfigured";
+
+    return await registration.pushManager
+      .subscribe({
+        // Non-negotiable, and not merely required by the type: a subscription
+        // that takes silent pushes is one Safari will revoke.
+        userVisibleOnly: true,
+        applicationServerKey: applicationServerKey(key),
+      })
+      .then(async (subscription) => {
+        await call("subscribe", subscriptionArgs(subscription));
+        return "on" as const;
+      });
+  }
+
+  const subscription = existing;
 
   await call("subscribe", subscriptionArgs(subscription));
   return "on";
