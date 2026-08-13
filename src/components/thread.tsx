@@ -237,17 +237,22 @@ const WELCOME_SUGGESTIONS = [
   { label: "Art Demo", prompt: "Show me a cool art demo" },
   {
     label: "How It Works",
-    // Names *one* lookup, deliberately. An earlier draft asked it to read its
-    // own source, which is not a task with an end — it spent twenty-odd calls
-    // exploring and answered at a length nobody standing at a booth will read.
-    // A tool list is a single bounded call the agent has no reason to follow
-    // anywhere, and "in a few sentences" is what keeps the answer the size of
-    // the question. The lookup comes first so it happens at all: asked the
-    // other way round, the reply is already written by the time the tools are
-    // mentioned, and a self-description with no tool calls is the one outcome
-    // this button has no use for.
-    prompt:
-      "Check your tool list, then tell me about yourself in a few sentences.",
+    // Two failed drafts are worth recording, because they failed in opposite
+    // directions and the fix for each was the cause of the other.
+    //
+    // "Read your own source code" is not a task with an end: it spent twenty-odd
+    // calls exploring and answered at a length nobody standing at a booth will
+    // read. Narrowing it to "check your tool list" then produced *no* calls at
+    // all — the tool list is already in the system prompt, so there was nothing
+    // to go and find. Asking about capability can never force a call; the agent
+    // is told what it can do before the conversation starts.
+    //
+    // A README is the shape that satisfies both ends. It is one file, so the
+    // read cannot sprawl, and it is not in the context, so it has to actually
+    // be fetched. That it is also the document written to explain the system is
+    // what keeps the answer plain — the summarizing was done in prose long
+    // before the demo.
+    prompt: "Read your own README, then tell me about yourself in a few sentences.",
   },
 ] as const;
 
