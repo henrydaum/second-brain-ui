@@ -182,11 +182,6 @@ export const Thread: FC = () => {
           <Suggestions />
           <ErrorBanner />
           <Composer />
-          {/* Only on an empty conversation, and only once history has settled —
-              the same two conditions the greeting above is under, for the same
-              reason: an opener that appears under a loaded transcript is not an
-              opener. */}
-          {centerComposer && !isLoading && <WelcomeSuggestions />}
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
 
@@ -218,50 +213,6 @@ const Suggestions: FC = () => (
       </ThreadPrimitive.Suggestions>
     </div>
   </AuiIf>
-);
-
-/**
- * Openers for a conversation that has not started yet.
- *
- * Fixed, unlike `Suggestions` above: those come from the runtime and answer
- * whatever the agent just asked, these are the two things a stranger at a demo
- * wants to type and would not think to. Same primitive either way —
- * `ThreadPrimitive.Suggestion` owns "put this prompt in the thread" — but
- * deliberately **without** `send`, so pressing one fills the composer and leaves
- * the cursor there. That is the difference that makes them a demo rather than a
- * kiosk: whoever pressed it can see the question, edit it, and send it
- * themselves.
- */
-const WELCOME_SUGGESTIONS = [
-  { label: "About Henry", prompt: "Tell me about Henry Daum" },
-  { label: "Art Demo", prompt: "Show me a cool art demo" },
-  {
-    label: "Daily Uses",
-    // Asks what it is *for*, not what it is. Three drafts went the other way —
-    // read your source, check your tools, read your README — chasing visible
-    // tool calls, and each one answered in the register of whatever it had just
-    // read. The README draft was the clearest lesson: a README is written for
-    // people who already build software, so grounding the answer in one
-    // guarantees the vocabulary this button most needs to avoid.
-    //
-    // So this one deliberately asks for no lookup at all. The other two
-    // openers already put tool calls on screen; the gap they leave is a plain
-    // answer to "what would I use this for", and a stranger who cannot picture
-    // that is not going to be won over by watching a file get read.
-    prompt: "Tell me how Second Brain can be used in daily life",
-  },
-] as const;
-
-export const WelcomeSuggestions: FC = () => (
-  <div className="flex flex-wrap justify-center gap-2">
-    {WELCOME_SUGGESTIONS.map(({ label, prompt }) => (
-      <ThreadPrimitive.Suggestion key={prompt} asChild prompt={prompt}>
-        <Button variant="outline" size="sm" className="rounded-full">
-          {label}
-        </Button>
-      </ThreadPrimitive.Suggestion>
-    ))}
-  </div>
 );
 
 const ScrollToBottom: FC = () => (
