@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FC } from "react";
 import { ChevronRightIcon, LoaderCircleIcon } from "lucide-react";
 
 import { CommandPanel } from "@/components/command-panel";
+import { PushToggle } from "@/components/push-toggle";
 import { ThemePicker } from "@/components/theme-picker";
 import {
   SETTINGS_PAGES,
@@ -73,6 +74,10 @@ const SystemActions: FC<{
           System
         </p>
       )}
+      {/* Renders nothing where push cannot work, which is most desktop
+          browsers and any iPhone that has not installed the app — so this is
+          usually one row, and on a phone it is two. */}
+      <PushToggle />
       <ThemePicker settings />
       {SYSTEM_ACTIONS.map((action) => {
         const Icon = action.icon;

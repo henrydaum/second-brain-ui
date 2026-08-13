@@ -317,6 +317,44 @@ client can style rather than parse.
 
 ---
 
+## Which ones reach a phone
+
+Almost none of them, on purpose.
+
+A banner and a bell are the right surface for a notification, because "you find
+out when you next look" is a fine answer for a plugin registering or a setting
+changing. One case breaks that: a scheduled agent reporting back. Asking for the
+news at 07:00 and being told at 11:00, when you happen to open the app, is not
+what was asked for — and by then the app has to have been opened, which is the
+one thing a scheduled job was supposed to save you.
+
+So exactly two populations escalate to a device push, and both are decided
+server-side by the store's `push` service, not here:
+
+| `source` | Pushed | Why |
+|---|---|---|
+| `subagents` | always | Its only two emit sites are "Scheduled agent … failed" and "Scheduled agent did not start". A job that did not run is as worth knowing as one that did. |
+| `session` | if the conversation's category is `Scheduled` or `Scheduled (one-time)` | This source is a background turn's final answer, raised only when `notification_mode` is `on` and nobody was attending. That also covers a subagent spawned by hand — and whoever spawned it is sitting right there. |
+| everything else | never | The plugin watcher, config announcements, compaction progress. A lock screen is a scarce surface. |
+
+The category is the discriminator because `runtime/subagents.py`
+(`_scheduled_category`) files a timekeeper-fired child under `Scheduled` and a
+hand-spawned one under `Subagent`. `notification_mode` is the same flag the SDK
+calls `notify=True`, and `conv.set_notification_mode` sets it per conversation.
+
+**The frontend does not filter.** It has no business guessing, and duplicating
+the rule in two repositories is how the two would drift. This side owns only the
+browser half — permission, the worker, the subscription — in `src/lib/push.ts`,
+and the subscription reaches the service through an ordinary `service.call`
+Request, so no route was added to `frontend_http.py` or to Caddy for it.
+
+Tapping a push opens the conversation it came from, via the same
+`openConversation` the panel's "Open chat" uses. See `docs/MACOS_DEPLOYMENT.md`
+for setup and for the iOS constraints, of which the sharpest is that web push
+does not work at all until the app is installed to the home screen.
+
+---
+
 ## Related
 
 - `docs/HTTP_PROTOCOL.md` — the `notification` kind alongside the other ten,
