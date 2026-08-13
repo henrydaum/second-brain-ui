@@ -237,15 +237,17 @@ const WELCOME_SUGGESTIONS = [
   { label: "Art Demo", prompt: "Show me a cool art demo" },
   {
     label: "How It Works",
-    // Every clause is load-bearing. "Read your own source code" is what makes
-    // the tool calls happen, and the tool calls are the demo — a self-
-    // description written from context alone reads like any other chatbot's.
-    // "In plain English" is the only thing standing between a stranger and the
-    // kernel's vocabulary. And asking what happens to *one message* gets a
-    // walkthrough with an end, where "how do you work" gets a feature list that
-    // stops whenever the model runs out of features.
+    // Names *one* lookup, deliberately. An earlier draft asked it to read its
+    // own source, which is not a task with an end — it spent twenty-odd calls
+    // exploring and answered at a length nobody standing at a booth will read.
+    // A tool list is a single bounded call the agent has no reason to follow
+    // anywhere, and "in a few sentences" is what keeps the answer the size of
+    // the question. The lookup comes first so it happens at all: asked the
+    // other way round, the reply is already written by the time the tools are
+    // mentioned, and a self-description with no tool calls is the one outcome
+    // this button has no use for.
     prompt:
-      "Read your own source code and explain, in plain English, what happens when I send you a message.",
+      "Check your tool list, then tell me about yourself in a few sentences.",
   },
 ] as const;
 

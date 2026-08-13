@@ -56,7 +56,7 @@ describe("WelcomeSuggestions", () => {
     ["Art Demo", "Show me a cool art demo"],
     [
       "How It Works",
-      "Read your own source code and explain, in plain English, what happens when I send you a message.",
+      "Check your tool list, then tell me about yourself in a few sentences.",
     ],
   ])("puts %s's prompt in the composer unsent", async (label, prompt) => {
     const user = userEvent.setup();
