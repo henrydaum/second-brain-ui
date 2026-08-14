@@ -204,16 +204,10 @@ describe("the cursor", () => {
 });
 
 describe("an empty panel says which kind of empty", () => {
-  it("is not loaded until something says so", () => {
-    expect(initialNotifications.loaded).toBe(false);
-    expect(run({ type: "backfilled", rows: [] }).loaded).toBe(true);
-  });
-
   it("distinguishes a failed read from nothing having happened", () => {
-    const state = run({ type: "failed", message: "no" });
-
-    expect(state.loaded).toBe(true);
-    expect(state.failure).toBe("no");
+    expect(initialNotifications.failure).toBeNull();
+    expect(run({ type: "backfilled", rows: [] }).failure).toBeNull();
+    expect(run({ type: "failed", message: "no" }).failure).toBe("no");
   });
 
   it("clears a past failure once a read succeeds", () => {

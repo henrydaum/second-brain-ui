@@ -44,8 +44,6 @@ const TONES: Record<Level, string> = {
   error: "text-destructive",
 };
 
-export const toneOf = (level: Level): string => TONES[level];
-
 export const LevelIcon: FC<{ level: Level; className?: string }> = ({
   level,
   className,
@@ -55,6 +53,6 @@ export const LevelIcon: FC<{ level: Level; className?: string }> = ({
   // says it failed — so a screen reader announcing "error icon" before the
   // title would be reading the same fact twice in the wrong order.
   return (
-    <Icon aria-hidden className={cn("size-4 shrink-0", toneOf(level), className)} />
+    <Icon aria-hidden className={cn("size-4 shrink-0", TONES[level], className)} />
   );
 };

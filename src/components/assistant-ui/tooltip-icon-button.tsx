@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-export type TooltipIconButtonProps = ComponentProps<typeof Button> & {
+type TooltipIconButtonProps = ComponentProps<typeof Button> & {
   /** Shown on hover and focus, and used as the accessible name. Required —
    *  an icon with no name is a button nobody can identify. */
   tooltip: string;

@@ -1,9 +1,15 @@
 /**
  * The command catalogue, and what running one means.
  *
- * The server hands over its entire vocabulary — name, description, category,
- * and the shape of the form each one collects — so Settings can organize what
- * actually exists without maintaining a second command list.
+ * The server hands over its entire vocabulary — name, description, category —
+ * so Settings can organize what actually exists without maintaining a second
+ * command list.
+ *
+ * `command.list` also describes the form each command collects, and that is
+ * deliberately not modelled here. Collecting arguments is the server's job,
+ * arriving as `form_field` frames that `command-panel.tsx` draws; holding a
+ * copy of the shape client-side is how the old draft ended up parsing slash
+ * commands by hand.
  */
 
 import { sdk } from "@/lib/client";
@@ -13,13 +19,6 @@ export type Command = {
   description?: string;
   /** "System", "Conversation", "Capabilities", "Automation". */
   category?: string;
-  /** The arguments it will ask for. Empty means it runs immediately.
-   *
-   *  Only used here to tell the person what to expect — the *collecting* is the
-   *  server's job, arriving as `form_field` frames that `form-panel.tsx` draws.
-   *  Duplicating that logic client-side is how the old draft ended up parsing
-   *  slash commands by hand. */
-  form?: { name: string; required?: boolean }[];
 };
 
 /**

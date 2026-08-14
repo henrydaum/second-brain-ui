@@ -220,7 +220,7 @@ const ConversationList = memo(function ConversationList({
   );
 });
 
-export type ConversationSidebarProps = {
+type ConversationSidebarProps = {
   /** Whether the overlay drawer is showing. Only meaningful below `md`, where
    *  this is a drawer rather than an inline rail. */
   open: boolean;

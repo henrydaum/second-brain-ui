@@ -25,7 +25,7 @@ import type { ApprovalPayload, FormFieldPayload } from "@/lib/events";
 export type InputRequest = Omit<ApprovalPayload, "id"> & { id: string | null };
 
 /** One selectable answer: `value` goes to the server, `label` to the person. */
-export type Choice = { value: unknown; label: string };
+type Choice = { value: unknown; label: string };
 
 /**
  * Pair `enum` with `enum_labels` **by index**.

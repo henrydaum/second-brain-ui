@@ -352,7 +352,7 @@ const AssistantMessage: FC = () => (
           switch (part.type) {
             case "group-tool":
               return (
-                <ToolGroupRoot variant="ghost">
+                <ToolGroupRoot>
                   <ToolGroupTrigger
                     count={part.indices.length}
                     active={part.status.type === "running"}

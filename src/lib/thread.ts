@@ -5,7 +5,7 @@ export const THREAD_STORAGE_KEY = "second-brain:thread";
 
 type ThreadStorage = Pick<Storage, "getItem" | "setItem">;
 
-export type ThreadSelection = {
+type ThreadSelection = {
   search: string;
   configured?: string;
   storage: ThreadStorage | null;

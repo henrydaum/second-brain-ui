@@ -199,7 +199,7 @@ const STATIC: Record<string, string> = {
  */
 const modalities = new Map<string, Promise<string>>();
 
-export function modalityOf(suffix: string): Promise<string> {
+function modalityOf(suffix: string): Promise<string> {
   const known = modalities.get(suffix);
   if (known) return known;
 

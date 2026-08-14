@@ -1,5 +1,4 @@
 import type * as React from "react";
-import { XIcon } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 
 import { cn } from "@/lib/utils";
@@ -8,18 +7,15 @@ const Sheet = DialogPrimitive.Root;
 const SheetTrigger = DialogPrimitive.Trigger;
 const SheetClose = DialogPrimitive.Close;
 const SheetTitle = DialogPrimitive.Title;
-const SheetDescription = DialogPrimitive.Description;
 
 function SheetContent({
   side = "right",
   className,
   children,
-  showCloseButton = false,
   onOpenAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   side?: "left" | "right";
-  showCloseButton?: boolean;
 }) {
   return (
     <DialogPrimitive.Portal>
@@ -46,22 +42,9 @@ function SheetContent({
         {...props}
       >
         {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close className="focus-visible:ring-ring absolute end-3 top-3 flex size-8 items-center justify-center rounded-md opacity-70 outline-none hover:opacity-100 focus-visible:ring-2">
-            <XIcon className="size-4" />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
-        )}
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
   );
 }
 
-export {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-  SheetTrigger,
-};
+export { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger };

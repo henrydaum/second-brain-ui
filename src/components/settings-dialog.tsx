@@ -16,7 +16,7 @@ import type { Command } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 import { useSession, useSettings } from "@/runtime/provider";
 
-export type SettingsCommandGate = (
+type SettingsCommandGate = (
   action: () => void | Promise<void>,
 ) => Promise<boolean>;
 

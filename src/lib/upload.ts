@@ -80,7 +80,7 @@ export function extensionOf(name: string): string {
   return suffixOf(name).replace(/^\./, "");
 }
 
-export type UploadedAttachment = { path: string; name: string };
+type UploadedAttachment = { path: string; name: string };
 
 /**
  * One composer message, however many files it carries.
@@ -167,47 +167,4 @@ export async function* uploadToHost(
   } while (offset < file.size);
 
   return path;
-}
-
-/**
- * Read a host file back out, for the `attachments` frames the agent produces.
- *
- * A whole-file read is capped well below the sizes a UI deals in, so this asks
- * for successive windows and joins them. **A short read means the end**, so the
- * loop terminates without having to learn the size first — which is the only
- * reason this does not need an `fs.stat` round trip.
- */
-export async function downloadFromHost(
-  path: string,
-): Promise<Uint8Array<ArrayBuffer>> {
-  // Spelled `Uint8Array<ArrayBuffer>` rather than plain `Uint8Array`, whose
-  // buffer could in principle be shared — `Blob` will not take one of those.
-  const windows: Uint8Array<ArrayBuffer>[] = [];
-  let offset = 0;
-
-  for (;;) {
-    const encoded = await sdk<string>("fs.read_bytes", {
-      path,
-      offset,
-      length: CHUNK_BYTES,
-    });
-    if (!encoded) break;
-
-    const binary = atob(encoded);
-    const window = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) window[i] = binary.charCodeAt(i);
-    windows.push(window);
-
-    offset += window.length;
-    if (window.length < CHUNK_BYTES) break;
-  }
-
-  const total = windows.reduce((sum, window) => sum + window.length, 0);
-  const joined = new Uint8Array(total);
-  let at = 0;
-  for (const window of windows) {
-    joined.set(window, at);
-    at += window.length;
-  }
-  return joined;
 }

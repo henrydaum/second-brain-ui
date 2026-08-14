@@ -29,14 +29,14 @@ import { authHeaders, serverUrl } from "@/lib/client";
 /** GitHub-flavoured markdown, including tables and fenced code blocks. This is
  *  the interchange format everywhere in Second Brain and also what the model
  *  emits, so one rendering path covers both. */
-export type MessagesPayload = string[];
+type MessagesPayload = string[];
 
 /** Markdown returned by a slash command or a tool the person invoked
  *  directly. This is output, not part of the conversation. */
-export type CallableOutputPayload = string[];
+type CallableOutputPayload = string[];
 
 /** The reply arriving token by token. */
-export type StreamDeltaPayload = {
+type StreamDeltaPayload = {
   /** Groups the fragments. This is the message key. */
   stream_id: string;
   /** 1-based, increments per fragment. */
@@ -123,7 +123,7 @@ export type ApprovalPayload = {
  * `reason` says how the question ended, not what the answer was: the answer
  * went to whoever was blocked on it and is deliberately not repeated here.
  */
-export type ApprovalSettledPayload = {
+type ApprovalSettledPayload = {
   /** The `id` of the `approval` this settles. */
   request_id: string;
   reason?: "answered" | "cancelled";
@@ -177,7 +177,7 @@ export type ErrorPayload = {
 
 /** Filesystem paths on the host — not URLs, and not bytes. A browser cannot
  *  open these directly; the contents come back through `fs.read_bytes`. */
-export type AttachmentsPayload = string[];
+type AttachmentsPayload = string[];
 
 /**
  * Something the *system* is telling you, as opposed to something the agent said.

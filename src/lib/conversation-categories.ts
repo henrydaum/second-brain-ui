@@ -4,7 +4,7 @@ export type ConversationFilter =
   | { type: "all" }
   | { type: "category"; category: string | null };
 
-export type ConversationFilterOption = {
+type ConversationFilterOption = {
   filter: ConversationFilter;
   label: string;
   count: number;

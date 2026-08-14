@@ -5,12 +5,12 @@
  * caller deciding for itself what a `.png` is, and a drawer that draws files
  * differently from the transcript that produced them.
  *
- * **The bytes come from `/files`, not from `fs.read_bytes`.** The older path
- * (`downloadFromHost` → `Blob` → object URL) works for a small image and cannot
- * work at all for video: seeking needs `Range`, and `Range` needs a URL. It also
- * meant holding every file a long conversation ever showed in memory at once.
- * `fileUrl` hands the browser a real URL with a real `Content-Type` and lets it
- * do what it is good at.
+ * **The bytes come from `/files`, not from `fs.read_bytes`.** Reading windows
+ * over the SDK into a `Blob` and then an object URL works for a small image and
+ * cannot work at all for video: seeking needs `Range`, and `Range` needs a URL.
+ * It also meant holding every file a long conversation ever showed in memory at
+ * once. `fileUrl` hands the browser a real URL with a real `Content-Type` and
+ * lets it do what it is good at.
  *
  * **Every kind wears the same frame.** A bordered box, the same skeleton while
  * it loads, the same one-line explanation when it fails. The point is that a
@@ -54,7 +54,7 @@ const ROW_CAP = 200;
  *  range response from turning a preview into unbounded browser memory. */
 const PDF_CAP = 64 * 1024 * 1024;
 
-export type FileViewSize = "inline" | "full";
+type FileViewSize = "inline" | "full";
 
 /* ── The shared frame ───────────────────────────────────────────────── */
 

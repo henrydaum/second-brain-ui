@@ -227,7 +227,6 @@ export type Action =
   | { type: "hydrateSentAttachments"; attachments: MessageAttachment[] }
   /** Scrollback, read from `conv.read` at boot. Replaces everything. */
   | { type: "history"; turns: Turn[] }
-  | { type: "clearForm" }
   /** Put the finished command away. Its own affordance, because a command that
    *  has printed something is not done being read just because it is done
    *  running. */
@@ -568,8 +567,6 @@ export function reduce(state: State, action: Action): State {
       return state;
     }
 
-    case "clearForm":
-      return { ...state, form: null };
     case "clearCommand":
       return { ...state, command: null, form: null };
     case "suppressNextCancellationNotice":

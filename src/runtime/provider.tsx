@@ -323,8 +323,15 @@ export type LlmProfile = {
   loaded?: boolean;
 };
 
-const SecondBrainContext = createContext<SecondBrain | null>(null);
-
+/**
+ * The provider's whole surface, in one type.
+ *
+ * **A description, not a context.** Nothing subscribes to all of this at once
+ * — every consumer takes one of the domain slices below — and publishing it as
+ * a context as well meant building a thirty-field object, on every change to
+ * any of them, for no reader. The type stays because it is the single place
+ * that says what this provider offers, and each domain is a `Pick` of it.
+ */
 type SessionDomain = Pick<
   SecondBrain,
   | "status"
@@ -401,12 +408,6 @@ export const useNotifications = () =>
   useDomain(NotificationContext, "useNotifications");
 export const useSettings = () => useDomain(SettingsContext, "useSettings");
 export const useSecurity = () => useDomain(SecurityContext, "useSecurity");
-
-export function useSecondBrain(): SecondBrain {
-  const value = use(SecondBrainContext);
-  if (!value) throw new Error("useSecondBrain outside SecondBrainProvider");
-  return value;
-}
 
 /* ── The provider ───────────────────────────────────────────────────── */
 
@@ -1539,82 +1540,6 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     // about what this backend can actually do.
   });
 
-  const value = useMemo<SecondBrain>(
-    () => ({
-      status,
-      state,
-      commands,
-      conversations,
-      conversationId,
-      openConversation,
-      newConversation,
-      deleteConversation,
-      inputRequests: inputRequests.queue,
-      resolve,
-      cancelInputRequest,
-      say,
-      report,
-      dismissError,
-      dismissCommand,
-      models,
-      modelName,
-      agentProfile,
-      modelsLoading,
-      modelsFailure,
-      switchingModel,
-      setModel,
-      banners: notifications.banners,
-      notifications: notifications.rows,
-      unread: unreadCount(notifications),
-      notificationsFailure: notifications.failure,
-      dismissBanner,
-      markNotificationsRead,
-      notificationsOpen,
-      setNotificationsOpen,
-      settingsOpen,
-      setSettingsOpen,
-      openSettings,
-      settingsRequest,
-      clearSettingsRequest,
-      securityMode,
-      setSecurityMode,
-    }),
-    [
-      status,
-      state,
-      commands,
-      conversations,
-      conversationId,
-      openConversation,
-      newConversation,
-      deleteConversation,
-      inputRequests.queue,
-      resolve,
-      cancelInputRequest,
-      say,
-      report,
-      dismissError,
-      dismissCommand,
-      models,
-      modelName,
-      agentProfile,
-      modelsLoading,
-      modelsFailure,
-      switchingModel,
-      setModel,
-      notifications,
-      dismissBanner,
-      markNotificationsRead,
-      notificationsOpen,
-      settingsOpen,
-      openSettings,
-      settingsRequest,
-      clearSettingsRequest,
-      securityMode,
-      setSecurityMode,
-    ],
-  );
-
   const sessionValue = useMemo<SessionDomain>(
     () => ({
       status,
@@ -1719,10 +1644,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <SecondBrainContext value={value}>
-        <SessionContext value={sessionValue}>
-          <ModelContext value={modelValue}>
-            <ConversationContext value={conversationValue}>
+      <SessionContext value={sessionValue}>
+        <ModelContext value={modelValue}>
+          <ConversationContext value={conversationValue}>
             <ApprovalContext value={approvalValue}>
               <NotificationContext value={notificationValue}>
                 <SettingsContext value={settingsValue}>
@@ -1732,10 +1656,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
                 </SettingsContext>
               </NotificationContext>
             </ApprovalContext>
-            </ConversationContext>
-          </ModelContext>
-        </SessionContext>
-      </SecondBrainContext>
+          </ConversationContext>
+        </ModelContext>
+      </SessionContext>
     </AssistantRuntimeProvider>
   );
 }

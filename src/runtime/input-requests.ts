@@ -46,7 +46,7 @@ import type { InputRequest } from "@/lib/input-requests";
  * it cannot name; the client can construct one, for a kernel too old to
  * describe what it is holding.
  */
-export type ReconciledInput =
+type ReconciledInput =
   | { kind: "approval"; payload: InputRequest }
   | { kind: "form_field"; payload: FormFieldPayload }
   | null;

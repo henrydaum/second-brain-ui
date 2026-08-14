@@ -32,7 +32,7 @@ const THEME_CHANGE_EVENT = "second-brain:theme-change";
 /** The stored preference, or "system" for anything unrecognised — including a
  *  browser that refuses `localStorage` entirely, which throws rather than
  *  answering null. */
-export function readTheme(): Theme {
+function readTheme(): Theme {
   try {
     const stored = localStorage.getItem(THEME_KEY);
     if (stored === "light" || stored === "dark" || stored === "system") {
@@ -45,7 +45,7 @@ export function readTheme(): Theme {
 }
 
 /** What "system" actually resolves to right now. */
-export function resolveTheme(theme: Theme): "light" | "dark" {
+function resolveTheme(theme: Theme): "light" | "dark" {
   if (theme !== "system") return theme;
   return typeof window.matchMedia === "function" &&
     window.matchMedia(DARK_QUERY).matches

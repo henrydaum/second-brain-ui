@@ -47,9 +47,6 @@ export type NotificationState = {
   banners: Banner[];
   /** Newest first, matching the order `notification.list` returns. */
   rows: Notification[];
-  /** Whether the opening read has come back. Until it has, an empty panel means
-   *  "not yet" rather than "nothing", and the two deserve different copy. */
-  loaded: boolean;
   /** Why the panel is empty, when the reason is not "nothing happened". Said in
    *  the panel rather than the error banner, for the reason
    *  `FileActivityProvider` gives about a missing `ledger.read`: a kernel
@@ -61,7 +58,6 @@ export type NotificationState = {
 export const initialNotifications: NotificationState = {
   banners: [],
   rows: [],
-  loaded: false,
   failure: null,
 };
 
@@ -70,8 +66,6 @@ export type NotificationAction =
   | { type: "raised"; notification: NotificationPayload; key: string }
   /** One banner leaving, whether by the close button or its own timer. */
   | { type: "dismissed"; key: string }
-  /** Every banner at once — what closing the stack does. */
-  | { type: "clearedBanners" }
   /** Rows from `notification.list`: the opening read, or a reconnect top-up. */
   | { type: "backfilled"; rows: Notification[] }
   /** The opening read failed. Distinct from an empty backfill. */
@@ -109,19 +103,15 @@ export function reduceNotifications(
         banners: state.banners.filter((banner) => banner.key !== action.key),
       };
 
-    case "clearedBanners":
-      return state.banners.length ? { ...state, banners: [] } : state;
-
     case "backfilled":
       return {
         ...state,
-        loaded: true,
         failure: null,
         rows: merge(state.rows, action.rows),
       };
 
     case "failed":
-      return { ...state, loaded: true, failure: action.message };
+      return { ...state, failure: action.message };
 
     case "read": {
       const at = Date.now() / 1000;

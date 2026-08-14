@@ -30,7 +30,7 @@ export type SettingsPageId =
   | "packages"
   | "misc";
 
-export type SettingsPage = {
+type SettingsPage = {
   id: SettingsPageId;
   label: string;
   description: string;
