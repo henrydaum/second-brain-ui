@@ -568,11 +568,16 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   /** Readable from callbacks that must not be rebuilt when it changes — the
    *  same trick `commandsRef` plays. */
   const conversationFilterRef = useRef(conversationFilter);
-  /** How many rows are on screen, which is also the next page's offset. */
-  const shownConversations = useRef(0);
+  /**
+   * The rows on screen, readable from a callback without being a dependency of
+   * one — and their count *is* the next page's offset, so there is no separate
+   * cursor to keep in step with the list.
+   */
+  const conversationsRef = useRef<Conversation[]>([]);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const conversationIdRef = useRef<number | null>(null);
   conversationIdRef.current = conversationId;
+  conversationsRef.current = conversations;
 
   /**
    * The catalogue, readable from a callback without becoming a dependency of
@@ -644,7 +649,6 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       setConversations(page.items);
       setConversationsHasMore(page.hasMore);
       setConversationCategories(page.categories);
-      shownConversations.current = page.items.length;
     } catch (error) {
       // Reported rather than thrown: a chat window with no sidebar is still a
       // chat window, and the banner says why it is empty.
@@ -1269,19 +1273,44 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    * exactly right: this exists to catch retitles and reordering, and both of
    * those move rows *within* what is already on screen.
    */
+  /**
+   * Re-read the list from the top, as far as it is currently shown.
+   *
+   * **One Request, however many pages are open.** Re-reading only the first
+   * page would drop everything a person had loaded past it, on a timer; asking
+   * for each page again would be a Request per page for the same reason. A
+   * single read of `min(what is shown, the server's cap)` is both, and is
+   * exactly right: this exists to catch retitles and reordering, and both of
+   * those move rows *within* what is already on screen.
+   *
+   * Past the cap the read covers only the front, so the tail is kept rather
+   * than replaced — otherwise a page somebody had asked for would vanish on a
+   * timer. A row that moved up appears in the fresh front, so the tail drops
+   * its stale copy.
+   */
   const refreshConversations = useCallback(async () => {
     try {
+      const held = conversationsRef.current;
       const page = await listConversations({
         limit: Math.min(
-          Math.max(shownConversations.current, CONVERSATION_PAGE),
+          Math.max(held.length, CONVERSATION_PAGE),
           MOST_CONVERSATIONS_AT_ONCE,
         ),
         category: filterCategory(conversationFilterRef.current),
       });
-      setConversations(page.items);
+      const refreshed = new Set(page.items.map((item) => item.id));
+      setConversations(
+        held.length <= page.items.length
+          ? page.items
+          : [
+              ...page.items,
+              ...held
+                .slice(page.items.length)
+                .filter((item) => !refreshed.has(item.id)),
+            ],
+      );
       setConversationsHasMore(page.hasMore);
       setConversationCategories(page.categories);
-      shownConversations.current = page.items.length;
     } catch (error) {
       report(error);
     }
@@ -1296,21 +1325,18 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    */
   const loadMoreConversations = useCallback(async () => {
     try {
+      const held = conversationsRef.current;
       const page = await listConversations({
-        offset: shownConversations.current,
+        offset: held.length,
         category: filterCategory(conversationFilterRef.current),
       });
-      setConversations((held) => {
-        // By id, because the two reads are a moment apart and a conversation
-        // that moved to the top in between would otherwise arrive twice.
-        const seen = new Set(held.map((conversation) => conversation.id));
-        const next = [
-          ...held,
-          ...page.items.filter((item) => !seen.has(item.id)),
-        ];
-        shownConversations.current = next.length;
-        return next;
-      });
+      // By id, because the two reads are a moment apart and a conversation
+      // that moved to the top in between would otherwise arrive twice.
+      const seen = new Set(held.map((conversation) => conversation.id));
+      setConversations([
+        ...held,
+        ...page.items.filter((item) => !seen.has(item.id)),
+      ]);
       setConversationsHasMore(page.hasMore);
       setConversationCategories(page.categories);
     } catch (error) {
@@ -1318,14 +1344,22 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     }
   }, [report]);
 
-  /** Show a different slice. Resets the offset — the pages held describe the
-   *  old filter and none of them answer the new question. */
+  /**
+   * Show a different slice.
+   *
+   * **The held rows are cleared first, and that is not cosmetic.** They answer
+   * the old question, and every read below is written to preserve what is
+   * already loaded — so leaving them would splice one category's conversations
+   * into another's. Clearing is also what puts the offset back to zero, since
+   * the offset *is* how many rows are held.
+   */
   const setConversationFilter = useCallback(
     (filter: ConversationFilter) => {
       conversationFilterRef.current = filter;
       setConversationFilterState(filter);
       writeConversationFilter(filter);
-      shownConversations.current = 0;
+      conversationsRef.current = [];
+      setConversations([]);
       void refreshConversations();
     },
     [refreshConversations],
