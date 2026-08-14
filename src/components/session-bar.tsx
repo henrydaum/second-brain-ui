@@ -64,8 +64,14 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
        * only the buttons. So the group sets no gap at all and pads the odd one
        * out to match, leaving a single rhythm that follows whatever size the
        * buttons happen to be.
+       *
+       * The gap on top of that is the desktop's original spacing between two
+       * icon buttons, kept: padding alone makes the row even but also tighter
+       * than it was, and there is room up here for the looser measurement. A
+       * phone has no room to spare and the touch floor has already spent it,
+       * so down there the padding is the whole of it.
        */}
-      <div className="flex shrink-0 items-center">
+      <div className="flex shrink-0 items-center gap-0 pointer-fine:gap-2">
         <span
           className="text-muted-foreground flex shrink-0 items-center gap-2 px-(--header-control-inset) text-xs"
           // The transport's state, announced when it changes: a dropped stream
