@@ -31,8 +31,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { fullTimestamp } from "@/lib/time";
-import { COMPACTED, SENT_AT } from "@/runtime/convert";
+import { COMPACTED } from "@/runtime/convert";
 
 /**
  * What the line means, in one sentence.
@@ -83,17 +82,22 @@ function wavePath({ period, height, amplitude }: typeof WAVE): string {
 }
 
 /**
- * The rule itself, given the moment it marks.
+ * The rule itself.
  *
- * Split from the message wiring above it so it can be drawn — and tested —
+ * Split from the message wiring below it so it can be drawn — and tested —
  * without a thread around it.
+ *
+ * **It says nothing about when.** The marker's time is stored and the turn
+ * carries it, but a compaction is not an appointment: what a reader needs from
+ * this line is what the agent can no longer see, and the answer does not change
+ * with the hour. A timestamp here only competed with the sentence that does
+ * answer it.
  */
-export const CompactionRule: FC<{ at?: number }> = ({ at }) => {
+export const CompactionRule: FC = () => {
   // Patterns are referenced by id, and a conversation can hold more than one
   // marker. Sharing one id across instances happens to render the same, but it
   // is duplicate ids in the document, which is nobody's intent.
   const wave = useId();
-  const when = at === undefined ? null : fullTimestamp(new Date(at));
 
   return (
     <Tooltip>
@@ -146,10 +150,7 @@ export const CompactionRule: FC<{ at?: number }> = ({ at }) => {
       {/* `subtle`, like the message time: this elaborates on something already
           on screen rather than announcing what a control will do. */}
       <TooltipContent side="top" variant="subtle" className="max-w-72">
-        <p className="text-foreground font-medium">
-          Conversation compacted
-          {when && <span className="text-muted-foreground"> · {when}</span>}
-        </p>
+        <p className="text-foreground font-medium">Conversation compacted</p>
         <p>{EXPLANATION}</p>
       </TooltipContent>
     </Tooltip>
@@ -163,10 +164,6 @@ export const CompactionMarker: FC = () => {
   const compacted = useAuiState(
     (s) => s.message.metadata?.custom?.[COMPACTED] === true,
   );
-  const at = useAuiState((s) => {
-    const value = s.message.metadata?.custom?.[SENT_AT];
-    return typeof value === "number" ? value : undefined;
-  });
 
   if (!compacted) return null;
 
@@ -175,7 +172,7 @@ export const CompactionMarker: FC = () => {
       data-role="system"
       className="fade-in animate-in mx-auto w-full max-w-(--thread-max-width) px-2 duration-150"
     >
-      <CompactionRule at={at} />
+      <CompactionRule />
     </MessagePrimitive.Root>
   );
 };
