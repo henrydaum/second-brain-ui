@@ -597,3 +597,79 @@ describe("tool narration", () => {
     });
   });
 });
+
+/**
+ * Cancelling something must not put a modal on screen to say so.
+ *
+ * "Cancelled." is the kernel's acknowledgement of a Request, and it arrives on
+ * `callable_output` for any client declaring `supports_callable_output`. The
+ * guards for it were written when it arrived on `messages`, so it sailed past
+ * them into the fallback that invents a command to hold stray output — and the
+ * sidebar raises Settings for any named command. See `isCancellationEcho`.
+ */
+describe("the cancellation acknowledgement", () => {
+  const cancelled = (): Frame =>
+    ({ kind: "callable_output", payload: ["Cancelled."] }) as Frame;
+
+  const settled = (reason: "answered" | "cancelled"): Frame =>
+    ({
+      kind: "approval_settled",
+      payload: { request_id: "r1", reason },
+    }) as Frame;
+
+  it("invents no command when an approval was closed by this client", () => {
+    // What `cancelInputRequest` dispatches the moment the X is pressed.
+    const state = reduce(
+      reduce(initialState, { type: "suppressNextCancellationNotice" }),
+      { type: "frame", frame: cancelled() },
+    );
+    expect(state.command).toBeNull();
+    expect(state.suppressNextCancellationNotice).toBe(false);
+  });
+
+  it("invents no command when the kernel says a question was cancelled", () => {
+    // A peer answering, or the 300s timeout — no local dispatch happened.
+    const state = run(settled("cancelled"), cancelled());
+    expect(state.command).toBeNull();
+  });
+
+  it("leaves an answered question's output alone", () => {
+    expect(run(settled("answered")).suppressNextCancellationNotice).toBe(false);
+  });
+
+  it("does not reopen Settings for a command cancelled from Settings", () => {
+    // `say("/cancel")` records the tombstone, then the panel is dismissed —
+    // which nulls `command` before the acknowledgement lands.
+    let state = run(
+      {
+        kind: "tool_status",
+        payload: {
+          kind: "command",
+          call_id: "cmd:llm:1",
+          command_name: "llm",
+          status: "started",
+        },
+      } as Frame,
+    );
+    state = reduce(state, { type: "said", text: "/cancel", isCommand: true });
+    state = reduce(state, { type: "clearCommand" });
+    state = reduce(state, { type: "frame", frame: cancelled() });
+    expect(state.command).toBeNull();
+  });
+
+  it("still shows output that merely mentions cancelling", () => {
+    const state = reduce(
+      reduce(initialState, { type: "suppressNextCancellationNotice" }),
+      {
+        type: "frame",
+        frame: {
+          kind: "callable_output",
+          payload: ["Cancelled. 3 jobs remain scheduled."],
+        } as Frame,
+      },
+    );
+    expect(state.command?.outcome).toEqual([
+      "Cancelled. 3 jobs remain scheduled.",
+    ]);
+  });
+});

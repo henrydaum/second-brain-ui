@@ -470,6 +470,28 @@ function toolArgs(
   return { ...args, narration };
 }
 
+/**
+ * The kernel's bare acknowledgement that something was cancelled.
+ *
+ * **Recognised by its prose, which is nobody's idea of a good time.** Both
+ * kinds it can arrive on — `messages` and `callable_output` — are a plain
+ * `list[str]`, the one shape on this wire with nowhere to hang a flag, so the
+ * alternative is a dict payload behind a capability flag: a protocol change
+ * rather than a fix. What the kernel *does* say structurally is that a
+ * cancellation happened at all (`approval_settled.reason`), and that is used as
+ * the trigger below. This only has to pick the echo out of the frames that
+ * follow it.
+ *
+ * Deliberately narrow: the *whole* frame has to be this one word, so a command
+ * whose output merely mentions cancelling still prints.
+ */
+function isCancellationEcho(payload: string[]): boolean {
+  return (
+    payload.length > 0 &&
+    payload.every((text) => /^cancelled\.?$/i.test(text.trim()))
+  );
+}
+
 /* ── The reducer ────────────────────────────────────────────────────── */
 
 export function reduce(state: State, action: Action): State {
@@ -747,7 +769,7 @@ function applyFrame(state: State, frame: Frame): State {
     case "messages": {
       if (
         state.suppressNextCancellationNotice &&
-        frame.payload.every((text) => /^cancelled\.?$/i.test(text.trim()))
+        isCancellationEcho(frame.payload)
       ) {
         return { ...state, suppressNextCancellationNotice: false };
       }
@@ -758,10 +780,7 @@ function applyFrame(state: State, frame: Frame): State {
       // Settings already disappeared visibly, so suppress only its exact
       // acknowledgement. This is not command-output routing; every other
       // message still belongs to the conversation even while a command exists.
-      if (
-        state.suppressedCommand &&
-        frame.payload.every((text) => /^cancelled\.?$/i.test(text.trim()))
-      ) {
+      if (state.suppressedCommand && isCancellationEcho(frame.payload)) {
         return state;
       }
 
@@ -788,6 +807,37 @@ function applyFrame(state: State, frame: Frame): State {
        a named command (or the person invoked a tool directly), synthesize a
        completed run there rather than giving output a fallback in the thread. */
     case "callable_output": {
+      /**
+       * The cancellation acknowledgement, which is chrome rather than output.
+       *
+       * **Both of these used to live only in `messages`, and the frame moved
+       * out from under them.** "Cancelled." is the result of a Request, so a
+       * client declaring `supports_callable_output` — this one — receives it
+       * here instead, where nothing was watching for it. What followed was the
+       * fallback below inventing a command named `output` to hold it, and the
+       * sidebar dutifully raising Settings to display a word.
+       *
+       * Two triggers because a cancellation has two origins. The flag is set
+       * both optimistically when this client closes an approval and from the
+       * kernel's own `approval_settled` — so a question cancelled by a peer or
+       * timed out after 300s is covered too, and neither depends on which of
+       * the two frames the kernel emits first. `suppressedCommand` is the other
+       * origin: a command cancelled from Settings, which is already visibly
+       * gone. That one deliberately does not test `state.command`, because
+       * dismissing the panel nulls it before this frame arrives — which is
+       * exactly how the Settings dialog came to reopen announcing its own
+       * cancellation.
+       */
+      if (
+        state.suppressNextCancellationNotice &&
+        isCancellationEcho(frame.payload)
+      ) {
+        return { ...state, suppressNextCancellationNotice: false };
+      }
+      if (state.suppressedCommand && isCancellationEcho(frame.payload)) {
+        return state;
+      }
+
       if (
         state.command &&
         state.suppressedCommand?.callId === state.command.callId
@@ -904,9 +954,9 @@ function applyFrame(state: State, frame: Frame): State {
      * the session's phase stack and persists it there, and a notification is
      * usually not about the open conversation at all — a plugin registering is
      * about the install, a scheduled agent's report about a background session.
-     * So all three must survive everything `history` above resets, and the
-     * provider fans them into `runtime/input-requests.ts` and
-     * `runtime/notifications.ts` before this reducer ever sees them.
+     * So both must survive everything `history` above resets, and the provider
+     * fans them into `runtime/input-requests.ts` and `runtime/notifications.ts`
+     * before this reducer ever sees them.
      *
      * They are listed anyway rather than left to a `default`, because an
      * unhandled kind here is a *compile* error — which is how the eleventh kind
@@ -915,9 +965,22 @@ function applyFrame(state: State, frame: Frame): State {
      * fan-out in `provider.tsx` had been removed.
      */
     case "approval":
-    case "approval_settled":
     case "notification":
       return state;
+
+    /**
+     * A question stopped being open — and, when it was cancelled, the one
+     * structured warning that its acknowledgement is on its way.
+     *
+     * The dialog itself is reconciled in `runtime/input-requests.ts` like the
+     * two above, which is why this was discarded outright until now. What it
+     * adds here is a cancellation *this client may not have caused*: the frame
+     * exists for a peer answering and for the kernel's own 300s timeout, and
+     * both produce the same "Cancelled." echo as pressing the X does.
+     */
+    case "approval_settled":
+      if (frame.payload.reason !== "cancelled") return state;
+      return { ...state, suppressNextCancellationNotice: true };
 
     case "form_field":
       if (
