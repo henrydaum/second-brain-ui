@@ -16,7 +16,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type FC,
@@ -300,17 +299,26 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     filter.type === "all" ? "all" : `category:${filter.category ?? "main"}`;
 
   /**
-   * A remembered filter naming a category that no longer exists.
+   * The filter names a category that no longer exists.
    *
-   * Once only, and only once the server has said which categories there are —
-   * emptying a category is how this happens, and the answer is to fall back to
-   * Main rather than to leave the sidebar showing an empty list with no way to
-   * tell that from "you have none".
+   * **A category is not a record — it is a value some conversation holds.** So
+   * it stops existing the moment the last conversation leaves it, with nothing
+   * deleted and nothing to delete. That is the right model, and this is the one
+   * loose end it leaves: empty the category you are *filtered to* and the
+   * sidebar would sit on a filter nothing can match, showing an empty list
+   * indistinguishable from "you have none" while the pill quietly relabelled
+   * itself Main.
+   *
+   * So it falls back whenever that happens, not once at startup — emptying a
+   * category is something you do *while looking at it*. This settles rather
+   * than loops: Main is always among the options, so the filter it moves to is
+   * one the next run finds.
+   *
+   * An empty tally is "not asked yet" rather than "no categories", which is why
+   * it is not treated as everything having disappeared.
    */
-  const filterChecked = useRef(false);
   useEffect(() => {
-    if (filterChecked.current || conversationCategories.length === 0) return;
-    filterChecked.current = true;
+    if (conversationCategories.length === 0) return;
     const known = filterOptions.some((option) =>
       filtersEqual(option.filter, conversationFilter),
     );
@@ -401,13 +409,8 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     [loadMoreConversations],
   );
 
-  const selectConversationFilter = (filter: ConversationFilter) => {
-    filterChecked.current = true;
-    setConversationFilter(filter);
-  };
-
   const startNewConversation = () => {
-    selectConversationFilter(MAIN_CONVERSATIONS_FILTER);
+    setConversationFilter(MAIN_CONVERSATIONS_FILTER);
     void run(newConversation).then(closeDrawer);
   };
 
@@ -536,7 +539,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
                   const option = filterOptions.find(
                     (candidate) => filterValue(candidate.filter) === value,
                   );
-                  if (option) selectConversationFilter(option.filter);
+                  if (option) setConversationFilter(option.filter);
                 }}
               >
                 {filterOptions.map((option) => {
