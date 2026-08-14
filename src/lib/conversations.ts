@@ -8,6 +8,7 @@
  */
 
 import { sdk } from "@/lib/client";
+import type { NotificationMode } from "@/lib/history";
 
 export type Conversation = {
   id: number;
@@ -91,6 +92,44 @@ export function isUnused(conversation: Conversation | undefined): boolean {
   const updated = conversation?.updated_at;
   if (typeof created !== "number" || typeof updated !== "number") return false;
   return updated <= created;
+}
+
+/* ── Changing one ──────────────────────────────────────────────────────
+ *
+ * All three are `ALWAYS_SAFE` in the kernel's policy, so none of them raises an
+ * approval dialog — unlike `conv.delete`, which does. Editing what a
+ * conversation is *called* or *filed under* changes nothing the person cannot
+ * see and undo, and the kernel scopes each one to the calling user in SQL.
+ */
+
+/** Name it. **Permanent, in a way the placeholder is not** — the kernel's title
+ *  sweep only ever replaces titles matching `PLACEHOLDER_TITLE` above, so a
+ *  title set here is one it will never overwrite. */
+export function setConversationTitle(id: number, title: string) {
+  return sdk<boolean>("conv.set_title", { id, title });
+}
+
+/** File it. `null` puts it back in Main, which the server stores as an empty
+ *  category rather than as a named one. */
+export function setConversationCategory(id: number, category: string | null) {
+  return sdk<boolean>("conv.set_category", { id, category });
+}
+
+/**
+ * Announce its results, or do not.
+ *
+ * Answers the mode the kernel actually settled on, which is worth using rather
+ * than assuming: it normalises anything it does not recognise, so the value
+ * that comes back is the one now stored.
+ */
+export function setConversationNotificationMode(
+  id: number,
+  mode: NotificationMode,
+) {
+  return sdk<NotificationMode | null>("conv.set_notification_mode", {
+    id,
+    mode,
+  });
 }
 
 /** What `conv.load` answers: a command-shaped result rather than a bare value.

@@ -51,11 +51,14 @@ import { listCommands, looksLikeCommand, type Command } from "@/lib/commands";
 import {
   isUnused,
   listConversations,
+  setConversationCategory,
+  setConversationNotificationMode,
+  setConversationTitle,
   type Conversation,
   type LoadResult,
 } from "@/lib/conversations";
 import { connect, type StreamStatus } from "@/lib/events";
-import { readConversation } from "@/lib/history";
+import { readConversation, type NotificationMode } from "@/lib/history";
 import { isPendingInput, type InputRequest } from "@/lib/input-requests";
 // `Notification` deliberately shadows the DOM global of that name here. Ours is
 // a row in the kernel's table; the browser's is a desktop popup this app does
@@ -221,6 +224,15 @@ export type SecondBrain = {
   /** Whether `conversations` has been read yet. An empty list means nothing
    *  until this is true. */
   conversationsLoaded: boolean;
+  /** Whether the open conversation announces its results. Null until the read
+   *  that carries it has come back, or against a kernel too old to say. */
+  notificationMode: NotificationMode | null;
+  /** Rename the open conversation. */
+  renameConversation: (id: number, title: string) => Promise<void>;
+  /** File it under a category, or `null` for Main. */
+  categoriseConversation: (id: number, category: string | null) => Promise<void>;
+  /** Announce its results, or stop. */
+  setNotificationMode: (id: number, mode: NotificationMode) => Promise<void>;
   /** The one the session is currently pointing at. */
   conversationId: number | null;
   /** Point the session at another conversation and show it. */
@@ -362,6 +374,10 @@ type ConversationDomain = Pick<
   | "openConversation"
   | "newConversation"
   | "deleteConversation"
+  | "notificationMode"
+  | "renameConversation"
+  | "categoriseConversation"
+  | "setNotificationMode"
 >;
 type ApprovalDomain = Pick<
   SecondBrain,
@@ -460,6 +476,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    *  means "not yet" rather than "none", and only one of those is worth
    *  saying — see `loadCatalogue`. */
   const [conversationsLoaded, setConversationsLoaded] = useState(false);
+  /** The open conversation's notification mode, as `conv.read` last reported
+   *  it. Not on the `Conversation` row — the kernel derives it from the state
+   *  machine — so it is held beside the id rather than looked up in the list. */
+  const [notificationMode, setNotificationModeState] =
+    useState<NotificationMode | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const conversationIdRef = useRef<number | null>(null);
   conversationIdRef.current = conversationId;
@@ -627,10 +648,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         }
 
         if (bound !== null) {
-          const turns = await readConversation(bound);
+          const read = await readConversation(bound);
           if (!cancelled) {
-            dispatch({ type: "history", turns });
+            dispatch({ type: "history", turns: read.turns });
             setConversationId(bound);
+            setNotificationModeState(read.notificationMode);
           }
         }
 
@@ -719,7 +741,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       // reading it must not see the conversation this one replaced.
       conversationIdRef.current = bound;
       setConversationId(bound);
-      dispatch({ type: "history", turns: await readConversation(bound) });
+      const read = await readConversation(bound);
+      dispatch({ type: "history", turns: read.turns });
+      setNotificationModeState(read.notificationMode);
     } catch (error) {
       report(error);
     }
@@ -1235,8 +1259,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
           report(new Error(result?.messages?.[0] ?? "Could not open it."));
           return;
         }
-        dispatch({ type: "history", turns: await readConversation(id) });
+        const read = await readConversation(id);
+        dispatch({ type: "history", turns: read.turns });
         setConversationId(id);
+        setNotificationModeState(read.notificationMode);
         await syncSession();
         await refreshConversations();
       } catch (error) {
@@ -1316,6 +1342,56 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     [conversationId, createConversation, refreshConversations, report],
   );
 
+  /* ── Changing what a conversation *is* ──────────────────────────────
+   *
+   * All three are `ALWAYS_SAFE`, so none of them raises the dialog `conv.delete`
+   * above does, and all three refresh the list afterwards — the sidebar draws
+   * the title, the category dot and the filter counts, and none of those move
+   * on their own.
+   */
+
+  const renameConversation = useCallback(
+    async (id: number, title: string) => {
+      try {
+        await setConversationTitle(id, title);
+        await refreshConversations();
+      } catch (error) {
+        report(error);
+      }
+    },
+    [refreshConversations, report],
+  );
+
+  const categoriseConversation = useCallback(
+    async (id: number, category: string | null) => {
+      try {
+        await setConversationCategory(id, category);
+        await refreshConversations();
+      } catch (error) {
+        report(error);
+      }
+    },
+    [refreshConversations, report],
+  );
+
+  const setNotificationMode = useCallback(
+    async (id: number, mode: NotificationMode) => {
+      try {
+        // The answer is the mode the kernel settled on, which is the one now
+        // stored — it normalises anything it does not recognise, so trusting
+        // what we sent would be trusting the wrong value on the one occasion
+        // it matters.
+        const settled = await setConversationNotificationMode(id, mode);
+        if (id === conversationIdRef.current) {
+          setNotificationModeState(settled ?? mode);
+        }
+      } catch (error) {
+        report(error);
+      }
+    },
+    [report],
+  );
+
   /* ── The runtime ────────────────────────────────────────────────── */
 
   const hydrateSentAttachments = useCallback(async (names: string[], text: string) => {
@@ -1339,7 +1415,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         wait = Math.min(wait * 2, 1200);
       }
       try {
-        const turns = await readConversation(id);
+        const { turns } = await readConversation(id);
         const user = [...turns].reverse().find((turn) => turn.role === "user");
         const storedText =
           user?.parts
@@ -1503,7 +1579,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     );
     const id = session?.conversation_id ?? null;
     if (id === null) return;
-    dispatch({ type: "history", turns: await readConversation(id) });
+    dispatch({ type: "history", turns: (await readConversation(id)).turns });
   }, []);
 
   const runtime = useExternalStoreRuntime({
@@ -1600,6 +1676,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       openConversation,
       newConversation,
       deleteConversation,
+      notificationMode,
+      renameConversation,
+      categoriseConversation,
+      setNotificationMode,
     }),
     [
       conversations,
@@ -1608,6 +1688,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       openConversation,
       newConversation,
       deleteConversation,
+      notificationMode,
+      renameConversation,
+      categoriseConversation,
+      setNotificationMode,
     ],
   );
   const approvalValue = useMemo<ApprovalDomain>(

@@ -30,6 +30,10 @@ describe("the browser tab title", () => {
       openConversation: vi.fn(),
       newConversation: vi.fn(),
       deleteConversation: vi.fn(),
+      notificationMode: null,
+      renameConversation: vi.fn(),
+      categoriseConversation: vi.fn(),
+      setNotificationMode: vi.fn(),
     };
     vi.spyOn(provider, "useConversations").mockImplementation(
       () => current as ReturnType<typeof provider.useConversations>,
@@ -69,6 +73,10 @@ describe("the browser tab title", () => {
       openConversation: vi.fn(),
       newConversation: vi.fn(),
       deleteConversation: vi.fn(),
+      notificationMode: null,
+      renameConversation: vi.fn(),
+      categoriseConversation: vi.fn(),
+      setNotificationMode: vi.fn(),
     });
 
     render(<ConversationDocumentTitle />);

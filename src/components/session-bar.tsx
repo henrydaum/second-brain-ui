@@ -12,12 +12,12 @@ import { useEffect, type FC } from "react";
 import { FilesIcon, PanelLeftOpenIcon, XIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { ConversationMenu } from "@/components/conversation-menu";
 import { NotificationPanel } from "@/components/notification-panel";
 import { preloadFilesDrawer } from "@/components/lazy-files-drawer";
-import { conversationTitle } from "@/lib/conversations";
 import { cn } from "@/lib/utils";
 import { useFileActivity } from "@/runtime/file-activity-provider";
-import { useConversations, useSession } from "@/runtime/provider";
+import { useSession } from "@/runtime/provider";
 
 const LABELS = {
   connecting: "Connecting…",
@@ -27,17 +27,8 @@ const LABELS = {
 
 export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
   const { status } = useSession();
-  const { conversations, conversationId } = useConversations();
   const { filesOpen, setFilesOpen, total } = useFileActivity();
   const label = LABELS[status];
-
-  // Which conversation you are in, where every other chat app puts it. The
-  // sidebar says it too, but the sidebar collapses — and on a narrow screen it
-  // is not on the page at all.
-  const open = conversations.find(
-    (conversation) => conversation.id === conversationId,
-  );
-  const title = open ? conversationTitle(open) : "New chat";
 
   useEffect(() => {
     const timer = window.setTimeout(preloadFilesDrawer, 900);
@@ -57,12 +48,9 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
         <PanelLeftOpenIcon className="size-4" />
       </TooltipIconButton>
 
-      <span
-        className="min-w-0 flex-1 truncate px-1 text-sm font-medium"
-        title={title}
-      >
-        {title}
-      </span>
+      {/* Which conversation you are in, and — since it is the thing you point
+          at when you mean "this conversation" — what you can do to it. */}
+      <ConversationMenu />
 
       <span
         className="text-muted-foreground flex shrink-0 items-center gap-2 text-xs"

@@ -44,6 +44,9 @@ vi.mock("@/lib/conversations", () => ({
   listConversations: async () => [],
   isUnused: () => false,
   PLACEHOLDER_TITLE: "",
+  setConversationTitle: async () => true,
+  setConversationCategory: async () => true,
+  setConversationNotificationMode: async () => "on",
 }));
 vi.mock("@/lib/notifications", () => ({
   listNotifications: async () => [],
@@ -85,7 +88,7 @@ const bootWith = (busy: boolean) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  readConversation.mockResolvedValue([]);
+  readConversation.mockResolvedValue({ turns: [], notificationMode: null });
   // The stream reports itself open, which is what the reconnect sync keys on.
   connect.mockImplementation(
     (_onFrame: unknown, setStatus: (s: string) => void) => {

@@ -110,6 +110,10 @@ function stub(over: Partial<provider.SecondBrain>) {
     openConversation: value.openConversation,
     newConversation: value.newConversation,
     deleteConversation: value.deleteConversation,
+    notificationMode: null,
+    renameConversation: vi.fn(),
+    categoriseConversation: vi.fn(),
+    setNotificationMode: vi.fn(),
   });
   vi.spyOn(provider, "useSettings").mockReturnValue({
     commands: value.commands,

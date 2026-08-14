@@ -298,6 +298,24 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
   return turns;
 }
 
+export type ConversationRead = {
+  turns: Turn[];
+  /**
+   * Whether this conversation's results are announced.
+   *
+   * **Only `conv.read` knows this.** It is not a column on the conversations
+   * table — the kernel derives it from the state machine's latest state — so
+   * `conv.list` cannot carry it and there is nowhere cheaper to ask. Null when
+   * the answer did not include one, which is a kernel too old to say rather
+   * than a conversation that is set to neither value.
+   */
+  notificationMode: NotificationMode | null;
+};
+
+/** The kernel normalises anything else to one of these two, and defaults to
+ *  `"on"` — see `runtime/notifications.py`. */
+export type NotificationMode = "on" | "off";
+
 /**
  * Read a conversation and turn it into scrollback.
  *
@@ -306,12 +324,24 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
  * the rows directly or nest them under a conversation record. Both are accepted
  * rather than guessed at, since guessing wrong shows an empty history and says
  * nothing about why.
+ *
+ * `details: true` was already being asked for, and the answer already carried
+ * the notification mode; this only stopped throwing it away. The header menu
+ * therefore costs no Request of its own — it reads what opening the
+ * conversation had already fetched.
  */
-export async function readConversation(id: number): Promise<Turn[]> {
+export async function readConversation(id: number): Promise<ConversationRead> {
   const data = await sdk<
-    StoredMessage[] | { messages?: StoredMessage[] } | null
+    | StoredMessage[]
+    | { messages?: StoredMessage[]; notification_mode?: string }
+    | null
   >("conv.read", { id, details: true });
 
-  const rows = Array.isArray(data) ? data : (data?.messages ?? []);
-  return toTurns(rows);
+  if (Array.isArray(data)) return { turns: toTurns(data), notificationMode: null };
+
+  const mode = data?.notification_mode;
+  return {
+    turns: toTurns(data?.messages ?? []),
+    notificationMode: mode === "on" || mode === "off" ? mode : null,
+  };
 }
