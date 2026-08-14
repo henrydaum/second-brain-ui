@@ -14,6 +14,8 @@
  * an SSE connection between the test and the assertion.
  */
 
+import "@testing-library/jest-dom/vitest";
+
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -381,5 +383,54 @@ describe("Settings lands where it was asked to", () => {
 
     expect(screen.queryByText("Back.")).toBeNull();
     expect(screen.getByText("Useful command output")).toBeTruthy();
+  });
+});
+
+/**
+ * Settings and the agent share one lane.
+ *
+ * Opening Settings mid-turn is harmless in itself, but every way back out of it
+ * submits `/cancel` when something is running, and that lands on the turn. So
+ * the link refuses while the agent has it, and says why — rather than being a
+ * quiet way to lose a turn you were waiting on.
+ */
+describe("opening settings while the agent is working", () => {
+  /** Only one field of the session state decides this, and spelling out the
+   *  other nine would say that they mattered. */
+  const turnState = (typing: boolean) =>
+    ({ turns: [], typing }) as unknown as provider.SecondBrain["state"];
+
+  it("refuses the link and explains, rather than opening", async () => {
+    const { say, openSettings, setNotificationsOpen, user } = stub({
+      notifications: [row()],
+      state: turnState(true),
+    });
+    render(<NotificationPanel />);
+
+    const link = screen.getByRole("button", { name: "Open settings" });
+    expect(link).toHaveAttribute("aria-disabled", "true");
+    expect(link).toHaveAccessibleDescription(/working/i);
+
+    await user.click(link);
+
+    expect(openSettings).not.toHaveBeenCalled();
+    expect(say).not.toHaveBeenCalled();
+    // And the panel is still standing, so nothing about the click read as
+    // having gone somewhere.
+    expect(setNotificationsOpen).not.toHaveBeenCalledWith(false);
+  });
+
+  it("opens as usual once the turn is over", async () => {
+    const { openSettings, user } = stub({
+      notifications: [row()],
+      state: turnState(false),
+    });
+    render(<NotificationPanel />);
+
+    const link = screen.getByRole("button", { name: "Open settings" });
+    expect(link).not.toHaveAttribute("aria-disabled");
+
+    await user.click(link);
+    await waitFor(() => expect(openSettings).toHaveBeenCalledWith("config"));
   });
 });

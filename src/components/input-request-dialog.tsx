@@ -172,7 +172,10 @@ export const InputRequestDialog: FC = () => {
               autoFocus
               value={typed}
               onChange={(event) => setTyped(event.target.value)}
-              className="border-input flex-1 rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-[3px]"
+              // `text-base`, and `autoFocus` is why it matters most here: iOS
+              // zooms on focus below 16px, and this focuses itself. See the
+              // field in `command-panel.tsx`.
+              className="border-input flex-1 rounded-md border bg-transparent px-3 py-2 text-base outline-none focus-visible:ring-[3px]"
             />
             <Button type="submit" disabled={answering}>
               Answer

@@ -52,56 +52,72 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
           at when you mean "this conversation" — what you can do to it. */}
       <ConversationMenu />
 
-      <span
-        className="text-muted-foreground flex shrink-0 items-center gap-2 text-xs"
-        // The transport's state, announced when it changes: a dropped stream
-        // looks exactly like a thinking agent, and only this tells them apart.
-        role="status"
-        aria-live="polite"
-      >
+      {/**
+       * The chrome at the far end, spaced by padding rather than by a gap.
+       *
+       * **These three have to look evenly spaced, and a `gap` cannot do it.**
+       * An icon button is a box with its glyph centred in it, so it brings
+       * padding of its own to every edge; the status indicator is text and
+       * brings none. One `gap` across the row therefore lands as two different
+       * measurements — glyph to glyph read 16px and 24px on a desktop — and the
+       * coarse-pointer floor pushed them further apart on a phone by growing
+       * only the buttons. So the group sets no gap at all and pads the odd one
+       * out to match, leaving a single rhythm that follows whatever size the
+       * buttons happen to be.
+       */}
+      <div className="flex shrink-0 items-center">
         <span
-          aria-hidden
-          className={cn(
-            "size-2 rounded-full",
-            status === "open" ? "bg-emerald-500" : "bg-amber-500",
-            status !== "open" && "animate-pulse",
-          )}
-        />
-        {/* The dot alone carries this below `sm`, where the header is tight. */}
-        <span className="hidden sm:inline">{label}</span>
-        <span className="sr-only sm:hidden">{label}</span>
-      </span>
-
-      {/* Before Files, which keeps Files hard against the edge its drawer comes
-          out of. The bell's panel is a popover and has no edge of its own to
-          line up with. */}
-      <NotificationPanel />
-
-      {/* Last in the row, against the edge the panel comes out of — the same
-          pairing the conversations button has with the sidebar at the other
-          end. Not hidden at any width, unlike that one: the files panel starts
-          closed everywhere, so this is the only way to it. */}
-      <TooltipIconButton
-        tooltip={filesOpen ? "Hide files" : "Show files"}
-        side="bottom"
-        className="relative size-8"
-        aria-expanded={filesOpen}
-        onPointerEnter={preloadFilesDrawer}
-        onFocus={preloadFilesDrawer}
-        onClick={() => setFilesOpen(!filesOpen)}
-      >
-        <FilesIcon className="size-4" />
-        {/* A dot rather than a number. How *many* files there are is the
-            drawer's business; whether there are any is the only thing worth
-            saying from out here, and it is what decides whether opening it is
-            worth doing. */}
-        {total > 0 && !filesOpen && (
+          className="text-muted-foreground flex shrink-0 items-center gap-2 px-(--header-control-inset) text-xs"
+          // The transport's state, announced when it changes: a dropped stream
+          // looks exactly like a thinking agent, and only this tells them apart.
+          role="status"
+          aria-live="polite"
+        >
           <span
             aria-hidden
-            className="bg-primary absolute end-1 top-1 size-1.5 rounded-full"
+            className={cn(
+              "size-2 rounded-full",
+              status === "open" ? "bg-emerald-500" : "bg-amber-500",
+              status !== "open" && "animate-pulse",
+            )}
           />
-        )}
-      </TooltipIconButton>
+          {/* The dot alone carries this below `sm`, where the header is
+              tight. */}
+          <span className="hidden sm:inline">{label}</span>
+          <span className="sr-only sm:hidden">{label}</span>
+        </span>
+
+        {/* Before Files, which keeps Files hard against the edge its drawer
+            comes out of. The bell's panel is a popover and has no edge of its
+            own to line up with. */}
+        <NotificationPanel />
+
+        {/* Last in the row, against the edge the panel comes out of — the same
+            pairing the conversations button has with the sidebar at the other
+            end. Not hidden at any width, unlike that one: the files panel
+            starts closed everywhere, so this is the only way to it. */}
+        <TooltipIconButton
+          tooltip={filesOpen ? "Hide files" : "Show files"}
+          side="bottom"
+          className="relative size-8"
+          aria-expanded={filesOpen}
+          onPointerEnter={preloadFilesDrawer}
+          onFocus={preloadFilesDrawer}
+          onClick={() => setFilesOpen(!filesOpen)}
+        >
+          <FilesIcon className="size-4" />
+          {/* A dot rather than a number. How *many* files there are is the
+              drawer's business; whether there are any is the only thing worth
+              saying from out here, and it is what decides whether opening it is
+              worth doing. */}
+          {total > 0 && !filesOpen && (
+            <span
+              aria-hidden
+              className="bg-primary absolute end-1 top-1 size-1.5 rounded-full"
+            />
+          )}
+        </TooltipIconButton>
+      </div>
     </header>
   );
 };

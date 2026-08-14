@@ -54,6 +54,9 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
           // is; assistant-ui wants the narrower "this is really JSON" type. The
           // cast is the seam between the two vocabularies, and it is safe
           // because the value came off `JSON.parse`.
+          //
+          // `narration` is among these, put there by the store rather than
+          // found here — see `toolArgs` in `store.ts`.
           args: (part.args ?? {}) as ReadonlyJSONObject,
           // A tool-call part with no `result` inherits the *message's* status,
           // so a finished tool inside a still-running turn would spin forever.

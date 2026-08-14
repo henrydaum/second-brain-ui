@@ -107,7 +107,14 @@ export const CompactionRule: FC = () => {
           // `cursor-default` and `select-none` for the reason the message time
           // has them: an I-beam over a decorative rule reads as an invitation
           // to select something that is not text.
-          className="group flex w-full cursor-default items-center py-1 select-none"
+          //
+          // **Not a flex container, and that is not a style choice.** An `svg`
+          // with no `width` attribute and no `viewBox` has no intrinsic width
+          // to offer, and asked for one as a flex item WebKit resolves it to
+          // zero rather than to the `width: 100%` an svg defaults to — so this
+          // marker drew nothing at all on iOS while being perfect everywhere
+          // else. A block container asks the question the svg can answer.
+          className="group w-full cursor-default py-1 select-none"
         >
           {/* The tooltip is a hover, and a hover is not available to everyone.
               This is the same sentence, said where a screen reader will reach
@@ -125,7 +132,14 @@ export const CompactionRule: FC = () => {
             // tile's height: one row of wave, exactly. A class here would be a
             // fourth number to keep in step with `WAVE` by hand.
             height={WAVE.height}
-            className="text-muted-foreground/40 group-hover:text-muted-foreground w-full transition-colors duration-200"
+            // Width as an attribute *as well as* a class, which is belt and
+            // braces rather than duplication: the class is what makes it fill
+            // the thread, the attribute is what stops a browser having to guess
+            // at the intrinsic size before it gets there.
+            width="100%"
+            // `block`, or the svg sits on a text baseline and carries a strip
+            // of descender space under a rule that is ten pixels tall.
+            className="text-muted-foreground/40 group-hover:text-muted-foreground block w-full transition-colors duration-200"
           >
             <defs>
               <pattern

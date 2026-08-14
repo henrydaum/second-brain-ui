@@ -53,13 +53,17 @@ export type ToolPart = {
   name: string;
   /** True when this was a slash command rather than a tool. */
   isCommand: boolean;
-  /** What the agent said it was doing, from `started`. */
-  narration: string;
-  /** What came back, from `finished`. A different fact from `narration` — see
-   *  `ToolStatusPayload`. Empty until the call finishes, and empty after it if
-   *  it failed, where `error` is the outcome. */
+  /** What came back, from `finished`. A different fact from the narration in
+   *  `args` — see `ToolStatusPayload`. Empty until the call finishes, and empty
+   *  after it if it failed, where `error` is the outcome. */
   summary: string;
   status: "started" | "progressed" | "finished";
+  /**
+   * What the call was made with — **including `narration`**, which the wire
+   * also sends as a field of its own. See `toolArgs`: this is the one home for
+   * it, because it is the only home a conversation read back from the database
+   * can offer.
+   */
   args?: Record<string, unknown>;
   ok?: boolean;
   error?: string | null;
@@ -430,6 +434,40 @@ function stopCarrying(
  *  mutating a turn in place would leave assistant-ui rendering stale content. */
 function replace(turns: Turn[], id: string, next: Turn): Turn[] {
   return turns.map((turn) => (turn.id === id ? next : turn));
+}
+
+/**
+ * A tool call's arguments, with its narration among them.
+ *
+ * **`narration` arrives two ways and must end up in one.** The model writes it
+ * as an argument — it is a reserved parameter name, and the kernel strips it
+ * before the tool runs — and the wire *also* lifts it out to a field of its own
+ * on `tool_status`. A conversation replayed from the database has only the
+ * first, because only the arguments are stored. Keeping both would mean a field
+ * that is reliably filled while you watch and reliably empty afterwards, which
+ * is a worse trap than not having it: the transcript would quietly say
+ * different things about the same call depending on when you looked.
+ *
+ * So the field folds back into the arguments it was taken from, here, once per
+ * frame — rather than in `convert.ts`, which runs per message on every render
+ * and is meant to make no decisions this reducer has not already made.
+ *
+ * The written argument wins where both exist; it is what the model actually
+ * said. And the narration is *carried*, not just copied: it is repeated on
+ * `finished` deliberately, but a frame that omits it while bringing new
+ * arguments must not blank out what an earlier one established.
+ */
+function toolArgs(
+  payload: { args?: Record<string, unknown>; narration?: string },
+  existing: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  const args = payload.args ?? existing;
+  if (args && "narration" in args) return args;
+  const carried = existing?.narration;
+  const narration =
+    payload.narration || (typeof carried === "string" ? carried : "");
+  if (!narration) return args;
+  return { ...args, narration };
 }
 
 /* ── The reducer ────────────────────────────────────────────────────── */
@@ -828,15 +866,13 @@ function applyFrame(state: State, frame: Frame): State {
         callId: p.call_id,
         name: p.tool_name ?? p.command_name ?? existing?.name ?? "tool",
         isCommand: p.kind === "command" || (existing?.isCommand ?? false),
-        // `narration` is repeated on `finished` deliberately, but keep the last
-        // one we had if a frame omits it.
-        narration: p.narration ?? existing?.narration ?? "",
         // Only `finished` carries this, so the earlier frames must not blank
         // out what a later one brought — and a kernel older than the field
         // simply leaves it empty forever, which renders as it did before.
         summary: p.summary ?? existing?.summary ?? "",
         status: p.status,
-        args: p.args ?? existing?.args,
+        // Which is also where the narration lands — see `toolArgs`.
+        args: toolArgs(p, existing?.args),
         ok: p.ok ?? existing?.ok,
         error: p.error ?? existing?.error,
       };

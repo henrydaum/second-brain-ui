@@ -106,16 +106,32 @@ export const NotificationPanel: FC = () => {
 
       <PopoverContent
         align="end"
+        /**
+         * Room to be pushed into, so being pushed lands it centred.
+         *
+         * The panel is anchored to the bell, and on a phone it is wider than
+         * the distance from the bell to the right edge — so Radix slides it
+         * left until it fits. With no collision padding "fits" means flush
+         * against the viewport edge, which put every pixel of the slack on one
+         * side and read as a panel that had slipped. Given a margin to respect
+         * on both sides, the same correction leaves it even.
+         */
+        collisionPadding={8}
         // Wider than the default 72, and capped against the viewport so it
         // still fits on a phone. The bodies here are prose, sometimes with a
-        // table in them.
-        className="flex max-h-[70vh] w-96 max-w-[calc(100vw-1rem)] flex-col p-0"
+        // table in them. `overflow-hidden` so the first and last row rules stop
+        // at the corner radius rather than running out under it.
+        className="flex max-h-[70vh] w-96 max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0"
       >
         <header className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
           <span className="flex-1 text-sm font-medium">Notifications</span>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* `overlay-scrollbar` because every row here draws a rule to the
+            panel's edge, and a laid-out scrollbar took 6px off each of them
+            while the header's rule above kept its full width — see
+            `index.css`. */}
+        <div className="overlay-scrollbar min-h-0 flex-1 overflow-y-auto">
           {notificationsFailure ? (
             <p className="text-muted-foreground p-4 text-xs">
               {notificationsFailure}
@@ -142,7 +158,7 @@ const Row: FC<{ row: Notification }> = ({ row }) => {
   // Closing the popover is `LinkOut`'s business, not each row's.
   const { conversationId, openConversation } = useConversations();
   const { openSettings } = useSettings();
-  const { say } = useSession();
+  const { say, state } = useSession();
   const level = levelOf(row.level);
   const at = atOf(row.ts);
 
@@ -287,6 +303,22 @@ const Row: FC<{ row: Notification }> = ({ row }) => {
                 <LinkOut
                   icon={Settings2Icon}
                   label="Open settings"
+                  /**
+                   * **Not while the agent has the turn.**
+                   *
+                   * Settings and the agent share one lane. Opening it mid-turn
+                   * is harmless by itself, but every way back *out* of it —
+                   * closing it, or moving to another section — submits
+                   * `/cancel` when something is running, and that lands on the
+                   * turn. Ending a turn is a decision, and it should be made at
+                   * the composer's Stop button rather than arrived at by
+                   * following a link about a setting.
+                   */
+                  unavailable={
+                    state.typing
+                      ? "Second Brain is working. Wait for it to finish, or stop it, before opening settings."
+                      : undefined
+                  }
                   onClick={() =>
                     setting ? void openSetting(setting) : openSettings(section)
                   }
@@ -313,12 +345,23 @@ const LinkOut: FC<{
   icon: FC<{ className?: string }>;
   label: string;
   onClick: () => void;
-}> = ({ icon: Icon, label, onClick }) => {
+  /** Why the link cannot be followed right now, if it cannot. Present is what
+   *  makes it unavailable — there is no separate flag, so a caller cannot
+   *  disable one of these without saying what to tell the person. */
+  unavailable?: string;
+}> = ({ icon: Icon, label, onClick, unavailable }) => {
   const { setNotificationsOpen } = useNotifications();
   return (
     <button
       type="button"
+      // `aria-disabled` rather than `disabled`. A disabled button is inert in
+      // every sense — it stops firing the pointer events its own `title` needs,
+      // so the one thing worth saying here would be the thing you could not
+      // reach. This still refuses the click and still reads as unavailable.
+      aria-disabled={unavailable ? true : undefined}
+      title={unavailable}
       onClick={() => {
+        if (unavailable) return;
         setNotificationsOpen(false);
         onClick();
       }}
@@ -329,7 +372,10 @@ const LinkOut: FC<{
       // blank line above and below its row. The whole notification remains an
       // easy scroll target, while this explicit link keeps its natural line
       // height; desktop retains the existing treatment unchanged.
-      className="notification-link text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex shrink-0 items-center gap-1 rounded whitespace-nowrap text-xs underline underline-offset-2 outline-none focus-visible:ring-2"
+      className={cn(
+        "notification-link text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex shrink-0 items-center gap-1 rounded whitespace-nowrap text-xs underline underline-offset-2 outline-none focus-visible:ring-2",
+        unavailable && "hover:text-muted-foreground cursor-not-allowed opacity-50",
+      )}
     >
       <Icon className="size-3 shrink-0" aria-hidden />
       {label}

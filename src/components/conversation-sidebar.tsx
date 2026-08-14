@@ -142,7 +142,7 @@ const ConversationList = memo(function ConversationList({
             data-slot="conversation"
             data-active={active || undefined}
             className={cn(
-              "group flex items-center gap-1 rounded-md",
+              "group relative flex items-center gap-1 rounded-md",
               active ? "bg-accent" : "hover:bg-accent/50",
             )}
           >
@@ -150,7 +150,15 @@ const ConversationList = memo(function ConversationList({
               type="button"
               disabled={locked}
               onClick={() => onOpen(conversation.id)}
-              className="min-w-0 flex-1 px-2 py-1.5 text-start disabled:opacity-50"
+              // The delete button below is positioned over this rather than
+              // beside it, so a title has the whole row until something wants
+              // the corner. Then — and only then — this makes way for it. It
+              // used to give up that width permanently, including on a phone,
+              // where the button it was making way for never appears at all.
+              className={cn(
+                "min-w-0 flex-1 px-2 py-1.5 text-start disabled:opacity-50",
+                "pointer-fine:group-hover:pe-9 pointer-fine:group-focus-within:pe-9",
+              )}
             >
               <span className="block truncate text-sm">
                 {conversationTitle(conversation)}
@@ -187,11 +195,17 @@ const ConversationList = memo(function ConversationList({
               tooltip="Delete"
               side="right"
               className={cn(
-                "me-1 size-7",
+                "absolute end-1 top-1/2 size-7 -translate-y-1/2",
                 // Present on hover or focus only — a destructive control
                 // sitting permanently beside every row is one that gets hit
                 // by accident. It stays keyboard-reachable.
                 "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                // **Nothing at all where there is no hover.** Revealed by
+                // pointing, this was invisible on a phone yet still tappable,
+                // which is the worst of both: an unannounced destructive
+                // control under your thumb. The conversation menu in the header
+                // carries Delete there instead.
+                "hidden pointer-fine:inline-flex",
               )}
               disabled={locked}
               onClick={() => onDelete(conversation.id)}

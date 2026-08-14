@@ -216,7 +216,8 @@ export const CommandPanel: FC = () => {
                     rows={6}
                     value={typed}
                     onChange={(event) => setTyped(event.target.value)}
-                    className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/30 w-full resize-y rounded-lg border px-3 py-2 font-mono text-sm outline-none focus-visible:ring-[3px]"
+                    // `text-base` for the reason the input below has it.
+                    className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/30 w-full resize-y rounded-lg border px-3 py-2 font-mono text-base outline-none focus-visible:ring-[3px]"
                   />
                 ) : (
                   <input
@@ -233,7 +234,24 @@ export const CommandPanel: FC = () => {
                     }
                     value={typed}
                     onChange={(event) => setTyped(event.target.value)}
-                    className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/30 h-10 w-full rounded-lg border px-3 outline-none focus-visible:ring-[3px]"
+                    /**
+                     * **16px, because iOS reads anything smaller as an
+                     * invitation to zoom.**
+                     *
+                     * Safari magnifies the page when a field below 16px takes
+                     * focus and never undoes it, which left Settings enlarged
+                     * with its own close button panned off-screen — the dialog
+                     * is `position: fixed`, so it does not travel back, and
+                     * Radix has the page behind it locked. Typing a context
+                     * size became a trap you escaped by pinching.
+                     *
+                     * Stated here rather than inherited: the base stylesheet
+                     * gives form controls `font: inherit`, so this was 14px by
+                     * way of the panel's `text-sm` with nothing on the element
+                     * to say so. The other fields Settings can raise carry the
+                     * same note.
+                     */
+                    className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/30 h-10 w-full rounded-lg border px-3 text-base outline-none focus-visible:ring-[3px]"
                   />
                 )}
               </div>

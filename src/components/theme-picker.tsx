@@ -43,11 +43,14 @@ export const ThemePicker: FC = () => {
           type="button"
           variant="ghost"
           size="sm"
-          aria-label="Appearance"
+          // Verb-first, like Update, Restart and Shut down beside it — this is
+          // a control that does something, and the bare noun read as a heading
+          // over them rather than as one of them.
+          aria-label="Change appearance"
           className="text-muted-foreground hover:text-foreground h-8 w-full justify-start gap-2 px-3 font-normal"
         >
           <TriggerIcon className="size-4" />
-          <span>Appearance</span>
+          <span>Change appearance</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={8} className="w-44">

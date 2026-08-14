@@ -211,7 +211,10 @@ export const SettingsDialogContent: FC<{
                 onChange={(event) =>
                   navigateTo(event.target.value as SettingsPageId)
                 }
-                className="border-input bg-background h-10 w-full rounded-md border px-3 text-sm"
+                // `text-base` so iOS does not zoom the dialog on focus — see
+                // the field in `command-panel.tsx`. This one is mobile-only,
+                // which is to say it is only ever the platform that cares.
+                className="border-input bg-background h-10 w-full rounded-md border px-3 text-base"
               >
                 {SETTINGS_PAGES.map((item) => (
                   <option key={item.id} value={item.id}>

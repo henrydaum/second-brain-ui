@@ -16,6 +16,7 @@ function printable(value: unknown) {
 
 export const ToolFallback: ToolCallMessagePartComponent = ({
   toolName,
+  args,
   argsText,
   result,
   status,
@@ -23,6 +24,22 @@ export const ToolFallback: ToolCallMessagePartComponent = ({
 }) => {
   const running = status.type === "running";
   const failed = status.type === "incomplete" || isError === true;
+
+  /**
+   * What the agent said it was doing, when it said anything.
+   *
+   * `narration` is a reserved argument name: the model fills it in to explain
+   * *why* it is reaching for a tool, and the kernel strips it before the tool
+   * runs. It is the one part of a call written for a person to read, and until
+   * now the only way to see it was to expand the row and find it in the JSON —
+   * so a wall of identically-titled "Read File" rows stayed a wall.
+   *
+   * Beside the name rather than instead of it. Which tool ran is the fact that
+   * does not vary in reliability; the narration is the model's own account of
+   * itself, and reads as a gloss on the name rather than a replacement for it.
+   */
+  const narration =
+    typeof args?.narration === "string" ? args.narration.trim() : "";
 
   // Emptiness is decided here, not by `result !== undefined`. A tool is free to
   // report nothing at all, and a heading over a blank box reads as a value that
@@ -52,8 +69,17 @@ export const ToolFallback: ToolCallMessagePartComponent = ({
         )}
       >
         <WrenchIcon className="text-muted-foreground size-3.5 shrink-0" />
-        <span className="min-w-0 flex-1 truncate font-medium">
-          {titleCase(toolName)}
+        {/* The name holds its width and the narration gives up whatever is
+            left, so a long blurb ellipsizes rather than squeezing out the one
+            word that says which tool this was. */}
+        <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+          <span className="shrink-0 font-medium">{titleCase(toolName)}</span>
+          {narration !== "" && (
+            <span className="text-muted-foreground min-w-0 truncate text-xs">
+              <span aria-hidden>— </span>
+              {narration}
+            </span>
+          )}
         </span>
         <span
           className={cn(

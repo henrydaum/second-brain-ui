@@ -539,3 +539,61 @@ describe("compaction markers", () => {
     expect(twice.turns).toHaveLength(1);
   });
 });
+
+/**
+ * The narration ends up in one place, whichever way the wire sent it.
+ *
+ * The model writes it as a reserved argument; the wire also lifts it out to a
+ * field of its own. Only the argument is stored, so a conversation read back
+ * has only that — and a client keeping both would show the blurb while you
+ * watched and lose it on reload. See `toolArgs`.
+ */
+describe("tool narration", () => {
+  const tool = (over: Record<string, unknown>): Frame =>
+    ({
+      kind: "tool_status",
+      payload: { kind: "tool", call_id: "c1", tool_name: "read_file", ...over },
+    }) as Frame;
+
+  const argsOf = (state: State) => {
+    const part = state.turns
+      .flatMap((turn) => turn.parts)
+      .find((p): p is ToolPart => p.kind === "tool");
+    return part?.args;
+  };
+
+  it("folds the lifted field in beside the arguments", () => {
+    const state = run(
+      tool({ status: "started", args: { path: "/etc/x" }, narration: "Checking the config" }),
+    );
+    expect(argsOf(state)).toEqual({
+      path: "/etc/x",
+      narration: "Checking the config",
+    });
+  });
+
+  it("leaves a narration the model wrote as an argument alone", () => {
+    const state = run(
+      tool({ status: "started", args: { narration: "as written" }, narration: "lifted" }),
+    );
+    expect(argsOf(state)).toEqual({ narration: "as written" });
+  });
+
+  it("adds nothing to a call that was never narrated", () => {
+    const state = run(tool({ status: "started", args: { path: "/etc/x" } }));
+    expect(argsOf(state)).toEqual({ path: "/etc/x" });
+  });
+
+  it("carries it across a later frame that brings arguments without it", () => {
+    // `narration` is repeated on `finished` deliberately, but a kernel that
+    // omitted it must not take back what `started` established.
+    const state = run(
+      tool({ status: "started", narration: "Checking the config" }),
+      tool({ status: "finished", args: { path: "/etc/x" }, ok: true, summary: "Read it." }),
+    );
+    expect(argsOf(state)).toEqual({
+      path: "/etc/x",
+      narration: "Checking the config",
+    });
+  });
+});

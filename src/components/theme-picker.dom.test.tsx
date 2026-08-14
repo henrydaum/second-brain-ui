@@ -55,7 +55,7 @@ describe("ThemePicker", () => {
     const user = userEvent.setup();
     render(<ThemePicker />);
 
-    await user.click(screen.getByRole("button", { name: "Appearance" }));
+    await user.click(screen.getByRole("button", { name: "Change appearance" }));
     const system = screen.getByRole("menuitemradio", { name: "System" });
     system.focus();
     await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");

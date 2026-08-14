@@ -7,10 +7,11 @@
  * the header is where every other chat app puts these, and it is already the
  * thing you point at when you mean "this conversation".
  *
- * **Neither raises an approval dialog.** `conv.set_title` and
+ * **Renaming and filing raise no approval dialog.** `conv.set_title` and
  * `conv.set_category` are both `ALWAYS_SAFE` in the kernel's policy, and each
- * is scoped to the calling user in SQL. Deleting is the unsafe one, and it
- * stays in the sidebar where it always was.
+ * is scoped to the calling user in SQL. Deleting is the unsafe one and behaves
+ * differently for it — the kernel asks — but it is here too, because the
+ * sidebar's copy of it appears on hover and a phone has no hover to give.
  *
  * A conversation's notification mode is deliberately *not* here. It governs
  * whether a scheduled subagent's result is pushed to you, so it belongs beside
@@ -19,7 +20,13 @@
  */
 
 import { useEffect, useState, type FC } from "react";
-import { ChevronDownIcon, PencilIcon, PlusIcon, TagIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  PencilIcon,
+  PlusIcon,
+  TagIcon,
+  Trash2Icon,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -63,6 +70,7 @@ export const ConversationMenu: FC = () => {
     conversationCategories,
     renameConversation,
     categoriseConversation,
+    deleteConversation,
   } = useConversations();
 
   const [open, setOpen] = useState(false);
@@ -160,6 +168,30 @@ export const ConversationMenu: FC = () => {
           <DropdownMenuItem onSelect={() => setAsking("category")}>
             <PlusIcon className="size-4" />
             New category
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          {/**
+           * The one destructive thing, and now the only place a phone can
+           * reach it.
+           *
+           * The sidebar's own delete appears on hover, which on a touch screen
+           * means it never appears at all — it was there, and could be tapped,
+           * but only by someone who already knew. This is where the rest of
+           * what a conversation *is* is edited, so it is where the answer to
+           * "get rid of this one" belongs too.
+           *
+           * **No confirmation here.** `conv.delete` is the unsafe Request the
+           * file header names: the kernel raises its own approval dialog and
+           * this waits on it, so asking first would be asking twice.
+           */}
+          <DropdownMenuItem
+            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+            onSelect={() => void deleteConversation(conversationId)}
+          >
+            <Trash2Icon className="size-4" />
+            Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

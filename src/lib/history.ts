@@ -195,9 +195,6 @@ function toolParts(raw: string): ToolPart[] {
       callId,
       name: call.function?.name ?? "tool",
       isCommand: false,
-      // Not stored. The narration lives in `args` regardless, which is where
-      // the live path shows it too.
-      narration: "",
       summary: "",
       // A stored call is over by definition; whether it worked is decided by
       // the answering row below.

@@ -64,6 +64,15 @@
   color-scheme: light;
 
   --radius: 0.625rem;
+
+  /* Half the transparent margin an icon button leaves around its 16px glyph.
+   * The header pads its connection indicator by exactly this, so the run of
+   * status → bell → files is spaced by one rhythm rather than by a `gap` that
+   * only two of the three contribute padding to. Derived from the button box
+   * rather than typed out, because the coarse-pointer floor below changes that
+   * box and the two must not disagree. */
+  --header-control-inset: calc((var(--spacing-control-sm) - 1rem) / 2);
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -244,6 +253,29 @@
   *::-webkit-scrollbar-corner {
     background: transparent;
   }
+
+  /**
+   * A scroller whose bar takes no width.
+   *
+   * The 6px above is a *classic* scrollbar: it is laid out, so it narrows its
+   * content box by 6px wherever it appears. That is invisible in a scrolling
+   * page and glaring in a panel of full-width rules — the rows inside the
+   * scroller stop 6px short of the panel edge while a header outside it runs
+   * the whole way, and the two disagree by exactly the gutter. Phones never
+   * showed it because their scrollbars overlay and take nothing.
+   *
+   * So: for the surfaces that draw lines to their own edges, no gutter. The
+   * thumb is already transparent until hovered, which is most of why it can go
+   * without being missed.
+   */
+  .overlay-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .overlay-scrollbar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
 }
 
 /* Do not reset `box-shadow` here. Tailwind and the Radix-backed controls use
@@ -258,6 +290,14 @@
   [role="radio"] {
     min-width: var(--spacing-touch);
     min-height: var(--spacing-touch);
+  }
+
+  /* The floor above grows the header's icon buttons from 32px to 44px, which
+   * grows the margin they leave around their glyphs with it. The indicator
+   * beside them follows, so the row stays evenly spaced on a phone instead of
+   * inheriting a desktop measurement that no longer matches the buttons. */
+  :root {
+    --header-control-inset: calc((var(--spacing-touch) - 1rem) / 2);
   }
 
   /* Text actions inside a compact notification row are the exception to the
