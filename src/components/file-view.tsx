@@ -29,6 +29,7 @@ import {
   MusicIcon,
 } from "lucide-react";
 
+import { HighlightedCode } from "@/components/assistant-ui/code-block";
 import { DotMatrix } from "@/components/assistant-ui/dot-matrix";
 import { fileUrl } from "@/lib/client";
 import { delimiterFor, parseDelimited } from "@/lib/csv";
@@ -345,10 +346,15 @@ const TextView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
       >
         {/* Shown as source rather than rendered, including for Markdown. What
             the agent wrote is the thing being inspected here, and rendering it
-            would quietly hide the difference between a file and its output. */}
-        <pre className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
-          {loaded.text}
-        </pre>
+            would quietly hide the difference between a file and its output.
+            Coloured by extension, through the same highlighter the chat's
+            fenced blocks use — a file read here and the same file quoted in a
+            reply should not look like two different things. */}
+        <HighlightedCode
+          code={loaded.text}
+          language={suffixOf(path).slice(1)}
+          className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
+        />
       </Frame>
       {loaded.truncated && (
         <p className="text-muted-foreground mt-1.5 shrink-0 text-[11px]">

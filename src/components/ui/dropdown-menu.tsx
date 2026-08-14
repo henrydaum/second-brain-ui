@@ -66,6 +66,32 @@ function DropdownMenuLabel({
   );
 }
 
+/** A setting that is on or off, as opposed to one choice among several. Wears
+ *  the same tick in the same place as `DropdownMenuRadioItem`, so a menu
+ *  holding both reads as one list. */
+function DropdownMenuCheckboxItem({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>) {
+  return (
+    <DropdownMenuPrimitive.CheckboxItem
+      className={cn(
+        "focus:bg-accent focus:text-accent-foreground relative flex min-h-9 cursor-default items-center gap-2 rounded-md px-2 py-1.5 pe-8 text-sm outline-none select-none data-disabled:pointer-events-none data-disabled:opacity-50",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <span className="absolute end-2 flex size-4 items-center justify-center">
+        <DropdownMenuPrimitive.ItemIndicator>
+          <CheckIcon className="size-3.5" />
+        </DropdownMenuPrimitive.ItemIndicator>
+      </span>
+    </DropdownMenuPrimitive.CheckboxItem>
+  );
+}
+
 function DropdownMenuRadioItem({
   className,
   children,
@@ -91,6 +117,7 @@ function DropdownMenuRadioItem({
 
 export {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
