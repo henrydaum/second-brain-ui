@@ -66,3 +66,16 @@ export function fullTimestamp(at: Date): string {
     timeStyle: "short",
   });
 }
+
+/**
+ * How long something has been going, for a counter ticking as you read it.
+ *
+ * Not localised, unlike everything above: this is a duration rather than a
+ * moment, its units are one letter each, and it is read beside a running
+ * indicator rather than as prose. Minutes appear as soon as there are any,
+ * because "83s" makes you do the arithmetic that "1m 23s" has already done.
+ */
+export function elapsedLabel(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}

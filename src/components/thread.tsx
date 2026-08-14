@@ -13,7 +13,7 @@
  * nothing here is passed any props about the conversation.
  */
 
-import type { FC } from "react";
+import { useEffect, useState, type FC } from "react";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -57,7 +57,7 @@ import { ModelSelector } from "@/components/model-selector";
 import { SecurityModePicker } from "@/components/security-mode-picker";
 import { TurnFilesButton, TurnShownFile } from "@/components/turn-files";
 import { VoiceNoteButton } from "@/components/voice-note";
-import { fullTimestamp, shortTimestamp } from "@/lib/time";
+import { elapsedLabel, fullTimestamp, shortTimestamp } from "@/lib/time";
 import { FINE_POINTER_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { SENT_AT } from "@/runtime/convert";
@@ -73,8 +73,44 @@ import { SENT_AT } from "@/runtime/convert";
  * the `typing` frame, which is the server's own statement about whether it
  * still has the turn, so it is the only honest thing to key this on.
  */
+/**
+ * How long before the turn starts saying how long it has been.
+ *
+ * The first couple of seconds of a reply are not a wait, they are the normal
+ * cost of asking — putting a clock on them makes an app that is working
+ * properly look like one that is struggling. Past this the silence is long
+ * enough that the question changes from "is it thinking" to "is it stuck", and
+ * a number is the answer to the second one.
+ */
+const SHOW_ELAPSED_AFTER_S = 3;
+
+/** Seconds since `since`, recomputed once a second while `active`. */
+function useElapsedSeconds(since: number | undefined, active: boolean) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!active || since === undefined) return;
+    // Re-read on the way in as well as on the tick: a turn that was already
+    // running when this mounted must not count from the mount.
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [active, since]);
+
+  if (!active || since === undefined) return null;
+  return Math.max(0, Math.floor((now - since) / 1000));
+}
+
 const WorkingIndicator: FC = () => {
   const running = useAuiState((s) => s.thread.isRunning);
+  // The turn's own start, from `metadata.custom` rather than assistant-ui's
+  // `createdAt` — see `MessageTime` for why that one cannot be trusted.
+  const startedAt = useAuiState((s) => {
+    const value = s.message.metadata?.custom?.[SENT_AT];
+    return typeof value === "number" ? value : undefined;
+  });
+  const seconds = useElapsedSeconds(startedAt, running);
+
   if (!running) return null;
 
   return (
@@ -86,6 +122,14 @@ const WorkingIndicator: FC = () => {
     >
       <DotMatrix state="connecting" aria-hidden />
       <span className="text-sm">Working</span>
+      {/* `aria-hidden`, deliberately: the wrapper is a polite live region, and
+          without this every tick would re-announce the whole thing once a
+          second. The label above already says what is happening. */}
+      {seconds !== null && seconds >= SHOW_ELAPSED_AFTER_S && (
+        <span aria-hidden className="text-xs tabular-nums opacity-70">
+          {elapsedLabel(seconds)}
+        </span>
+      )}
     </span>
   );
 };

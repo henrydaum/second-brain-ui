@@ -26,6 +26,7 @@ describe("the browser tab title", () => {
         conversation(2, "Remember Value 1272"),
       ],
       conversationId: 1,
+      conversationsLoaded: true,
       openConversation: vi.fn(),
       newConversation: vi.fn(),
       deleteConversation: vi.fn(),
@@ -63,6 +64,7 @@ describe("the browser tab title", () => {
   it("uses the app name while no conversation is bound", async () => {
     vi.spyOn(provider, "useConversations").mockReturnValue({
       conversations: [],
+      conversationsLoaded: true,
       conversationId: null,
       openConversation: vi.fn(),
       newConversation: vi.fn(),

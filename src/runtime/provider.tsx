@@ -218,6 +218,9 @@ export type SecondBrain = {
   commands: Command[];
   /** Every conversation this user owns, newest first. */
   conversations: Conversation[];
+  /** Whether `conversations` has been read yet. An empty list means nothing
+   *  until this is true. */
+  conversationsLoaded: boolean;
   /** The one the session is currently pointing at. */
   conversationId: number | null;
   /** Point the session at another conversation and show it. */
@@ -354,6 +357,7 @@ type ModelDomain = Pick<
 type ConversationDomain = Pick<
   SecondBrain,
   | "conversations"
+  | "conversationsLoaded"
   | "conversationId"
   | "openConversation"
   | "newConversation"
@@ -452,6 +456,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const [commands, setCommands] = useState<Command[]>([]);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  /** Whether the list has been asked for yet. Until it has, an empty sidebar
+   *  means "not yet" rather than "none", and only one of those is worth
+   *  saying — see `loadCatalogue`. */
+  const [conversationsLoaded, setConversationsLoaded] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const conversationIdRef = useRef<number | null>(null);
   conversationIdRef.current = conversationId;
@@ -525,6 +533,12 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       // Reported rather than thrown: a chat window with no sidebar is still a
       // chat window, and the banner says why it is empty.
       report(error);
+    } finally {
+      // In `finally` rather than after the read: a failed read has still
+      // answered the sidebar's question. "We asked and got nothing" and "we
+      // have not asked yet" are different sentences, and only the first one is
+      // allowed to say "No conversations yet."
+      setConversationsLoaded(true);
     }
   }, [report]);
 
@@ -1581,6 +1595,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const conversationValue = useMemo<ConversationDomain>(
     () => ({
       conversations,
+      conversationsLoaded,
       conversationId,
       openConversation,
       newConversation,
@@ -1588,6 +1603,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     }),
     [
       conversations,
+      conversationsLoaded,
       conversationId,
       openConversation,
       newConversation,

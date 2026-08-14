@@ -105,6 +105,7 @@ function stub(over: Partial<provider.SecondBrain>) {
   });
   vi.spyOn(provider, "useConversations").mockReturnValue({
     conversations: value.conversations,
+    conversationsLoaded: true,
     conversationId: value.conversationId,
     openConversation: value.openConversation,
     newConversation: value.newConversation,

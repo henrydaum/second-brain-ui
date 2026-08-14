@@ -124,6 +124,7 @@ const ConversationList = memo(function ConversationList({
   conversations,
   activeId,
   locked,
+  loaded,
   showCategories,
   categoryColors,
   emptyMessage,
@@ -133,6 +134,8 @@ const ConversationList = memo(function ConversationList({
   conversations: Conversation[];
   activeId: number | null;
   locked: boolean;
+  /** Whether the list has been read yet. */
+  loaded: boolean;
   showCategories: boolean;
   categoryColors: Map<string, number>;
   emptyMessage: string;
@@ -141,7 +144,11 @@ const ConversationList = memo(function ConversationList({
 }) {
   return (
     <nav className="flex-1 overflow-y-auto p-2 pt-0">
-      {conversations.length === 0 && (
+      {/* Nothing at all until the list has been asked for. Boot takes a few
+          Requests to get here, and for all of them the old empty message was
+          telling you that you had no conversations — which is a claim, and
+          usually a false one. */}
+      {loaded && conversations.length === 0 && (
         <p className="text-muted-foreground px-2 py-4 text-xs">
           {emptyMessage}
         </p>
@@ -233,6 +240,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
 }) => {
   const {
     conversations,
+    conversationsLoaded,
     conversationId,
     openConversation,
     newConversation,
@@ -593,6 +601,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           conversations={visibleConversations}
           activeId={conversationId}
           locked={locked}
+          loaded={conversationsLoaded}
           showCategories={conversationFilter.type === "all"}
           categoryColors={categoryColors}
           emptyMessage={
