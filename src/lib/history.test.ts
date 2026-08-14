@@ -119,3 +119,84 @@ describe("stored message authorship", () => {
     expect(turns[0]?.role).toBe("user");
   });
 });
+
+describe("compaction markers", () => {
+  const marker = (over: Partial<StoredMessage> = {}): StoredMessage => ({
+    id: 7,
+    role: "system",
+    content: JSON.stringify({
+      __second_brain_compaction__: true,
+      summary: "User asked about X. Agent edited foo.py:42.",
+      tail_count: 2,
+      // Two different instants on purpose: the packer's own and the row's, so
+      // the assertions below can say which one was read.
+      created_at: 1786732595.25,
+    }),
+    tool_call_id: null,
+    tool_name: null,
+    timestamp: 1786732596.5,
+    ...over,
+  });
+
+  it("shows the seam a compaction left, carrying the summary and its time", () => {
+    const [turn] = toTurns([marker()]);
+
+    expect(turn).toMatchObject({ id: "stored-7", role: "system" });
+    // Seconds on the wire, milliseconds in a `Date` — the trap this whole file
+    // is careful about.
+    expect(turn?.createdAt).toBe(1786732596500);
+    expect(turn?.parts).toEqual([
+      {
+        kind: "text",
+        streamId: "stored-7",
+        text: "User asked about X. Agent edited foo.py:42.",
+        done: true,
+      },
+    ]);
+  });
+
+  it("falls back to the packed time when the row carries no timestamp", () => {
+    const [turn] = toTurns([marker({ timestamp: null })]);
+
+    expect(turn?.createdAt).toBe(1786732595250);
+  });
+
+  it("still hides the state machine's own system rows", () => {
+    const turns = toTurns([
+      {
+        id: 7,
+        role: "system",
+        content: JSON.stringify({
+          __second_brain_state_machine__: true,
+          state: { phase: "idle" },
+        }),
+        tool_call_id: null,
+        tool_name: null,
+      },
+    ]);
+
+    expect(turns).toEqual([]);
+  });
+
+  it("does not let one assistant turn straddle the line", () => {
+    const assistant = (id: number, text: string): StoredMessage => ({
+      id,
+      role: "assistant",
+      content: JSON.stringify({ content: text }),
+      tool_call_id: null,
+      tool_name: null,
+    });
+    const turns = toTurns([
+      assistant(1, "Before"),
+      marker(),
+      assistant(8, "After"),
+    ]);
+
+    expect(turns.map((turn) => turn.role)).toEqual([
+      "assistant",
+      "system",
+      "assistant",
+    ]);
+    expect(turns[2]?.id).toBe("stored-8");
+  });
+});

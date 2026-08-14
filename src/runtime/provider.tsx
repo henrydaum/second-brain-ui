@@ -1213,6 +1213,60 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     void syncSession();
   }, [state.command?.name, state.command?.status, syncSession]);
 
+  /**
+   * Pick up the line a compaction just drew.
+   *
+   * A marker is a stored row and nothing announces it: the kernel emits its
+   * `session_compacted` on the internal bus, which no browser is subscribed to,
+   * and `/compact`'s own result card says how much was saved rather than that
+   * the conversation now has a seam in it. Without this, the transcript went on
+   * looking untouched — with the agent's memory of it already gone — until the
+   * conversation was next reopened.
+   *
+   * **The marker is merged rather than the history replaced.** `history` resets
+   * everything transient, and the command's card is on screen at exactly this
+   * moment; re-reading would close the panel reporting the thing that was just
+   * asked for. So the newest marker is lifted out of the read and appended, and
+   * the reducer ignores it if it is one already shown — which is also the
+   * answer for a `/compact` that found nothing to compact.
+   *
+   * Automatic compaction, which the loop performs under context pressure
+   * mid-turn, is not covered here: it has no command to hang off, and its
+   * marker appears the next time the conversation is read.
+   */
+  const noteCompaction = useCallback(async () => {
+    const id = conversationIdRef.current;
+    if (id === null) return;
+    try {
+      const { turns } = await readConversation(id);
+      const marker = [...turns]
+        .reverse()
+        .find((turn) => turn.role === "system");
+      // Not onto somebody else's transcript: switching conversations while
+      // this was in flight makes the marker belong to a conversation nobody is
+      // looking at any more.
+      if (!marker || conversationIdRef.current !== id) return;
+      dispatch({ type: "compacted", turn: marker });
+    } catch {
+      // An optimistic top-up of one row. A failed read costs the line until the
+      // conversation is next opened, which is where it comes from anyway.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (state.command?.name !== "compact") return;
+    if (state.command.status !== "finished") return;
+    // A refused or failed command wrote no marker, so there is nothing to read
+    // and the Request can be saved.
+    if (state.command.ok === false) return;
+    void noteCompaction();
+  }, [
+    state.command?.name,
+    state.command?.status,
+    state.command?.ok,
+    noteCompaction,
+  ]);
+
   const modelNameRef = useRef<string | null>(null);
   modelNameRef.current = modelName;
   const switchingModelRef = useRef(false);

@@ -22,6 +22,13 @@ export const SENT_ATTACHMENTS = "sentAttachments";
  *  Only present when the time is actually known — see `timing` below. */
 export const SENT_AT = "sentAt";
 
+/** Key under `metadata.custom` marking a message as a compaction marker rather
+ *  than anything anybody said. `components/compaction-marker.tsx` draws it, and
+ *  keys on this rather than on the role: a system message assistant-ui cannot
+ *  explain is one it should keep drawing nothing for, which is its own
+ *  default. */
+export const COMPACTED = "compacted";
+
 /** The element type of a message's content, named so the map below can be
  *  annotated — without it TypeScript widens the three branches into a union
  *  full of `undefined` members that no longer matches. */
@@ -100,12 +107,35 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
   const custom: Record<string, unknown> = {};
   if (turn.createdAt !== undefined) custom[SENT_AT] = turn.createdAt;
   if (sentAttachments.length) custom[SENT_ATTACHMENTS] = sentAttachments;
+  if (turn.role === "system") custom[COMPACTED] = true;
   const timing = {
     ...(turn.createdAt === undefined
       ? {}
       : { createdAt: new Date(turn.createdAt) }),
     metadata: { custom },
   };
+
+  if (turn.role === "system") {
+    return {
+      id: turn.id,
+      role: "system",
+      // **Exactly one text part, and assistant-ui throws rather than trimming**
+      // — so this is assembled here instead of being handed `content`, which
+      // holds however many parts the turn happens to have. The text is the
+      // summary the agent was left with; nothing renders it, but it is what the
+      // row actually says, and a placeholder would be words in the transcript
+      // that nothing wrote.
+      content: [
+        {
+          type: "text" as const,
+          text: turn.parts
+            .map((part) => (part.kind === "text" ? part.text : ""))
+            .join(""),
+        },
+      ],
+      ...timing,
+    };
+  }
 
   if (turn.role !== "assistant") {
     return { id: turn.id, role: turn.role, content, ...timing };

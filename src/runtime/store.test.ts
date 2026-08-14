@@ -503,3 +503,39 @@ describe("sent attachment hydration", () => {
     });
   });
 });
+
+/**
+ * A compaction marker arriving after the fact.
+ *
+ * `/compact` writes a stored row and no frame announces it, so the provider
+ * reads it back and hands it over — without disturbing the command panel that
+ * is reporting the compaction at that moment.
+ */
+describe("compaction markers", () => {
+  const marker = {
+    id: "stored-7",
+    role: "system" as const,
+    parts: [
+      { kind: "text" as const, streamId: "stored-7", text: "A summary", done: true },
+    ],
+    running: false,
+    aborted: false,
+    createdAt: 1786732595340,
+  };
+
+  it("lands at the end of the transcript without touching what is on screen", () => {
+    const said = reduce(initialState, { type: "said", text: "Hello" });
+    const state = reduce(said, { type: "compacted", turn: marker });
+
+    expect(state.turns.map((turn) => turn.role)).toEqual(["user", "system"]);
+    expect(state.turns[0]).toBe(said.turns[0]);
+  });
+
+  it("draws one line however many times the same marker is read", () => {
+    const once = reduce(initialState, { type: "compacted", turn: marker });
+    const twice = reduce(once, { type: "compacted", turn: marker });
+
+    expect(twice).toBe(once);
+    expect(twice.turns).toHaveLength(1);
+  });
+});

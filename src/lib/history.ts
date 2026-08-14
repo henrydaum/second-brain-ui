@@ -7,6 +7,11 @@
  * stored in the same table, not anything a person said or was told. Rendering
  * those would put the kernel's internals in the chat window.
  *
+ * **One system row is the exception**, and it is the one that is not
+ * bookkeeping: a compaction marker. It says the agent's view of this
+ * conversation was replaced by a summary at that point, and the rows above it
+ * are still shown because they are still what happened — see `compaction`.
+ *
  * **Tool calls are rebuilt, not dropped.** A `tool` row is only meaningful
  * beside the assistant row whose `tool_calls` it answers, so the pairing has to
  * be reconstructed from flat rows — done below, because the alternative is a
@@ -141,6 +146,36 @@ function prose(raw: string): string | null {
   return text === "" ? null : text;
 }
 
+/**
+ * The marker a compaction leaves behind, or null for any other system row.
+ *
+ * The kernel packs one of these when it folds the history into a summary —
+ * `pack_compaction` in `state_machine/serialization.py` — and from then on
+ * `messages_to_history` builds the agent's context from the summary plus
+ * whatever was stored *after* the marker. Nothing ever removes one, so this is
+ * a permanent fact about the conversation rather than a passing state.
+ *
+ * `tail_count` is deliberately not read. It records how many trailing rows the
+ * live session kept beside the summary, which is true of the session that did
+ * the compacting and not of the conversation once it is reloaded — a number
+ * that stops being true is worse than no number.
+ */
+function compaction(
+  raw: string,
+): { summary: string; createdAt?: number } | null {
+  const parsed = asObject(raw);
+  if (!parsed || parsed.__second_brain_compaction__ !== true) return null;
+  const created = parsed.created_at;
+  return {
+    summary: typeof parsed.summary === "string" ? parsed.summary : "",
+    // Fractional epoch seconds, like every other time on this wire.
+    createdAt:
+      typeof created === "number" && Number.isFinite(created) && created > 0
+        ? created * 1000
+        : undefined,
+  };
+}
+
 /** The calls an assistant row announces, as parts waiting for their answers. */
 function toolParts(raw: string): ToolPart[] {
   const calls = asObject(raw)?.tool_calls;
@@ -259,8 +294,45 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
       continue;
     }
 
-    // Everything else is kernel bookkeeping — `role: "system"` state snapshots
-    // above all — and belongs nowhere near the chat window.
+    if (message.role === "system") {
+      // The one system row a person is meant to see. Everything else wearing
+      // this role is the state machine's serialised state and is skipped below
+      // with the rest of the bookkeeping.
+      const marker = compaction(message.content);
+      if (!marker) continue;
+      // A marker closes whatever assistant turn was being assembled. The rows
+      // after it are a fresh context, and merging across the line would draw
+      // one turn straddling it — with a tool call above the line answered by a
+      // result below it.
+      open = null;
+      pending = new Map();
+      turns.push({
+        id: `stored-${message.id}`,
+        role: "system",
+        // Exactly one text part, because that is what assistant-ui accepts for
+        // this role — and the summary is the row's own text, so nothing has to
+        // be invented to fill it. Nothing renders it today; see
+        // `components/compaction-marker.tsx` for what is drawn instead.
+        parts: [
+          {
+            kind: "text",
+            streamId: `stored-${message.id}`,
+            text: marker.summary,
+            done: true,
+          },
+        ],
+        running: false,
+        aborted: false,
+        // The row's own column first. `created_at` inside the payload is the
+        // same instant recorded by the packer, and is the fallback for a
+        // kernel whose `conv.read` does not hand back `timestamp`.
+        createdAt: momentOf(message) ?? marker.createdAt,
+      });
+      continue;
+    }
+
+    // Everything else is kernel bookkeeping and belongs nowhere near the chat
+    // window.
     if (message.role !== "assistant") continue;
 
     const calls = toolParts(message.content);

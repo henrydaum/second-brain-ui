@@ -45,6 +45,7 @@ import {
   ToolGroupTrigger,
 } from "@/components/assistant-ui/tool-group";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { CompactionMarker } from "@/components/compaction-marker";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -209,9 +210,14 @@ export const Thread: FC = () => {
             between every pair of messages, whoever they are from. */}
         <div className="mb-14 flex flex-col gap-y-8 empty:hidden">
           <ThreadPrimitive.Messages>
-            {({ message }) =>
-              message.role === "user" ? <UserMessage /> : <AssistantMessage />
-            }
+            {({ message }) => {
+              // The third role is nobody: a compaction marker, which is in the
+              // transcript without being part of the conversation. See
+              // `components/compaction-marker.tsx`.
+              if (message.role === "user") return <UserMessage />;
+              if (message.role === "system") return <CompactionMarker />;
+              return <AssistantMessage />;
+            }}
           </ThreadPrimitive.Messages>
         </div>
 

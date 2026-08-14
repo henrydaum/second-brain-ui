@@ -123,7 +123,16 @@ export type Part = TextPart | ToolPart | FilesPart;
 
 export type Turn = {
   id: string;
-  role: "user" | "assistant";
+  /**
+   * Who this turn is from — and `system`, which is nobody.
+   *
+   * A system turn is a **compaction marker**: a stored row saying the agent's
+   * view of everything above it was replaced by a summary. It is not a message,
+   * nothing here ever opens one, and no frame produces one; it arrives from
+   * `lib/history.ts` with the scrollback, or from `compacted` below. See
+   * `components/compaction-marker.tsx`.
+   */
+  role: "user" | "assistant" | "system";
   parts: Part[];
   /**
    * When this turn began, as epoch milliseconds.
@@ -227,6 +236,17 @@ export type Action =
   | { type: "hydrateSentAttachments"; attachments: MessageAttachment[] }
   /** Scrollback, read from `conv.read` at boot. Replaces everything. */
   | { type: "history"; turns: Turn[] }
+  /**
+   * A compaction marker read back after one happened, appended to what is on
+   * screen.
+   *
+   * **Not `history`, deliberately.** Compaction is asked for with `/compact`,
+   * and that command's own result card is on screen when this lands — a full
+   * re-read would reset every transient thing the reducer holds, including the
+   * panel the person is reading. The marker is the only new row, so it is the
+   * only thing brought over.
+   */
+  | { type: "compacted"; turn: Turn }
   /** Put the finished command away. Its own affordance, because a command that
    *  has printed something is not done being read just because it is done
    *  running. */
@@ -566,6 +586,13 @@ export function reduce(state: State, action: Action): State {
       }
       return state;
     }
+
+    case "compacted":
+      // Keyed on the stored row's id, so asking twice — or a `/compact` that
+      // found nothing to compact and left the previous marker as the newest —
+      // cannot draw a second line for one compaction.
+      if (state.turns.some((turn) => turn.id === action.turn.id)) return state;
+      return { ...state, turns: [...state.turns, action.turn] };
 
     case "clearCommand":
       return { ...state, command: null, form: null };
