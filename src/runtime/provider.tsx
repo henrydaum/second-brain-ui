@@ -66,6 +66,7 @@ import {
 } from "@/lib/conversation-categories";
 import { connect, type StreamStatus } from "@/lib/events";
 import { readConversation, type NotificationMode } from "@/lib/history";
+import { SCHEDULED_JOBS, scheduledConversations } from "@/lib/schedules";
 import { isPendingInput, type InputRequest } from "@/lib/input-requests";
 // `Notification` deliberately shadows the DOM global of that name here. Ours is
 // a row in the kernel's table; the browser's is a desktop popup this app does
@@ -235,6 +236,14 @@ export type SecondBrain = {
    *  looked up in `conversations` — which holds one page of one category and
    *  need not contain it. */
   openConversationRow: Conversation | null;
+  /**
+   * Whether a scheduled job spawns into the open conversation.
+   *
+   * **This is what makes the notification setting mean anything.** A cron-fired
+   * subagent has no session watching it, so the push is its only way to reach
+   * you; a conversation you type in reports itself by being on screen.
+   */
+  conversationHasSchedule: boolean;
   /** Whether the open conversation announces its results. Null until the read
    *  that carries it has come back, or against a kernel too old to say. */
   notificationMode: NotificationMode | null;
@@ -397,6 +406,7 @@ type ConversationDomain = Pick<
   | "newConversation"
   | "deleteConversation"
   | "openConversationRow"
+  | "conversationHasSchedule"
   | "notificationMode"
   | "renameConversation"
   | "categoriseConversation"
@@ -567,6 +577,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    */
   const [openConversationRow, setOpenConversationRow] =
     useState<Conversation | null>(null);
+  /** Conversations a scheduled subagent spawns into. See `lib/schedules.ts`. */
+  const [scheduled, setScheduled] = useState<Set<number>>(() => new Set());
   const [conversationsHasMore, setConversationsHasMore] = useState(false);
   const [conversationCategories, setConversationCategories] = useState<
     CategoryCount[]
@@ -1196,6 +1208,38 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (status === "open") void syncSession();
   }, [status, syncSession]);
+
+  /**
+   * Which conversations a scheduled job spawns into.
+   *
+   * On stream open, like the reads above, and not more often: the set changes
+   * when somebody schedules a job, and once more when a recurring job's first
+   * firing writes its conversation back. Neither is something to poll for, and
+   * a reconnect or a reload picks up both.
+   *
+   * **Its own read rather than a fourth arm of `syncSession`.** That one is
+   * about the session and the model, and reports its failures into
+   * `modelsFailure`; a settings key the timekeeper owns has nothing to do with
+   * whether the model list is broken. Failing here means the control this feeds
+   * stays hidden, which is the same as the common answer.
+   */
+  useEffect(() => {
+    if (status !== "open") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const jobs = await sdk<unknown>("config.read", { key: SCHEDULED_JOBS });
+        if (!cancelled) setScheduled(scheduledConversations(jobs));
+      } catch {
+        // Not reported: nothing is on screen waiting for this, and a kernel
+        // that will not hand over the setting is not a thing to interrupt
+        // somebody about.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
 
   /** Set the per-conversation mode from the dedicated composer control.
    * The kernel treats an attended switch to Ask as Lockdown's narrow escape
@@ -1894,6 +1938,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       setModel,
     ],
   );
+  /** Derived rather than stored: two things that each move on their own, and
+   *  the answer is only ever wanted together. */
+  const conversationHasSchedule =
+    conversationId !== null && scheduled.has(conversationId);
+
   const conversationValue = useMemo<ConversationDomain>(
     () => ({
       conversations,
@@ -1903,6 +1952,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       newConversation,
       deleteConversation,
       openConversationRow,
+      conversationHasSchedule,
       notificationMode,
       renameConversation,
       categoriseConversation,
@@ -1921,6 +1971,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       newConversation,
       deleteConversation,
       openConversationRow,
+      conversationHasSchedule,
       notificationMode,
       renameConversation,
       categoriseConversation,

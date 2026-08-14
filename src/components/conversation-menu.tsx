@@ -56,6 +56,7 @@ export const ConversationMenu: FC = () => {
   const {
     conversationId,
     openConversationRow,
+    conversationHasSchedule,
     conversationCategories,
     notificationMode,
     renameConversation,
@@ -127,15 +128,23 @@ export const ConversationMenu: FC = () => {
             Rename
           </DropdownMenuItem>
 
-          <DropdownMenuCheckboxItem
-            checked={allowed}
-            onCheckedChange={(next) =>
-              void setNotificationMode(conversationId, next ? "on" : "off")
-            }
-          >
-            <BellIcon className="size-4" />
-            Allow notifications
-          </DropdownMenuCheckboxItem>
+          {/* **Only where there is something to notify about.** The setting
+              governs whether a *scheduled* subagent's result is pushed to you,
+              and a cron-fired run has no session watching it — the push is its
+              only delivery surface. A conversation you type in reports itself
+              by being on screen, so offering the switch there is offering a
+              setting with nothing to act on. See `lib/schedules.ts`. */}
+          {conversationHasSchedule && (
+            <DropdownMenuCheckboxItem
+              checked={allowed}
+              onCheckedChange={(next) =>
+                void setNotificationMode(conversationId, next ? "on" : "off")
+              }
+            >
+              <BellIcon className="size-4" />
+              Allow notifications
+            </DropdownMenuCheckboxItem>
+          )}
 
           <DropdownMenuSeparator />
 

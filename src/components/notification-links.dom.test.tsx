@@ -111,6 +111,7 @@ function stub(over: Partial<provider.SecondBrain>) {
     newConversation: value.newConversation,
     deleteConversation: value.deleteConversation,
     openConversationRow: null,
+    conversationHasSchedule: false,
     notificationMode: null,
     renameConversation: vi.fn(),
     categoriseConversation: vi.fn(),
