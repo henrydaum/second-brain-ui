@@ -27,9 +27,7 @@ const OPTIONS: { id: Theme; label: string; icon: typeof SunIcon }[] = [
   { id: "dark", label: "Dark", icon: MoonIcon },
 ];
 
-export const ThemePicker: FC<{ settings?: boolean }> = ({
-  settings = false,
-}) => {
+export const ThemePicker: FC = () => {
   const { theme, setTheme, resolved } = useTheme();
 
   // The trigger shows what you are *looking at*, not what you *chose* — on
@@ -44,25 +42,15 @@ export const ThemePicker: FC<{ settings?: boolean }> = ({
         <Button
           type="button"
           variant="ghost"
-          size={settings ? "sm" : "icon"}
+          size="sm"
           aria-label="Appearance"
-          className={
-            settings
-              ? "text-muted-foreground hover:text-foreground h-8 w-full justify-start gap-2 px-3 font-normal"
-              : "text-muted-foreground hover:text-foreground size-8"
-          }
+          className="text-muted-foreground hover:text-foreground h-8 w-full justify-start gap-2 px-3 font-normal"
         >
           <TriggerIcon className="size-4" />
-          {settings && (
-            <span>Appearance</span>
-          )}
+          <span>Appearance</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align={settings ? "start" : "end"}
-        sideOffset={8}
-        className="w-44"
-      >
+      <DropdownMenuContent align="start" sideOffset={8} className="w-44">
         <DropdownMenuLabel>Appearance</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={theme}

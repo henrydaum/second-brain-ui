@@ -73,7 +73,7 @@ const SystemActions: FC<{
           System
         </p>
       )}
-      <ThemePicker settings />
+      <ThemePicker />
       {SYSTEM_ACTIONS.map((action) => {
         const Icon = action.icon;
         return (

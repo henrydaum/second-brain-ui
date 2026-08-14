@@ -413,25 +413,32 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     void run(newConversation).then(closeDrawer);
   };
 
+  /**
+   * The panel itself, positioned by whoever is showing it.
+   *
+   * **It carries no off-canvas machinery of its own.** Below `md` it is handed
+   * to `Sheet` below, which is already a fixed, scrimmed, animated overlay that
+   * unmounts when closed; above `md` it is an inline rail and animates its own
+   * width. Those two paths are mutually exclusive — `isDesktop` picks one — so
+   * a `fixed`/`translate-x` pair here was overridden by the `md:` variants in
+   * the one case and layered underneath an identical `SheetContent` in the
+   * other. Two mechanisms, one job, and neither branch used both halves.
+   */
   const sidebar = (
-    <>
-      {/* The scrim, below `md` only. It is what makes the drawer dismissible by
-          pressing the conversation you were reading — the gesture everybody
-          tries first. */}
-      <aside
-        data-slot="conversation-sidebar"
-        data-collapsed={railCollapsed || undefined}
-        className={cn(
-          "bg-sidebar flex h-full flex-col overflow-hidden border-e",
-          // Below `md`: an overlay drawer, off-canvas until asked for.
-          "fixed inset-y-0 start-0 z-50 w-64 transition-transform duration-200",
-          open ? "translate-x-0" : "-translate-x-full rtl:translate-x-full",
-          // From `md`: back in the flow, and the transition moves to width so
-          // collapsing the rail animates rather than sliding the whole panel.
-          "md:relative md:z-auto md:shrink-0 md:translate-x-0 md:transition-[width] rtl:md:translate-x-0",
-          railCollapsed ? "md:w-12" : "md:w-64",
-        )}
-      >
+    <aside
+      data-slot="conversation-sidebar"
+      data-collapsed={railCollapsed || undefined}
+      className={cn(
+        // `w-full` below `md`, so the panel fills whatever `SheetContent` gave
+        // it — including the `max-w-[85vw]` that keeps a drawer off the edge of
+        // a narrow phone, which a fixed `w-64` here would have overrun.
+        "bg-sidebar flex h-full w-full flex-col overflow-hidden border-e",
+        // From `md`: an inline rail, transitioning width so collapsing
+        // animates rather than sliding the whole panel.
+        "md:shrink-0 md:transition-[width]",
+        railCollapsed ? "md:w-12" : "md:w-64",
+      )}
+    >
       {!isDesktop && (
         <SheetTitle className="sr-only">Conversations</SheetTitle>
       )}
@@ -627,9 +634,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           Settings
         </button>
       </div>
-
-      </aside>
-    </>
+    </aside>
   );
 
   const settingsDialog = settingsMounted ? (

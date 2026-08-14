@@ -143,73 +143,79 @@ export const FilesDrawer: FC = () => {
   const last = state.turns.at(-1);
   const running = last?.running ? last.id : undefined;
 
+  /**
+   * The panel itself, positioned by whoever is showing it.
+   *
+   * **No off-canvas machinery of its own** — see the same note on
+   * `conversation-sidebar.tsx`. Below `xl` this is handed to the `Sheet` at the
+   * bottom of this file, which is already a fixed, scrimmed, animated overlay;
+   * from `xl` it is in the flow and animates its own width, so opening it
+   * reflows the thread rather than covering the part you were reading. The two
+   * paths are mutually exclusive, so the `fixed`/`translate-x` pair this used
+   * to carry was dead in both.
+   */
   const drawer = (
-    <>
-      {/* The scrim, below `xl` only — dismissing by pressing the conversation
-          you were reading is the gesture everybody tries first. */}
-      <aside
-        data-slot="files-drawer"
-        aria-label="Files"
-        // `inert` rather than unmounting: the panel keeps its scroll position
-        // between openings, and a closed overlay must not hold focus or be
-        // reachable by tab.
-        inert={!visible}
-        className={cn(
-          "bg-sidebar flex h-full flex-col overflow-hidden",
-          // Below `xl`: an overlay drawer, off-canvas until asked for.
-          "fixed inset-y-0 end-0 z-50 w-80 max-w-[85vw] border-s transition-transform duration-200",
-          visible ? "translate-x-0" : "translate-x-full rtl:-translate-x-full",
-          // From `xl`: in the flow, animating width, so opening it reflows the
-          // thread rather than covering the part you were reading.
-          "xl:relative xl:z-auto xl:max-w-none xl:translate-x-0 xl:transition-[width] rtl:xl:translate-x-0",
-          visible ? "xl:w-96 xl:border-s" : "xl:w-0 xl:border-s-0",
-        )}
-      >
-        {!isInline && <SheetTitle className="sr-only">Files</SheetTitle>}
-        <header className="flex h-12 w-80 shrink-0 items-center gap-2 border-b px-2 xl:w-96">
-          <span className="min-w-0 flex-1 truncate px-1 text-sm font-medium">
-            Files
-            {total > 0 && (
-              <span className="text-muted-foreground ms-2 text-xs font-normal tabular-nums">
-                {total}
-              </span>
-            )}
-          </span>
-          <TooltipIconButton
-            tooltip="Hide files"
-            side="left"
-            className="size-8"
-            onClick={close}
-          >
-            <XIcon className="size-4" />
-          </TooltipIconButton>
-        </header>
-
-        <div
-          ref={bodyRef}
-          className="min-h-0 w-80 flex-1 overflow-y-auto xl:w-96"
-        >
-          {failure ? (
-            <p className="text-muted-foreground p-4 text-xs">{failure}</p>
-          ) : sections.length === 0 ? (
-            <p className="text-muted-foreground p-4 text-xs">
-              Nothing yet. Files the agent shows you, and files it writes,
-              appear here as it works.
-            </p>
-          ) : (
-            sections.map((section) => (
-              <Section
-                key={section.turnId}
-                section={section}
-                running={section.turnId === running}
-                flashing={section.turnId === focusTurn}
-                onOpen={view}
-              />
-            ))
+    <aside
+      data-slot="files-drawer"
+      aria-label="Files"
+      // `inert` rather than unmounting: the panel keeps its scroll position
+      // between openings, and a closed overlay must not hold focus or be
+      // reachable by tab.
+      inert={!visible}
+      className={cn(
+        "bg-sidebar flex h-full w-full flex-col overflow-hidden",
+        "xl:shrink-0 xl:transition-[width]",
+        visible ? "xl:w-96 xl:border-s" : "xl:w-0 xl:border-s-0",
+      )}
+    >
+      {!isInline && <SheetTitle className="sr-only">Files</SheetTitle>}
+      {/* The inner width is pinned from `xl` and only there: the panel
+          animates out to `xl:w-0`, and contents that shrank with it would
+          reflow the whole list on the way. Below `xl` they simply fill the
+          sheet. */}
+      <header className="flex h-12 w-full shrink-0 items-center gap-2 border-b px-2 xl:w-96">
+        <span className="min-w-0 flex-1 truncate px-1 text-sm font-medium">
+          Files
+          {total > 0 && (
+            <span className="text-muted-foreground ms-2 text-xs font-normal tabular-nums">
+              {total}
+            </span>
           )}
-        </div>
-      </aside>
-    </>
+        </span>
+        <TooltipIconButton
+          tooltip="Hide files"
+          side="left"
+          className="size-8"
+          onClick={close}
+        >
+          <XIcon className="size-4" />
+        </TooltipIconButton>
+      </header>
+
+      <div
+        ref={bodyRef}
+        className="min-h-0 w-full flex-1 overflow-y-auto xl:w-96"
+      >
+        {failure ? (
+          <p className="text-muted-foreground p-4 text-xs">{failure}</p>
+        ) : sections.length === 0 ? (
+          <p className="text-muted-foreground p-4 text-xs">
+            Nothing yet. Files the agent shows you, and files it writes,
+            appear here as it works.
+          </p>
+        ) : (
+          sections.map((section) => (
+            <Section
+              key={section.turnId}
+              section={section}
+              running={section.turnId === running}
+              flashing={section.turnId === focusTurn}
+              onOpen={view}
+            />
+          ))
+        )}
+      </div>
+    </aside>
   );
 
   if (isInline) return drawer;
