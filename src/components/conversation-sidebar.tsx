@@ -45,13 +45,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  ALL_CONVERSATIONS_FILTER,
   MAIN_CONVERSATIONS_FILTER,
   categoryHues,
   categoryLabel,
   conversationCategory,
   conversationFilterOptions,
-  filterIncludes,
   filtersEqual,
   hueOf,
   orderedCategories,
@@ -70,8 +68,6 @@ import {
 /** Remembered across reloads. A collapse that undoes itself every time the page
  *  loads is a preference the app keeps overruling. */
 const COLLAPSED_KEY = "second-brain:sidebar-collapsed";
-const FILTER_KEY = "second-brain:conversation-filter";
-
 type CategoryColorStyle = CSSProperties & {
   "--conversation-category-hue": string;
 };
@@ -84,28 +80,6 @@ function categoryColorStyle(
   hues: Map<string, number>,
 ): CategoryColorStyle {
   return { "--conversation-category-hue": String(hueOf(hues, category)) };
-}
-
-function readConversationFilter(): ConversationFilter {
-  try {
-    const stored = JSON.parse(localStorage.getItem(FILTER_KEY) ?? "null") as {
-      type?: unknown;
-      category?: unknown;
-    } | null;
-    if (stored?.type === "all") return ALL_CONVERSATIONS_FILTER;
-    if (stored?.type === "category") {
-      if (stored.category === null) return MAIN_CONVERSATIONS_FILTER;
-      if (typeof stored.category === "string") {
-        const category = conversationCategory(stored.category);
-        return category
-          ? { type: "category", category }
-          : MAIN_CONVERSATIONS_FILTER;
-      }
-    }
-  } catch {
-    // A malformed or unavailable preference is just the default view.
-  }
-  return MAIN_CONVERSATIONS_FILTER;
 }
 
 /**
@@ -128,8 +102,10 @@ const ConversationList = memo(function ConversationList({
   showCategories,
   categoryColors,
   emptyMessage,
+  hasMore,
   onOpen,
   onDelete,
+  onLoadMore,
 }: {
   conversations: Conversation[];
   activeId: number | null;
@@ -139,8 +115,11 @@ const ConversationList = memo(function ConversationList({
   showCategories: boolean;
   categoryColors: Map<string, number>;
   emptyMessage: string;
+  /** Whether the server says there is another page behind this one. */
+  hasMore: boolean;
   onOpen: (id: number) => void;
   onDelete: (id: number) => void;
+  onLoadMore: () => void;
 }) {
   return (
     <nav className="flex-1 overflow-y-auto p-2 pt-0">
@@ -223,6 +202,20 @@ const ConversationList = memo(function ConversationList({
           </div>
         );
       })}
+
+      {/* A button rather than infinite scroll. The sidebar is also the thing
+          you scroll to *find* an old conversation, and a list that grows under
+          you while you are reading it is worse than one you ask to grow. */}
+      {hasMore && (
+        <button
+          type="button"
+          disabled={locked}
+          onClick={onLoadMore}
+          className="text-muted-foreground hover:text-foreground hover:bg-accent/50 mt-1 w-full rounded-md px-2 py-1.5 text-xs disabled:opacity-50"
+        >
+          Load more
+        </button>
+      )}
     </nav>
   );
 });
@@ -245,6 +238,11 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     openConversation,
     newConversation,
     deleteConversation,
+    conversationsHasMore,
+    loadMoreConversations,
+    conversationCategories,
+    conversationFilter,
+    setConversationFilter,
   } = useConversations();
   const { inputRequests } = useApprovals();
   const { state } = useSession();
@@ -254,10 +252,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
   // One switch at a time. Each of these is several Requests, and a second click
   // partway through would interleave two loads into one session.
   const [busy, setBusy] = useState(false);
-  const [conversationFilter, setConversationFilter] =
-    useState<ConversationFilter>(readConversationFilter);
   const [filterOpen, setFilterOpen] = useState(false);
-  const initialFilterChecked = useRef(false);
   const commandRunning = Boolean(
     state.command && state.command.status !== "finished",
   );
@@ -277,22 +272,23 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     localStorage.setItem(COLLAPSED_KEY, String(collapsed));
   }, [collapsed]);
 
+  /**
+   * The menu, and the colours, both from the server's tally.
+   *
+   * **Not from `conversations`.** That is one page of one category now — the
+   * server does the filtering — so a menu derived from it would list only the
+   * category you are already looking at, and count only the rows you happen to
+   * have loaded.
+   */
   const filterOptions = useMemo(
-    () => conversationFilterOptions(conversations),
-    [conversations],
+    () => conversationFilterOptions(conversationCategories),
+    [conversationCategories],
   );
   /** One assignment for the whole sidebar, so the pill, the menu dot and the
    *  dot on a row all agree about what colour a category is. */
   const categoryColors = useMemo(
-    () => categoryHues(orderedCategories(conversations)),
-    [conversations],
-  );
-  const visibleConversations = useMemo(
-    () =>
-      conversations.filter((conversation) =>
-        filterIncludes(conversationFilter, conversation),
-      ),
-    [conversations, conversationFilter],
+    () => categoryHues(orderedCategories(conversationCategories)),
+    [conversationCategories],
   );
   const selectedFilter =
     filterOptions.find((option) =>
@@ -303,40 +299,28 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
   const filterValue = (filter: ConversationFilter) =>
     filter.type === "all" ? "all" : `category:${filter.category ?? "main"}`;
 
+  /**
+   * A remembered filter naming a category that no longer exists.
+   *
+   * Once only, and only once the server has said which categories there are —
+   * emptying a category is how this happens, and the answer is to fall back to
+   * Main rather than to leave the sidebar showing an empty list with no way to
+   * tell that from "you have none".
+   */
+  const filterChecked = useRef(false);
   useEffect(() => {
-    try {
-      localStorage.setItem(FILTER_KEY, JSON.stringify(conversationFilter));
-    } catch {
-      // Filtering still works for this visit when storage is unavailable.
-    }
-  }, [conversationFilter]);
-
-  useEffect(() => {
-    if (conversations.length === 0) return;
-
-    let next = conversationFilter;
-    const savedCategoryExists = filterOptions.some((option) =>
-      filtersEqual(option.filter, next),
+    if (filterChecked.current || conversationCategories.length === 0) return;
+    filterChecked.current = true;
+    const known = filterOptions.some((option) =>
+      filtersEqual(option.filter, conversationFilter),
     );
-    if (!savedCategoryExists) next = MAIN_CONVERSATIONS_FILTER;
-
-    if (!initialFilterChecked.current) {
-      const active = conversations.find(
-        (conversation) => conversation.id === conversationId,
-      );
-      if (active && !filterIncludes(next, active)) {
-        next = {
-          type: "category",
-          category: conversationCategory(active.category),
-        };
-      }
-      initialFilterChecked.current = true;
-    }
-
-    if (!filtersEqual(next, conversationFilter)) {
-      setConversationFilter(next);
-    }
-  }, [conversationFilter, conversationId, conversations, filterOptions]);
+    if (!known) setConversationFilter(MAIN_CONVERSATIONS_FILTER);
+  }, [
+    conversationCategories,
+    filterOptions,
+    conversationFilter,
+    setConversationFilter,
+  ]);
 
   /**
    * Two different components sharing one file.
@@ -410,9 +394,15 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     (id: number) => void run(() => deleteConversation(id)),
     [run, deleteConversation],
   );
+  // Not through `run`: `busy` locks every row, and paging is not a session
+  // switch — there is nothing to interleave and nothing to protect.
+  const loadMore = useCallback(
+    () => void loadMoreConversations(),
+    [loadMoreConversations],
+  );
 
   const selectConversationFilter = (filter: ConversationFilter) => {
-    initialFilterChecked.current = true;
+    filterChecked.current = true;
     setConversationFilter(filter);
   };
 
@@ -598,7 +588,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           a 48px rail. */}
       {railCollapsed ? null : (
         <ConversationList
-          conversations={visibleConversations}
+          conversations={conversations}
           activeId={conversationId}
           locked={locked}
           loaded={conversationsLoaded}
@@ -609,8 +599,10 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
               ? "No conversations yet."
               : `No ${selectedFilter.label} conversations.`
           }
+          hasMore={conversationsHasMore}
           onOpen={openAndClose}
           onDelete={removeConversation}
+          onLoadMore={loadMore}
         />
       )}
 

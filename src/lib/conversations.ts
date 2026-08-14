@@ -29,21 +29,82 @@ export type Conversation = {
   updated_ago?: string;
 };
 
+/** One bucket and how many conversations are in it, counted by the server over
+ *  the whole table rather than over the page it sent. `null` is Main. */
+export type CategoryCount = { category: string | null; count: number };
+
+export type ConversationPage = {
+  items: Conversation[];
+  /** Whether asking for the next offset would return anything. */
+  hasMore: boolean;
+  categories: CategoryCount[];
+};
+
+/** How many conversations a page holds. Also how many the sidebar shows before
+ *  it offers to fetch more. */
+export const CONVERSATION_PAGE = 50;
+
 /**
- * Every conversation this user owns, newest first.
+ * One page of this user's conversations, newest first.
  *
- * **The envelope depends on `details`.** With it the answer is `{items: [...]}`;
+ * **`category` has three meanings and the middle one is the point.** Omitted is
+ * every conversation; `""` is the Main bucket, meaning the server's NULL *or*
+ * empty; a name is an exact match. Without the `""` case there is no way to ask
+ * for your own conversations except to read every row and filter here, which is
+ * exactly what stopped working once background runs outnumbered them.
+ *
+ * **The envelope depends on `details`.** With it the answer is an object;
  * without, a bare array. Both are accepted rather than guessed at, because
- * guessing wrong shows an empty sidebar and explains nothing.
+ * guessing wrong shows an empty sidebar and explains nothing — and the bare
+ * array is also what a kernel too old to page answers, which this degrades to
+ * rather than failing on.
  */
-export async function listConversations(limit = 50): Promise<Conversation[]> {
-  const data = await sdk<Conversation[] | { items?: Conversation[] } | null>(
-    "conv.list",
-    { details: true, limit },
-  );
-  const items = Array.isArray(data) ? data : (data?.items ?? []);
-  return [...items].sort((a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0));
+export async function listConversations(
+  options: {
+    limit?: number;
+    offset?: number;
+    /** `undefined` for every conversation, `null` for Main, or a name. */
+    category?: string | null;
+  } = {},
+): Promise<ConversationPage> {
+  const { limit = CONVERSATION_PAGE, offset = 0, category } = options;
+  const data = await sdk<
+    | Conversation[]
+    | {
+        items?: Conversation[];
+        has_more?: boolean;
+        categories?: (CategoryCount | string | null)[];
+      }
+    | null
+  >("conv.list", {
+    details: true,
+    limit,
+    offset,
+    ...(category === undefined ? {} : { category: category ?? "" }),
+  });
+
+  if (Array.isArray(data)) {
+    return { items: sortByRecency(data), hasMore: false, categories: [] };
+  }
+
+  return {
+    items: sortByRecency(data?.items ?? []),
+    hasMore: Boolean(data?.has_more),
+    categories: (data?.categories ?? []).map((entry) =>
+      // A kernel older than the counts answers bare names. Reporting zero is
+      // better than reporting a wrong number, and the sidebar hides a count it
+      // cannot vouch for.
+      typeof entry === "object" && entry !== null
+        ? entry
+        : { category: entry ?? null, count: 0 },
+    ),
+  };
 }
+
+/** The server orders by `updated_at` already; this is the guard against a page
+ *  that disagrees, and it is what the sidebar has always relied on. */
+const sortByRecency = (items: Conversation[]) =>
+  [...items].sort((a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0));
 
 /**
  * A title the kernel supplied rather than one the conversation earned.

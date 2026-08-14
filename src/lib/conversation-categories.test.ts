@@ -15,10 +15,17 @@ import {
   orderedCategories,
 } from "@/lib/conversation-categories";
 
-type Conversation = import("@/lib/conversations").Conversation;
+type CategoryCount = import("@/lib/conversations").CategoryCount;
 
-const inCategory = (...categories: (string | null)[]): Conversation[] =>
-  categories.map((category, id) => ({ id, title: "", category }));
+/** The server's tally, written the way it reads: one argument per
+ *  conversation, folded into the `{category, count}` rows `conv.list` answers. */
+const inCategory = (...categories: (string | null)[]): CategoryCount[] => {
+  const counts = new Map<string | null, number>();
+  for (const category of categories) {
+    counts.set(category, (counts.get(category) ?? 0) + 1);
+  }
+  return [...counts].map(([category, count]) => ({ category, count }));
+};
 
 /** The closest any two hues sit, going the short way round the wheel. */
 function closestPair(hues: number[]): number {

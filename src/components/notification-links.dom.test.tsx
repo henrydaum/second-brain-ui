@@ -114,6 +114,11 @@ function stub(over: Partial<provider.SecondBrain>) {
     renameConversation: vi.fn(),
     categoriseConversation: vi.fn(),
     setNotificationMode: vi.fn(),
+    conversationsHasMore: false,
+    loadMoreConversations: vi.fn(),
+    conversationCategories: [],
+    conversationFilter: { type: "category", category: null } as const,
+    setConversationFilter: vi.fn(),
   });
   vi.spyOn(provider, "useSettings").mockReturnValue({
     commands: value.commands,

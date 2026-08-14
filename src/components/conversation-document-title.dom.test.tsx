@@ -34,6 +34,11 @@ describe("the browser tab title", () => {
       renameConversation: vi.fn(),
       categoriseConversation: vi.fn(),
       setNotificationMode: vi.fn(),
+      conversationsHasMore: false,
+      loadMoreConversations: vi.fn(),
+      conversationCategories: [],
+      conversationFilter: { type: "category", category: null } as const,
+      setConversationFilter: vi.fn(),
     };
     vi.spyOn(provider, "useConversations").mockImplementation(
       () => current as ReturnType<typeof provider.useConversations>,
@@ -77,6 +82,11 @@ describe("the browser tab title", () => {
       renameConversation: vi.fn(),
       categoriseConversation: vi.fn(),
       setNotificationMode: vi.fn(),
+      conversationsHasMore: false,
+      loadMoreConversations: vi.fn(),
+      conversationCategories: [],
+      conversationFilter: { type: "category", category: null } as const,
+      setConversationFilter: vi.fn(),
     });
 
     render(<ConversationDocumentTitle />);

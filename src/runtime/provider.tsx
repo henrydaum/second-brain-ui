@@ -49,14 +49,21 @@ import type { SettingsPageId } from "@/components/settings-structure";
 import { RequestFailed, sdk } from "@/lib/client";
 import { listCommands, looksLikeCommand, type Command } from "@/lib/commands";
 import {
+  CONVERSATION_PAGE,
   isUnused,
   listConversations,
   setConversationCategory,
   setConversationNotificationMode,
   setConversationTitle,
+  type CategoryCount,
   type Conversation,
   type LoadResult,
 } from "@/lib/conversations";
+import {
+  ALL_CONVERSATIONS_FILTER,
+  MAIN_CONVERSATIONS_FILTER,
+  type ConversationFilter,
+} from "@/lib/conversation-categories";
 import { connect, type StreamStatus } from "@/lib/events";
 import { readConversation, type NotificationMode } from "@/lib/history";
 import { isPendingInput, type InputRequest } from "@/lib/input-requests";
@@ -227,6 +234,17 @@ export type SecondBrain = {
   /** Whether the open conversation announces its results. Null until the read
    *  that carries it has come back, or against a kernel too old to say. */
   notificationMode: NotificationMode | null;
+  /** Whether another page exists behind what is shown. */
+  conversationsHasMore: boolean;
+  /** Fetch it and append. */
+  loadMoreConversations: () => Promise<void>;
+  /** Every category that exists, with how many are in it — counted by the
+   *  server over the whole table, not over the page it sent. */
+  conversationCategories: CategoryCount[];
+  /** Which slice the sidebar is showing. Changing it is a Request, not a
+   *  predicate: the server does the filtering. */
+  conversationFilter: ConversationFilter;
+  setConversationFilter: (filter: ConversationFilter) => void;
   /** Rename the open conversation. */
   renameConversation: (id: number, title: string) => Promise<void>;
   /** File it under a category, or `null` for Main. */
@@ -378,6 +396,11 @@ type ConversationDomain = Pick<
   | "renameConversation"
   | "categoriseConversation"
   | "setNotificationMode"
+  | "conversationsHasMore"
+  | "loadMoreConversations"
+  | "conversationCategories"
+  | "conversationFilter"
+  | "setConversationFilter"
 >;
 type ApprovalDomain = Pick<
   SecondBrain,
@@ -435,6 +458,53 @@ export const useSecurity = () => useDomain(SecurityContext, "useSecurity");
  *  uses it for why a minute is the right number and why a poll is here at all. */
 const IDLE_REFRESH_MS = 60_000;
 
+/** The kernel caps `conv.list`'s `limit` at 200. Refreshing everything shown
+ *  stops there; past four pages a refresh re-reads the front of the list and
+ *  the rest keeps whatever it last had, which is what it would have anyway. */
+const MOST_CONVERSATIONS_AT_ONCE = 200;
+
+const FILTER_KEY = "second-brain:conversation-filter";
+
+/**
+ * What to send as `category` for a filter.
+ *
+ * `undefined` and `null` are different questions on the wire and both are
+ * needed: nothing at all means every conversation, and Main is asked for
+ * explicitly. See `listConversations`.
+ */
+function filterCategory(filter: ConversationFilter): string | null | undefined {
+  return filter.type === "all" ? undefined : filter.category;
+}
+
+/** The remembered filter, or the default. Read at startup rather than in an
+ *  effect, so the first read goes out for the right slice. */
+function readConversationFilter(): ConversationFilter {
+  try {
+    const stored = JSON.parse(localStorage.getItem(FILTER_KEY) ?? "null") as {
+      type?: unknown;
+      category?: unknown;
+    } | null;
+    if (stored?.type === "all") return ALL_CONVERSATIONS_FILTER;
+    if (stored?.type === "category") {
+      if (stored.category === null) return MAIN_CONVERSATIONS_FILTER;
+      if (typeof stored.category === "string" && stored.category.trim()) {
+        return { type: "category", category: stored.category };
+      }
+    }
+  } catch {
+    // A malformed or unavailable preference is just the default view.
+  }
+  return MAIN_CONVERSATIONS_FILTER;
+}
+
+function writeConversationFilter(filter: ConversationFilter): void {
+  try {
+    localStorage.setItem(FILTER_KEY, JSON.stringify(filter));
+  } catch {
+    // Filtering still works for this visit when storage is unavailable.
+  }
+}
+
 export function SecondBrainProvider({ children }: PropsWithChildren) {
   const [state, dispatch] = useReducer(reduce, initialState);
   const [inputRequests, askDispatch] = useReducer(
@@ -481,6 +551,25 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    *  machine — so it is held beside the id rather than looked up in the list. */
   const [notificationMode, setNotificationModeState] =
     useState<NotificationMode | null>(null);
+  const [conversationsHasMore, setConversationsHasMore] = useState(false);
+  const [conversationCategories, setConversationCategories] = useState<
+    CategoryCount[]
+  >([]);
+  /**
+   * Which slice the sidebar is showing.
+   *
+   * **Here rather than in the sidebar, because the server does the filtering
+   * now.** Picking a category is a different Request, not a different
+   * predicate over rows already held — which is the whole fix: the rows for a
+   * quiet category were never in the 50 most recent to begin with.
+   */
+  const [conversationFilter, setConversationFilterState] =
+    useState<ConversationFilter>(readConversationFilter);
+  /** Readable from callbacks that must not be rebuilt when it changes — the
+   *  same trick `commandsRef` plays. */
+  const conversationFilterRef = useRef(conversationFilter);
+  /** How many rows are on screen, which is also the next page's offset. */
+  const shownConversations = useRef(0);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const conversationIdRef = useRef<number | null>(null);
   conversationIdRef.current = conversationId;
@@ -549,7 +638,13 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const loadCatalogue = useCallback(async () => {
     try {
       setCommands(await listCommands());
-      setConversations(await listConversations());
+      const page = await listConversations({
+        category: filterCategory(conversationFilterRef.current),
+      });
+      setConversations(page.items);
+      setConversationsHasMore(page.hasMore);
+      setConversationCategories(page.categories);
+      shownConversations.current = page.items.length;
     } catch (error) {
       // Reported rather than thrown: a chat window with no sidebar is still a
       // chat window, and the banner says why it is empty.
@@ -1164,13 +1259,77 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       conversations.find((conversation) => conversation.id === conversationId),
     );
 
+  /**
+   * Read the list from the top, as far as it is currently shown.
+   *
+   * **One Request, however many pages are open.** Re-reading only the first
+   * page would drop everything a person had loaded past it, on a timer; asking
+   * for each page again would be a Request per page for the same reason. A
+   * single read of `min(what is shown, the server's cap)` is both, and is
+   * exactly right: this exists to catch retitles and reordering, and both of
+   * those move rows *within* what is already on screen.
+   */
   const refreshConversations = useCallback(async () => {
     try {
-      setConversations(await listConversations());
+      const page = await listConversations({
+        limit: Math.min(
+          Math.max(shownConversations.current, CONVERSATION_PAGE),
+          MOST_CONVERSATIONS_AT_ONCE,
+        ),
+        category: filterCategory(conversationFilterRef.current),
+      });
+      setConversations(page.items);
+      setConversationsHasMore(page.hasMore);
+      setConversationCategories(page.categories);
+      shownConversations.current = page.items.length;
     } catch (error) {
       report(error);
     }
   }, [report]);
+
+  /**
+   * The next page, appended.
+   *
+   * Appending rather than replacing is what makes this a "load more" rather
+   * than a "jump to page 2": the sidebar is a list you scroll, and a list that
+   * replaced itself under you would lose the row you were reaching for.
+   */
+  const loadMoreConversations = useCallback(async () => {
+    try {
+      const page = await listConversations({
+        offset: shownConversations.current,
+        category: filterCategory(conversationFilterRef.current),
+      });
+      setConversations((held) => {
+        // By id, because the two reads are a moment apart and a conversation
+        // that moved to the top in between would otherwise arrive twice.
+        const seen = new Set(held.map((conversation) => conversation.id));
+        const next = [
+          ...held,
+          ...page.items.filter((item) => !seen.has(item.id)),
+        ];
+        shownConversations.current = next.length;
+        return next;
+      });
+      setConversationsHasMore(page.hasMore);
+      setConversationCategories(page.categories);
+    } catch (error) {
+      report(error);
+    }
+  }, [report]);
+
+  /** Show a different slice. Resets the offset — the pages held describe the
+   *  old filter and none of them answer the new question. */
+  const setConversationFilter = useCallback(
+    (filter: ConversationFilter) => {
+      conversationFilterRef.current = filter;
+      setConversationFilterState(filter);
+      writeConversationFilter(filter);
+      shownConversations.current = 0;
+      void refreshConversations();
+    },
+    [refreshConversations],
+  );
 
   /**
    * Re-read the list when the agent hands the turn back.
@@ -1680,6 +1839,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       renameConversation,
       categoriseConversation,
       setNotificationMode,
+      conversationsHasMore,
+      loadMoreConversations,
+      conversationCategories,
+      conversationFilter,
+      setConversationFilter,
     }),
     [
       conversations,
@@ -1692,6 +1856,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       renameConversation,
       categoriseConversation,
       setNotificationMode,
+      conversationsHasMore,
+      loadMoreConversations,
+      conversationCategories,
+      conversationFilter,
+      setConversationFilter,
     ],
   );
   const approvalValue = useMemo<ApprovalDomain>(

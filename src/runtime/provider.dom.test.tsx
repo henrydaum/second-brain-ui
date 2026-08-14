@@ -41,7 +41,8 @@ vi.mock("@/lib/commands", () => ({
   looksLikeCommand: () => false,
 }));
 vi.mock("@/lib/conversations", () => ({
-  listConversations: async () => [],
+  listConversations: async () => ({ items: [], hasMore: false, categories: [] }),
+  CONVERSATION_PAGE: 50,
   isUnused: () => false,
   PLACEHOLDER_TITLE: "",
   setConversationTitle: async () => true,

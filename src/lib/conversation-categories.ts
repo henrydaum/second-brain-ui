@@ -1,4 +1,4 @@
-import type { Conversation } from "@/lib/conversations";
+import type { CategoryCount, Conversation } from "@/lib/conversations";
 
 export type ConversationFilter =
   | { type: "all" }
@@ -61,11 +61,11 @@ export function filterIncludes(
  * `null` — the ordinary, person-owned chat — is deliberately not in here. It is
  * not a tag, and it wears a neutral grey rather than a generated hue.
  */
-export function orderedCategories(conversations: Conversation[]): string[] {
+export function orderedCategories(counts: CategoryCount[]): string[] {
   const present = new Set<string>();
-  for (const conversation of conversations) {
-    const category = conversationCategory(conversation.category);
-    if (category !== null) present.add(category);
+  for (const { category } of counts) {
+    const name = conversationCategory(category);
+    if (name !== null) present.add(name);
   }
 
   return [
@@ -76,30 +76,35 @@ export function orderedCategories(conversations: Conversation[]): string[] {
   ];
 }
 
+/**
+ * The filter menu, built from the server's own tally.
+ *
+ * **Counted over the table rather than over what is loaded**, which is the
+ * whole reason `conv.list` answers counts at all: the sidebar holds a page, and
+ * a menu built from a page reports "3 Subagent" while showing a window of
+ * three — and omits entirely any category that did not happen to appear in it.
+ */
 export function conversationFilterOptions(
-  conversations: Conversation[],
+  counts: CategoryCount[],
 ): ConversationFilterOption[] {
-  const counts = new Map<string | null, number>();
-  for (const conversation of conversations) {
-    const category = conversationCategory(conversation.category);
-    counts.set(category, (counts.get(category) ?? 0) + 1);
+  const byName = new Map<string | null, number>();
+  for (const { category, count } of counts) {
+    const name = conversationCategory(category);
+    byName.set(name, (byName.get(name) ?? 0) + count);
   }
+  const total = [...byName.values()].reduce((sum, count) => sum + count, 0);
 
   return [
-    {
-      filter: ALL_CONVERSATIONS_FILTER,
-      label: "All conversations",
-      count: conversations.length,
-    },
+    { filter: ALL_CONVERSATIONS_FILTER, label: "All conversations", count: total },
     {
       filter: MAIN_CONVERSATIONS_FILTER,
       label: "Main",
-      count: counts.get(null) ?? 0,
+      count: byName.get(null) ?? 0,
     },
-    ...orderedCategories(conversations).map((category) => ({
+    ...orderedCategories(counts).map((category) => ({
       filter: { type: "category", category } as ConversationFilter,
       label: category,
-      count: counts.get(category) ?? 0,
+      count: byName.get(category) ?? 0,
     })),
   ];
 }
