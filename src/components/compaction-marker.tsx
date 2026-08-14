@@ -46,10 +46,41 @@ import { COMPACTED, SENT_AT } from "@/runtime/convert";
 const EXPLANATION =
   "The agent can only see a summary of everything above this line — not the messages themselves.";
 
-/** One period of the rule, in the pattern's own units. The path below is drawn
- *  well past both edges of the tile so the curve continues across the join
- *  rather than meeting itself at a clipped stroke end. */
-const WAVE = { width: 20, height: 10 };
+/** The rule's shape, in the pattern tile's own units — which are pixels, since
+ *  the tile is placed in user space and the svg is drawn at its natural size. */
+const WAVE = {
+  /** One full period: crest, then trough. */
+  period: 20,
+  /** The tile, and therefore the height of the whole rule. */
+  height: 10,
+  /** How far the crest rises above the midline. Keep `amplitude + thickness`
+   *  inside `height / 2` or the curve is clipped by its own tile. */
+  amplitude: 4,
+  thickness: 1.25,
+};
+
+/**
+ * One tileable period of the wave.
+ *
+ * **Drawn a period either side of the tile it will be clipped to**, so the
+ * curve carries on across the join instead of ending there — a stroke that
+ * stopped at the tile edge would leave a row of rounded caps down the rule.
+ *
+ * Derived rather than written out because four numbers have to agree: the
+ * pattern box, the midline, the half-period each arc spans, and the svg's own
+ * height. Written by hand, changing one of them silently misaligns the others —
+ * a taller tile with the same path puts the wave off-centre and repeats a
+ * sliver of a second one underneath it.
+ */
+function wavePath({ period, height, amplitude }: typeof WAVE): string {
+  const half = period / 2;
+  // The first arc is a full quadratic; the rest are `t`, which mirrors the
+  // previous control point and so alternates crest and trough on its own.
+  return (
+    `M ${-period} ${height / 2} q ${half / 2} ${-amplitude} ${half} 0` +
+    ` t ${half} 0`.repeat(4)
+  );
+}
 
 /**
  * The rule itself, given the moment it marks.
@@ -86,20 +117,24 @@ export const CompactionRule: FC<{ at?: number }> = ({ at }) => {
               colour arriving. */}
           <svg
             aria-hidden
-            className="text-muted-foreground/40 group-hover:text-muted-foreground h-2.5 w-full transition-colors duration-200"
+            // Height as an attribute rather than a class, because it is the
+            // tile's height: one row of wave, exactly. A class here would be a
+            // fourth number to keep in step with `WAVE` by hand.
+            height={WAVE.height}
+            className="text-muted-foreground/40 group-hover:text-muted-foreground w-full transition-colors duration-200"
           >
             <defs>
               <pattern
                 id={wave}
-                width={WAVE.width}
+                width={WAVE.period}
                 height={WAVE.height}
                 patternUnits="userSpaceOnUse"
               >
                 <path
-                  d="M -20 5 q 5 -4 10 0 t 10 0 t 10 0 t 10 0 t 10 0"
+                  d={wavePath(WAVE)}
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="1.25"
+                  strokeWidth={WAVE.thickness}
                   strokeLinecap="round"
                 />
               </pattern>
