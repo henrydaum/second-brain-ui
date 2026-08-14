@@ -312,21 +312,7 @@ export type ConversationRead = {
    * the messages.
    */
   conversation: Conversation | null;
-  /**
-   * Whether this conversation's results are announced.
-   *
-   * **Only `conv.read` knows this.** It is not a column on the conversations
-   * table — the kernel derives it from the state machine's latest state — so
-   * `conv.list` cannot carry it and there is nowhere cheaper to ask. Null when
-   * the answer did not include one, which is a kernel too old to say rather
-   * than a conversation that is set to neither value.
-   */
-  notificationMode: NotificationMode | null;
 };
-
-/** The kernel normalises anything else to one of these two, and defaults to
- *  `"on"` — see `runtime/notifications.py`. */
-export type NotificationMode = "on" | "off";
 
 /**
  * Read a conversation and turn it into scrollback.
@@ -338,30 +324,24 @@ export type NotificationMode = "on" | "off";
  * nothing about why.
  *
  * `details: true` was already being asked for, and the answer already carried
- * the notification mode; this only stopped throwing it away. The header menu
+ * the conversation's own row; this only stopped throwing it away. The header
  * therefore costs no Request of its own — it reads what opening the
  * conversation had already fetched.
  */
 export async function readConversation(id: number): Promise<ConversationRead> {
   const data = await sdk<
     | StoredMessage[]
-    | {
-        messages?: StoredMessage[];
-        notification_mode?: string;
-        conversation?: Conversation | null;
-      }
+    | { messages?: StoredMessage[]; conversation?: Conversation | null }
     | null
   >("conv.read", { id, details: true });
 
   if (Array.isArray(data)) {
-    return { turns: toTurns(data), notificationMode: null, conversation: null };
+    return { turns: toTurns(data), conversation: null };
   }
 
-  const mode = data?.notification_mode;
   const row = data?.conversation;
   return {
     turns: toTurns(data?.messages ?? []),
-    notificationMode: mode === "on" || mode === "off" ? mode : null,
     // An older kernel answers `{}` rather than omitting it; a row with no id is
     // not a conversation, and treating it as one would put an untitled ghost in
     // the header.

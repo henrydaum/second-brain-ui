@@ -8,7 +8,6 @@
  */
 
 import { sdk } from "@/lib/client";
-import type { NotificationMode } from "@/lib/history";
 
 export type Conversation = {
   id: number;
@@ -157,10 +156,10 @@ export function isUnused(conversation: Conversation | undefined): boolean {
 
 /* ── Changing one ──────────────────────────────────────────────────────
  *
- * All three are `ALWAYS_SAFE` in the kernel's policy, so none of them raises an
- * approval dialog — unlike `conv.delete`, which does. Editing what a
- * conversation is *called* or *filed under* changes nothing the person cannot
- * see and undo, and the kernel scopes each one to the calling user in SQL.
+ * Both are `ALWAYS_SAFE` in the kernel's policy, so neither raises an approval
+ * dialog — unlike `conv.delete`, which does. Editing what a conversation is
+ * *called* or *filed under* changes nothing the person cannot see and undo, and
+ * the kernel scopes each one to the calling user in SQL.
  */
 
 /** Name it. **Permanent, in a way the placeholder is not** — the kernel's title
@@ -174,23 +173,6 @@ export function setConversationTitle(id: number, title: string) {
  *  category rather than as a named one. */
 export function setConversationCategory(id: number, category: string | null) {
   return sdk<boolean>("conv.set_category", { id, category });
-}
-
-/**
- * Announce its results, or do not.
- *
- * Answers the mode the kernel actually settled on, which is worth using rather
- * than assuming: it normalises anything it does not recognise, so the value
- * that comes back is the one now stored.
- */
-export function setConversationNotificationMode(
-  id: number,
-  mode: NotificationMode,
-) {
-  return sdk<NotificationMode | null>("conv.set_notification_mode", {
-    id,
-    mode,
-  });
 }
 
 /** What `conv.load` answers: a command-shaped result rather than a bare value.

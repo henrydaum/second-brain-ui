@@ -7,14 +7,19 @@
  * the header is where every other chat app puts these, and it is already the
  * thing you point at when you mean "this conversation".
  *
- * **None of the three raises an approval dialog.** `conv.set_title`,
- * `conv.set_category` and `conv.set_notification_mode` are all `ALWAYS_SAFE` in
- * the kernel's policy, and each is scoped to the calling user in SQL. Deleting
- * is the unsafe one, and it stays in the sidebar where it always was.
+ * **Neither raises an approval dialog.** `conv.set_title` and
+ * `conv.set_category` are both `ALWAYS_SAFE` in the kernel's policy, and each
+ * is scoped to the calling user in SQL. Deleting is the unsafe one, and it
+ * stays in the sidebar where it always was.
+ *
+ * A conversation's notification mode is deliberately *not* here. It governs
+ * whether a scheduled subagent's result is pushed to you, so it belongs beside
+ * the job that does the pushing rather than on every conversation that will
+ * never have one — see the scheduled-jobs panel when it exists.
  */
 
 import { useEffect, useState, type FC } from "react";
-import { BellIcon, ChevronDownIcon, PencilIcon, PlusIcon, TagIcon } from "lucide-react";
+import { ChevronDownIcon, PencilIcon, PlusIcon, TagIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +31,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -56,12 +60,9 @@ export const ConversationMenu: FC = () => {
   const {
     conversationId,
     openConversationRow,
-    conversationHasSchedule,
     conversationCategories,
-    notificationMode,
     renameConversation,
     categoriseConversation,
-    setNotificationMode,
   } = useConversations();
 
   const [open, setOpen] = useState(false);
@@ -97,11 +98,6 @@ export const ConversationMenu: FC = () => {
     );
   }
 
-  // The kernel's own vocabulary: `notification_mode`, on or off, defaulting to
-  // on. Stated as a setting that is or is not allowed rather than as a verb
-  // that changes under you — the tick says which it currently is.
-  const allowed = notificationMode !== "off";
-
   return (
     <>
       <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -127,24 +123,6 @@ export const ConversationMenu: FC = () => {
             <PencilIcon className="size-4" />
             Rename
           </DropdownMenuItem>
-
-          {/* **Only where there is something to notify about.** The setting
-              governs whether a *scheduled* subagent's result is pushed to you,
-              and a cron-fired run has no session watching it — the push is its
-              only delivery surface. A conversation you type in reports itself
-              by being on screen, so offering the switch there is offering a
-              setting with nothing to act on. See `lib/schedules.ts`. */}
-          {conversationHasSchedule && (
-            <DropdownMenuCheckboxItem
-              checked={allowed}
-              onCheckedChange={(next) =>
-                void setNotificationMode(conversationId, next ? "on" : "off")
-              }
-            >
-              <BellIcon className="size-4" />
-              Allow notifications
-            </DropdownMenuCheckboxItem>
-          )}
 
           <DropdownMenuSeparator />
 
