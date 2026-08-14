@@ -416,6 +416,15 @@
     font-size: 0.8125rem;
   }
 
+  /* A code block's header and its `pre` are *siblings* — that is how
+   * `MarkdownTextPrimitive` composes the two slots, with no wrapper to style —
+   * so the inter-block gap above lands between them and splits one box into
+   * two. This is the only pair in `.aui-md` that is a single object, and this
+   * is what closes it back up. See `components/assistant-ui/code-block.tsx`. */
+  .aui-md > :where([data-slot="code-header"] + pre) {
+    margin-top: 0;
+  }
+
   .aui-md :where(blockquote) {
     border-inline-start: 3px solid var(--border);
     padding-inline-start: 1rem;

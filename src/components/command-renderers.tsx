@@ -3,6 +3,10 @@ import { TextMessagePartProvider } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
 
+import {
+  CodeHeader,
+  SyntaxHighlighter,
+} from "@/components/assistant-ui/code-block";
 import { cn } from "@/lib/utils";
 
 type MarkdownElementProps<Tag extends keyof React.JSX.IntrinsicElements> =
@@ -62,6 +66,10 @@ const markdownComponents = {
   tr: TableRow,
   td: TableCell,
   blockquote: DetailCard,
+  // Not memoised, unlike the chat's: command output arrives whole rather than a
+  // token at a time, so there is no re-parse to protect against.
+  CodeHeader,
+  SyntaxHighlighter,
 };
 
 export const CommandMarkdown: FC<{

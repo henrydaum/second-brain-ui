@@ -18,7 +18,7 @@
  * thing people notice.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 export type Theme = "system" | "light" | "dark";
 
@@ -57,6 +57,41 @@ function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle(
     "dark",
     resolveTheme(theme) === "dark",
+  );
+}
+
+/**
+ * Which of the two palettes is on screen, for something that only wants to know.
+ *
+ * **Read-only, and that is the whole point of it existing beside `useTheme`.**
+ * `useTheme` owns the preference: it writes `localStorage` and toggles the
+ * class from an effect *on every mount*. That is right for the one control that
+ * changes the theme and wrong for anything that merely reads it — a transcript
+ * with twenty code blocks in it would take twenty copies of that machinery, and
+ * write the preference back to storage twenty times on first paint.
+ *
+ * `useSyncExternalStore` for the reason `useMediaQuery` gives: the value is read
+ * during render rather than corrected in an effect afterwards, so a code block
+ * paints in the right palette the first time instead of flashing the other one.
+ */
+export function useResolvedTheme(): "light" | "dark" {
+  return useSyncExternalStore(
+    useCallback((onChange: () => void) => {
+      // Both sources, because either can move the answer: an explicit choice
+      // made elsewhere in the app, and the OS flipping under "system".
+      window.addEventListener(THEME_CHANGE_EVENT, onChange);
+      const media =
+        typeof window.matchMedia === "function"
+          ? window.matchMedia(DARK_QUERY)
+          : null;
+      media?.addEventListener("change", onChange);
+      return () => {
+        window.removeEventListener(THEME_CHANGE_EVENT, onChange);
+        media?.removeEventListener("change", onChange);
+      };
+    }, []),
+    () => resolveTheme(readTheme()),
+    () => "light",
   );
 }
 
