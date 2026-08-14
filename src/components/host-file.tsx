@@ -1,17 +1,15 @@
 /** Files a user message carried, above the prose rather than inside it. */
 
-import { useState, type FC, type ReactNode } from "react";
+import type { FC } from "react";
 import { useAuiState } from "@assistant-ui/react";
 
-import { FileKindIcon } from "@/components/file-kind-icon";
+import { FileThumbnail } from "@/components/file-kind-icon";
 import { preloadFileViewer } from "@/components/lazy-file-viewer";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { fileUrl } from "@/lib/client";
-import { guessKind } from "@/lib/files";
 import { SENT_ATTACHMENTS } from "@/runtime/convert";
 import { useFileActivity } from "@/runtime/file-activity-provider";
 import type { MessageAttachment } from "@/runtime/store";
@@ -47,7 +45,13 @@ export const UserMessageAttachments: FC = () => {
           return (
             <Tooltip key={`${attachment.fileName}-${position}`}>
               <TooltipTrigger asChild>
-                <div>{tile}</div>
+                {/* The name is the only accessible one this has: there is no
+                    button here to carry an `aria-label`, since a file with no
+                    stored path yet has nothing to open. */}
+                <div>
+                  {tile}
+                  <span className="sr-only">{attachment.fileName}</span>
+                </div>
               </TooltipTrigger>
               <TooltipContent side="top">{attachment.fileName}</TooltipContent>
             </Tooltip>
@@ -78,47 +82,14 @@ export const UserMessageAttachments: FC = () => {
 
 const AttachmentTile: FC<{ attachment: MessageAttachment }> = ({
   attachment,
-}) => {
-  /**
-   * Whether the picture failed, kept as state rather than acted on directly.
-   *
-   * This used to be `event.currentTarget.remove()`, which takes a node out of
-   * the document that React still believes it owns — and React finds out when
-   * the message unmounts, where `removeChild` throws `NotFoundError` and the
-   * error boundary takes the whole app down with it. A thumbnail failing is the
-   * ordinary case here, since a path in a message is a record of what happened
-   * rather than a promise the file is still there, so the crash was one deleted
-   * file away.
-   *
-   * Rendering nothing has exactly the same appearance: the icon it used to
-   * uncover is already painted underneath.
-   */
-  const [broken, setBroken] = useState(false);
-
-  const image =
-    attachment.modality === "image" ||
-    guessKind(attachment.fileName) === "image";
-  const icon: ReactNode = (
-    <FileKindIcon
-      path={attachment.fileName}
-      className="text-muted-foreground size-5"
-    />
-  );
-
-  return (
-    <span className="bg-muted/60 relative flex size-14 items-center justify-center overflow-hidden rounded-md border shadow-sm">
-      {icon}
-      {image && attachment.path && !broken && (
-        <img
-          src={fileUrl(attachment.path)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          onError={() => setBroken(true)}
-          className="absolute inset-0 size-full object-cover"
-        />
-      )}
-      <span className="sr-only">{attachment.fileName}</span>
-    </span>
-  );
-};
+}) => (
+  <FileThumbnail
+    name={attachment.fileName}
+    path={attachment.path}
+    // The stored record says what the file is. That beats reading the
+    // extension, which is all `FileThumbnail` can do on its own.
+    image={attachment.modality === "image"}
+    className="size-14 rounded-md shadow-sm"
+    iconClassName="size-5"
+  />
+);

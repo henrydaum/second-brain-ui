@@ -17,11 +17,10 @@
 import { useEffect, useRef, useState, type FC } from "react";
 import { TerminalIcon, XIcon } from "lucide-react";
 
-import { FileKindIcon } from "@/components/file-kind-icon";
+import { FileThumbnail } from "@/components/file-kind-icon";
 import { preloadFileViewer } from "@/components/lazy-file-viewer";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { fileUrl } from "@/lib/client";
-import { guessKind, nameOf } from "@/lib/files";
+import { nameOf } from "@/lib/files";
 import { shortTimestamp } from "@/lib/time";
 import { useMediaQuery, XL_QUERY } from "@/lib/media";
 import { cn } from "@/lib/utils";
@@ -289,44 +288,19 @@ const Row: FC<{
   entry: FileEntry;
   onOpen: (entry: FileEntry) => void;
 }> = ({ entry, onOpen }) => {
-  /**
-   * A picture that would not load, remembered rather than removed.
-   *
-   * The obvious version — `event.currentTarget.remove()` — takes a node out of
-   * the document that React still has in its tree, and the bill arrives later:
-   * unmounting the row throws `NotFoundError` from `removeChild` and the error
-   * boundary replaces the entire app with a stack trace. A file that has moved
-   * since it was recorded is the *common* case in this panel, which made a
-   * white screen one stale row away.
-   */
-  const [broken, setBroken] = useState(false);
-
-  // Any image still on disk gets its own picture, whether the agent showed it
-  // to you or merely wrote it — a thumbnail identifies a file faster than its
-  // name does, and there is no reason the two cases should look different.
-  const thumbnail = !entry.gone && !broken && guessKind(entry.path) === "image";
-
   const inside = (
     <>
-      {thumbnail ? (
-        <img
-          src={fileUrl(entry.path)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          // A broken thumbnail is noisier than no thumbnail; fall back to the
-          // icon this would otherwise be standing in front of.
-          onError={() => setBroken(true)}
-          className="size-9 shrink-0 rounded border object-cover"
-        />
-      ) : (
-        <span className="bg-muted/60 flex size-9 shrink-0 items-center justify-center rounded border">
-          <FileKindIcon
-            path={entry.path}
-            className="text-muted-foreground size-4"
-          />
-        </span>
-      )}
+      {/* Any image still on disk gets its own picture, whether the agent showed
+          it to you or merely wrote it — a thumbnail identifies a file faster
+          than its name does, and there is no reason the two cases should look
+          different. A file that is gone gets no `path`, so nothing is fetched
+          for it and the icon stands alone. */}
+      <FileThumbnail
+        name={entry.path}
+        path={entry.gone ? undefined : entry.path}
+        className="size-9 rounded"
+        iconClassName="size-4"
+      />
 
       <span className="flex min-w-0 flex-1 flex-col text-start">
         <span

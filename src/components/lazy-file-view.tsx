@@ -1,20 +1,6 @@
-import { lazy } from "react";
+import { lazyWithPreload } from "@/lib/lazy";
 
-let fileViewModule: ReturnType<typeof importFileView> | null = null;
-
-function importFileView() {
-  return import("@/components/file-view");
-}
-
-function loadFileView() {
-  fileViewModule ??= importFileView();
-  return fileViewModule;
-}
-
-export const LazyFileView = lazy(() =>
-  loadFileView().then((module) => ({ default: module.FileView })),
+export const [LazyFileView, preloadFileView] = lazyWithPreload(
+  () => import("@/components/file-view"),
+  (module) => module.FileView,
 );
-
-export function preloadFileView() {
-  void loadFileView();
-}

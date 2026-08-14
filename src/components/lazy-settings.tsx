@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState, type FC } from "react";
+import { Suspense, useRef, useState, type FC } from "react";
 import { LoaderCircleIcon, Settings2Icon } from "lucide-react";
 
 import {
@@ -7,26 +7,15 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { lazyWithPreload } from "@/lib/lazy";
 import { useSession } from "@/runtime/provider";
 
-let settingsModule: ReturnType<typeof importSettings> | null = null;
-
-function importSettings() {
-  return import("@/components/settings-dialog");
-}
-
-function loadSettings() {
-  settingsModule ??= importSettings();
-  return settingsModule;
-}
-
-const LazySettingsContent = lazy(() =>
-  loadSettings().then((module) => ({ default: module.SettingsDialogContent })),
+const [LazySettingsContent, preloadSettings] = lazyWithPreload(
+  () => import("@/components/settings-dialog"),
+  (module) => module.SettingsDialogContent,
 );
 
-export function preloadSettings() {
-  void loadSettings();
-}
+export { preloadSettings };
 
 /**
  * The dialog shell is eager and persistent. Only its body crosses the lazy

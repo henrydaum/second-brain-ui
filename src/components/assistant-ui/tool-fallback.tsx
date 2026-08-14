@@ -7,13 +7,7 @@ import {
   WrenchIcon,
 } from "lucide-react";
 
-import { cn } from "@/lib/utils";
-
-function title(name: string) {
-  return name
-    .replace(/[._-]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
+import { cn, titleCase } from "@/lib/utils";
 
 function printable(value: unknown) {
   if (typeof value === "string") return value;
@@ -59,7 +53,7 @@ export const ToolFallback: ToolCallMessagePartComponent = ({
       >
         <WrenchIcon className="text-muted-foreground size-3.5 shrink-0" />
         <span className="min-w-0 flex-1 truncate font-medium">
-          {title(toolName)}
+          {titleCase(toolName)}
         </span>
         <span
           className={cn(

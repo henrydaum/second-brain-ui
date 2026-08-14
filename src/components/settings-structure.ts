@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import type { Command } from "@/lib/commands";
+import { titleCase } from "@/lib/utils";
 
 export type SettingsPageId =
   | "agents"
@@ -276,16 +277,10 @@ const COMMAND_PRESENTATION: Record<
   },
 };
 
-function titleFromName(name: string) {
-  return name
-    .replace(/[._-]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
 export function commandPresentation(command: Command) {
   return (
     COMMAND_PRESENTATION[command.name] ?? {
-      title: titleFromName(command.name),
+      title: titleCase(command.name),
       detail: command.description || "Run this Second Brain command.",
       icon: SquareTerminalIcon,
     }

@@ -1,20 +1,6 @@
-import { lazy } from "react";
+import { lazyWithPreload } from "@/lib/lazy";
 
-let viewerModule: ReturnType<typeof importViewer> | null = null;
-
-function importViewer() {
-  return import("@/components/file-viewer-dialog");
-}
-
-function loadViewer() {
-  viewerModule ??= importViewer();
-  return viewerModule;
-}
-
-export const LazyFileViewerDialog = lazy(() =>
-  loadViewer().then((module) => ({ default: module.FileViewerDialog })),
+export const [LazyFileViewerDialog, preloadFileViewer] = lazyWithPreload(
+  () => import("@/components/file-viewer-dialog"),
+  (module) => module.FileViewerDialog,
 );
-
-export function preloadFileViewer() {
-  void loadViewer();
-}

@@ -1,20 +1,6 @@
-import { lazy } from "react";
+import { lazyWithPreload } from "@/lib/lazy";
 
-let drawerModule: ReturnType<typeof importDrawer> | null = null;
-
-function importDrawer() {
-  return import("@/components/files-drawer");
-}
-
-function loadDrawer() {
-  drawerModule ??= importDrawer();
-  return drawerModule;
-}
-
-export const LazyFilesDrawer = lazy(() =>
-  loadDrawer().then((module) => ({ default: module.FilesDrawer })),
+export const [LazyFilesDrawer, preloadFilesDrawer] = lazyWithPreload(
+  () => import("@/components/files-drawer"),
+  (module) => module.FilesDrawer,
 );
-
-export function preloadFilesDrawer() {
-  void loadDrawer();
-}

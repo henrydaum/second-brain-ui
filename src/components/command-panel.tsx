@@ -14,14 +14,12 @@ import {
   CommandOutput,
 } from "@/components/command-renderers";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, titleCase } from "@/lib/utils";
 import { useApprovals, useSession } from "@/runtime/provider";
 
-function humanize(value?: string) {
-  return (value || "Value")
-    .replace(/[._-]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
+/** A field's own label. "Value" when the step did not name it — a form control
+ *  still needs something to be called. */
+const humanize = (value?: string) => titleCase(value || "Value");
 
 export const CommandPanel: FC = () => {
   const { state, say, dismissCommand } = useSession();
