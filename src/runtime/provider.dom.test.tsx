@@ -89,7 +89,11 @@ const bootWith = (busy: boolean) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  readConversation.mockResolvedValue({ turns: [], notificationMode: null });
+  readConversation.mockResolvedValue({
+    turns: [],
+    notificationMode: null,
+    conversation: null,
+  });
   // The stream reports itself open, which is what the reconnect sync keys on.
   connect.mockImplementation(
     (_onFrame: unknown, setStatus: (s: string) => void) => {

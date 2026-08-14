@@ -353,6 +353,9 @@ const TextView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
         <HighlightedCode
           code={loaded.text}
           language={suffixOf(path).slice(1)}
+          // The `Frame` around this is already the surface; a second background
+          // inside it reads as a lighter panel floating in a darker one.
+          transparent
           className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
         />
       </Frame>

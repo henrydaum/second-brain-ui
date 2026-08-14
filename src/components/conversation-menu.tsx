@@ -54,8 +54,8 @@ type Asking = "rename" | "category" | null;
 
 export const ConversationMenu: FC = () => {
   const {
-    conversations,
     conversationId,
+    openConversationRow,
     conversationCategories,
     notificationMode,
     renameConversation,
@@ -66,9 +66,15 @@ export const ConversationMenu: FC = () => {
   const [open, setOpen] = useState(false);
   const [asking, setAsking] = useState<Asking>(null);
 
-  const conversation = conversations.find((item) => item.id === conversationId);
-  const title = conversation ? conversationTitle(conversation) : "New chat";
-  const category = conversationCategory(conversation?.category);
+  // **From the open conversation's own row, never from the list.** The list is
+  // one page of one category, so filing this conversation somewhere the filter
+  // excludes takes it out — and looking it up there meant the header lost the
+  // conversation the moment you used the header to move it, taking its width
+  // with it and collapsing the rest of the row to the left.
+  const title = openConversationRow
+    ? conversationTitle(openConversationRow)
+    : "New chat";
+  const category = conversationCategory(openConversationRow?.category);
 
   // Every category in use, from the server's tally rather than from the loaded
   // page — which is one category's worth of rows and would offer only the
@@ -76,9 +82,15 @@ export const ConversationMenu: FC = () => {
   const categories = orderedCategories(conversationCategories);
 
   // Nothing to edit until the session is actually pointing at something.
-  if (!conversation || conversationId === null) {
+  // `me-auto` here as well as on the trigger: this is what holds the rest of
+  // the header against the far edge, and without it the status and the buttons
+  // slide over to meet the title.
+  if (conversationId === null) {
     return (
-      <span className="min-w-0 truncate px-1 text-sm font-medium" title={title}>
+      <span
+        className="me-auto min-w-0 truncate px-1 text-sm font-medium"
+        title={title}
+      >
         {title}
       </span>
     );

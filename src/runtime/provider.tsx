@@ -231,6 +231,10 @@ export type SecondBrain = {
   /** Whether `conversations` has been read yet. An empty list means nothing
    *  until this is true. */
   conversationsLoaded: boolean;
+  /** The open conversation itself, read alongside its scrollback rather than
+   *  looked up in `conversations` — which holds one page of one category and
+   *  need not contain it. */
+  openConversationRow: Conversation | null;
   /** Whether the open conversation announces its results. Null until the read
    *  that carries it has come back, or against a kernel too old to say. */
   notificationMode: NotificationMode | null;
@@ -392,6 +396,7 @@ type ConversationDomain = Pick<
   | "openConversation"
   | "newConversation"
   | "deleteConversation"
+  | "openConversationRow"
   | "notificationMode"
   | "renameConversation"
   | "categoriseConversation"
@@ -551,6 +556,17 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    *  machine — so it is held beside the id rather than looked up in the list. */
   const [notificationMode, setNotificationModeState] =
     useState<NotificationMode | null>(null);
+  /**
+   * The open conversation's own row, from `conv.read` rather than from the
+   * list.
+   *
+   * **The list is one page of one category, so it cannot be asked this.** File
+   * the open conversation under a category the current filter excludes and it
+   * leaves the list — and looking it up there meant the header lost the
+   * conversation the moment you used the header to move it.
+   */
+  const [openConversationRow, setOpenConversationRow] =
+    useState<Conversation | null>(null);
   const [conversationsHasMore, setConversationsHasMore] = useState(false);
   const [conversationCategories, setConversationCategories] = useState<
     CategoryCount[]
@@ -752,6 +768,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
             dispatch({ type: "history", turns: read.turns });
             setConversationId(bound);
             setNotificationModeState(read.notificationMode);
+            setOpenConversationRow(read.conversation);
           }
         }
 
@@ -843,6 +860,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       const read = await readConversation(bound);
       dispatch({ type: "history", turns: read.turns });
       setNotificationModeState(read.notificationMode);
+      setOpenConversationRow(read.conversation);
     } catch (error) {
       report(error);
     }
@@ -1456,6 +1474,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         dispatch({ type: "history", turns: read.turns });
         setConversationId(id);
         setNotificationModeState(read.notificationMode);
+        setOpenConversationRow(read.conversation);
         await syncSession();
         await refreshConversations();
       } catch (error) {
@@ -1477,6 +1496,12 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       // afterwards — and an empty conversation has no scrollback to read.
       dispatch({ type: "history", turns: [] });
       setConversationId(created?.id ?? null);
+      // No read to carry the row, so the header would have nothing to name
+      // until the list came back — and with a filter that excludes it, never.
+      setOpenConversationRow(
+        created?.id ? { id: created.id, title: "" } : null,
+      );
+      setNotificationModeState(null);
       await syncSession();
       await refreshConversations();
     } catch (error) {
@@ -1547,6 +1572,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     async (id: number, title: string) => {
       try {
         await setConversationTitle(id, title);
+        // The header draws from this row, and the list may not contain the
+        // conversation at all — so it is updated here rather than waited for.
+        if (id === conversationIdRef.current) {
+          setOpenConversationRow((row) => (row ? { ...row, title } : row));
+        }
         await refreshConversations();
       } catch (error) {
         report(error);
@@ -1559,6 +1589,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     async (id: number, category: string | null) => {
       try {
         await setConversationCategory(id, category);
+        if (id === conversationIdRef.current) {
+          setOpenConversationRow((row) => (row ? { ...row, category } : row));
+        }
         await refreshConversations();
       } catch (error) {
         report(error);
@@ -1869,6 +1902,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       openConversation,
       newConversation,
       deleteConversation,
+      openConversationRow,
       notificationMode,
       renameConversation,
       categoriseConversation,
@@ -1886,6 +1920,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       openConversation,
       newConversation,
       deleteConversation,
+      openConversationRow,
       notificationMode,
       renameConversation,
       categoriseConversation,

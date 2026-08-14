@@ -119,9 +119,27 @@ export const HighlightedCode: FC<{
   /** A fence tag, a language name, or a bare file extension. */
   language?: string;
   className?: string;
+  /**
+   * Let whatever is behind this show through.
+   *
+   * **For a caller that has already drawn the surface.** A fenced block in a
+   * reply is its own box and wants the theme's background; the file viewer
+   * hands this a bordered frame that is already the right colour, and painting
+   * a second background inside it leaves a lighter panel floating in a darker
+   * one. The token colours are unaffected either way, so contrast is not what
+   * this trades.
+   */
+  transparent?: boolean;
   Pre?: Wrapper;
   Code?: Wrapper;
-}> = ({ code, language, className, Pre = "pre" as never, Code = "code" as never }) => {
+}> = ({
+  code,
+  language,
+  className,
+  transparent = false,
+  Pre = "pre" as never,
+  Code = "code" as never,
+}) => {
   const resolved = useResolvedTheme();
   const grammar = language ? grammarFor(language) : null;
 
@@ -136,11 +154,16 @@ export const HighlightedCode: FC<{
   return (
     <Highlight theme={themeFor(resolved)} code={code} language={grammar}>
       {({ style, tokens, getLineProps, getTokenProps }) => (
-        // The theme's own background, over the stylesheet's. Everything else
-        // about the box — border, radius, padding, scroll — belongs to whoever
+        // The theme's own colours, over the stylesheet's. Everything else about
+        // the box — border, radius, padding, scroll — belongs to whoever
         // wrapped this, so a highlighted block and a plain one are the same
         // shape.
-        <Pre style={style} className={className}>
+        <Pre
+          style={
+            transparent ? { ...style, backgroundColor: undefined } : style
+          }
+          className={className}
+        >
           <Code>
             {tokens.map((line, index) => (
               // `key` on the index deliberately: these are lines of one

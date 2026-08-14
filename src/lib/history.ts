@@ -23,6 +23,7 @@
  */
 
 import { sdk } from "@/lib/client";
+import type { Conversation } from "@/lib/conversations";
 import type {
   MessageAttachment,
   ToolPart,
@@ -301,6 +302,17 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
 export type ConversationRead = {
   turns: Turn[];
   /**
+   * The conversation's own row.
+   *
+   * **The open conversation is session state, not a row in the sidebar's
+   * list.** The list holds one page of one category now, so looking the open
+   * conversation up in it fails the moment it is filed somewhere the filter
+   * excludes — and the header, which is the thing that files it, would vanish
+   * the instant you used it. `conv.read` has always answered this alongside
+   * the messages.
+   */
+  conversation: Conversation | null;
+  /**
    * Whether this conversation's results are announced.
    *
    * **Only `conv.read` knows this.** It is not a column on the conversations
@@ -333,15 +345,26 @@ export type NotificationMode = "on" | "off";
 export async function readConversation(id: number): Promise<ConversationRead> {
   const data = await sdk<
     | StoredMessage[]
-    | { messages?: StoredMessage[]; notification_mode?: string }
+    | {
+        messages?: StoredMessage[];
+        notification_mode?: string;
+        conversation?: Conversation | null;
+      }
     | null
   >("conv.read", { id, details: true });
 
-  if (Array.isArray(data)) return { turns: toTurns(data), notificationMode: null };
+  if (Array.isArray(data)) {
+    return { turns: toTurns(data), notificationMode: null, conversation: null };
+  }
 
   const mode = data?.notification_mode;
+  const row = data?.conversation;
   return {
     turns: toTurns(data?.messages ?? []),
     notificationMode: mode === "on" || mode === "off" ? mode : null,
+    // An older kernel answers `{}` rather than omitting it; a row with no id is
+    // not a conversation, and treating it as one would put an untitled ghost in
+    // the header.
+    conversation: row && typeof row.id === "number" ? row : null,
   };
 }
