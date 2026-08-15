@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 // module is enough to need a stub in a suite that runs without a DOM.
 vi.mock("@/lib/client", () => ({ sdk: vi.fn() }));
 
-const { conversationTitle, isUnused } = await import("@/lib/conversations");
+const { conversationTitle } = await import("@/lib/conversations");
 type Conversation = import("@/lib/conversations").Conversation;
 
 const conversation = (fields: Partial<Conversation> = {}): Conversation => ({
@@ -40,27 +40,5 @@ describe("conversationTitle", () => {
     expect(
       conversationTitle(conversation({ title: "Virginia Holiday (cleared)" })),
     ).toBe("Virginia Holiday (cleared)");
-  });
-});
-
-describe("isUnused", () => {
-  it("is true for a row nothing was ever stored in", () => {
-    // What `create_conversation` writes: one timestamp in both columns.
-    expect(isUnused(conversation({ created_at: 100, updated_at: 100 }))).toBe(
-      true,
-    );
-  });
-
-  it("is false once a message has moved updated_at", () => {
-    expect(isUnused(conversation({ created_at: 100, updated_at: 101 }))).toBe(
-      false,
-    );
-  });
-
-  it("is false when there is nothing to compare", () => {
-    // The caller skips creating a conversation on `true`, so an unreadable row
-    // has to answer the other way.
-    expect(isUnused(conversation())).toBe(false);
-    expect(isUnused(undefined)).toBe(false);
   });
 });

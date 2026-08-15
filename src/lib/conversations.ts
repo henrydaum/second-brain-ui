@@ -132,28 +132,6 @@ export function conversationTitle(conversation: Conversation): string {
   return !title || PLACEHOLDER_TITLE.test(title) ? "New chat" : title;
 }
 
-/**
- * Whether nothing has ever been said in this conversation.
- *
- * Read from the timestamps because there is no message count to read: the rows
- * `conv.list` hands back are the `conversations` table verbatim, which counts
- * nothing. The kernel stamps `created_at` and `updated_at` with one value when
- * it makes the row and only `save_message` moves `updated_at` afterwards — so
- * the two being equal is exactly "no message was ever stored here". Retitling
- * deliberately does not bump it, which is what makes this still true of a
- * conversation the title sweep has already been over.
- *
- * A row with no timestamps answers `false`: the caller uses this to decide
- * whether it may skip creating a conversation, and the safe way to be wrong is
- * to create one.
- */
-export function isUnused(conversation: Conversation | undefined): boolean {
-  const created = conversation?.created_at;
-  const updated = conversation?.updated_at;
-  if (typeof created !== "number" || typeof updated !== "number") return false;
-  return updated <= created;
-}
-
 /* ── Changing one ──────────────────────────────────────────────────────
  *
  * Both are `ALWAYS_SAFE` in the kernel's policy, so neither raises an approval

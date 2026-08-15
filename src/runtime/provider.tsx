@@ -50,7 +50,6 @@ import { RequestFailed, sdk } from "@/lib/client";
 import { listCommands, looksLikeCommand, type Command } from "@/lib/commands";
 import {
   CONVERSATION_PAGE,
-  isUnused,
   listConversations,
   setConversationCategory,
   setConversationTitle,
@@ -584,6 +583,15 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const conversationIdRef = useRef<number | null>(null);
   conversationIdRef.current = conversationId;
   conversationsRef.current = conversations;
+  /**
+   * `refreshConversations`, reachable from callbacks declared above it.
+   *
+   * `adoptConversation` runs the moment a message creates a conversation and
+   * wants the list re-read, but it sits far above the refresher — and a
+   * dependency array is evaluated while rendering, so naming it there would
+   * read a `const` that does not exist yet.
+   */
+  const refreshConversationsRef = useRef<(() => Promise<void>) | null>(null);
 
   /**
    * The catalogue, readable from a callback without becoming a dependency of
@@ -730,27 +738,17 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         );
         if (!cancelled) setSecurityModeState(session?.mode ?? "ask");
 
-        // A session is made lazily and holds no conversation until something
-        // binds one, and **a session with no conversation cannot be talked
-        // to** — every submit comes back "No conversation loaded. Try /new."
-        // So booting into one is not a convenience, it is what makes the
-        // composer work at all.
+        // A session holds no conversation until somebody sends a message, and
+        // that is now the ordinary resting state rather than a problem to fix
+        // on the way in. Booting used to create one here, because a session
+        // with no conversation could not be talked to — every submit came back
+        // "No conversation loaded. Try /new." That refusal is gone: the server
+        // creates the conversation from the first message, titled with it.
         //
-        // Creating rather than loading, because there is nothing to load into
-        // yet — and creating is also the one path that has never been able to
-        // take the session away from us, since a new conversation has no prior
-        // owner to be restored from.
-        //
-        // **No title**, here and everywhere else this app creates one. See
-        // `PLACEHOLDER_TITLE` in `lib/conversations.ts`: a title of ours is one
-        // the store's sweep will not replace.
-        let bound = session?.conversation_id ?? null;
-        if (bound === null) {
-          const created = await sdk<{ id: number }>("conv.create", {
-            activate: true,
-          });
-          bound = created?.id ?? null;
-        }
+        // So a fresh page load binds nothing and shows the empty composer. It
+        // is also what stopped the sidebar filling with untouched rows, one per
+        // page load, since this ran before the person had typed anything.
+        const bound = session?.conversation_id ?? null;
 
         if (bound !== null) {
           const read = await readConversation(bound);
@@ -1037,6 +1035,40 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
   /* ── What the person can do ─────────────────────────────────────── */
 
+  /**
+   * Find out which conversation the message we just sent created.
+   *
+   * The server makes a conversation from the first message sent into it, so
+   * between the submit and this we are bound to nothing and do not know the id.
+   * Nothing on the event stream carries it — the twelve render kinds are about
+   * what to draw, and the kernel's `conversation_changed` bus never reaches a
+   * browser — so it is asked for.
+   *
+   * Not cosmetic. `FileActivityProvider` and `hydrateSentAttachments` both bail
+   * on a null id, so without this the files panel stays empty and sent
+   * attachments keep their optimistic names for the life of the page.
+   */
+  const adoptConversation = useCallback(async () => {
+    if (conversationIdRef.current !== null) return;
+    try {
+      const session = await sdk<{ conversation_id?: number | null } | null>(
+        "session.get",
+        { details: true },
+      );
+      const bound = session?.conversation_id ?? null;
+      if (bound === null || conversationIdRef.current !== null) return;
+      conversationIdRef.current = bound;
+      setConversationId(bound);
+      // The row is brand new, so it is not in the copy of the list we hold, and
+      // the header reads its title from there. Through a ref because
+      // `refreshConversations` is declared further down and naming it in the
+      // dependency array would read it before it exists.
+      await refreshConversationsRef.current?.();
+    } catch (error) {
+      report(error);
+    }
+  }, [report]);
+
   const say = useCallback(
     async (text: string) => {
       dispatch({
@@ -1046,13 +1078,14 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       });
       try {
         await sdk("frontend.submit", { input_kind: "text", text });
+        await adoptConversation();
         return true;
       } catch (error) {
         report(error);
         return false;
       }
     },
-    [report],
+    [adoptConversation, report],
   );
 
   const resolve = useCallback(
@@ -1302,28 +1335,6 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   /* ── Conversations ──────────────────────────────────────────────── */
 
   /**
-   * Whether the conversation on screen has never been used.
-   *
-   * Both halves are asked, and they answer different questions. The stored row
-   * is the server's fact and is the one that matters; the transcript is the
-   * guard against acting on a stale copy of it, since the list is re-read on
-   * occasions rather than continuously and a conversation can have earned rows
-   * since. Being wrong in the direction of "used" costs one conversation nobody
-   * wanted; being wrong the other way silently reuses somebody's conversation.
-   *
-   * A ref rather than a dependency, for the reason `commandsRef` is one:
-   * `newConversation` is handed out through the context and listed as a
-   * dependency by `deleteConversation`, and this changes on every frame of
-   * every turn.
-   */
-  const openIsUnused = useRef(false);
-  openIsUnused.current =
-    state.turns.length === 0 &&
-    isUnused(
-      conversations.find((conversation) => conversation.id === conversationId),
-    );
-
-  /**
    * Read the list from the top, as far as it is currently shown.
    *
    * **One Request, however many pages are open.** Re-reading only the first
@@ -1375,6 +1386,24 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       report(error);
     }
   }, [report]);
+  refreshConversationsRef.current = refreshConversations;
+
+  /**
+   * Keep the header's row in step with the list.
+   *
+   * A conversation the first message just created is not in the copy of the
+   * list held when its id was adopted, and `refreshConversations` only sets the
+   * list — so without this the header goes on reading "New chat" over a
+   * conversation the server has already titled from that message.
+   */
+  useEffect(() => {
+    if (conversationId === null) return;
+    const row = conversations.find((item) => item.id === conversationId);
+    if (!row) return;
+    setOpenConversationRow((held) =>
+      held?.id === row.id && held.title === row.title ? held : row,
+    );
+  }, [conversationId, conversations]);
 
   /**
    * The next page, appended.
@@ -1525,48 +1554,35 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     [report, refreshConversations, syncSession],
   );
 
-  /** Make a conversation and point the session at it. Unconditional — the
-   *  reuse decision belongs to `newConversation`, and the one caller that must
-   *  not reuse (deleting the open conversation) needs this directly. */
-  const createConversation = useCallback(async () => {
+  /**
+   * Start a new conversation — which means letting go of the current one, not
+   * making anything.
+   *
+   * The server creates a conversation from the first message sent into it, so
+   * there is nothing to create here and nothing to reuse. Pressing New chat
+   * twice over costs nothing and leaves nothing behind; this used to make a row
+   * per press, which is what filled the sidebar with untouched conversations.
+   *
+   * **The server-side unbind is not optional.** Clearing our own state only
+   * changes what is drawn; the session would still be pointing at the previous
+   * conversation, and the next message would land in it.
+   */
+  const newConversation = useCallback(async () => {
     try {
-      const created = await sdk<{ id: number }>("conv.create", {
-        activate: true,
+      await sdk("frontend.submit", {
+        input_kind: "action",
+        action_type: "new_conversation",
       });
-      // `activate: true` binds it to this session, so there is nothing to load
-      // afterwards — and an empty conversation has no scrollback to read.
+      // Not a `setState` no-op: `history` also clears a half-answered form and
+      // a finished command's panel, which is what "start over" means here.
       dispatch({ type: "history", turns: [] });
-      setConversationId(created?.id ?? null);
-      // No read to carry the row, so the header would have nothing to name
-      // until the list came back — and with a filter that excludes it, never.
-      setOpenConversationRow(
-        created?.id ? { id: created.id, title: "" } : null,
-      );
-      await syncSession();
+      setConversationId(null);
+      setOpenConversationRow(null);
       await refreshConversations();
     } catch (error) {
       report(error);
     }
-  }, [report, refreshConversations, syncSession]);
-
-  const newConversation = useCallback(async () => {
-    // **Pressing New chat in a conversation nobody has used is a no-op.** The
-    // session is already pointing at an empty conversation; making a second
-    // one is what left tens of untouched rows in the sidebar, one per press.
-    //
-    // This is the shallow half of what other chat apps do by not creating a
-    // conversation until the first message is sent. It stops the accumulation
-    // without the part that costs something: the session stays bound to a real
-    // conversation throughout, so commands, attendance and pushed messages
-    // carry on working exactly as they do now.
-    if (openIsUnused.current) {
-      // Not a `setState` no-op: `history` also clears a half-answered form and
-      // a finished command's panel, which is what "start over" means here.
-      dispatch({ type: "history", turns: [] });
-      return;
-    }
-    await createConversation();
-  }, [createConversation]);
+  }, [report, refreshConversations]);
 
   /**
    * Delete a conversation.
@@ -1582,22 +1598,20 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         await sdk("conv.delete", { id });
         await refreshConversations();
         // Deleting the one being read leaves the session pointing at nothing,
-        // which is the state where every submit answers "No conversation
-        // loaded" — so land somewhere real rather than leaving that to be
-        // discovered by typing.
-        //
-        // **`createConversation`, not `newConversation`.** The one just deleted
-        // was very possibly unused, and reuse reads a ref that React has had no
-        // chance to recompute between the refresh above and this line — so the
-        // reuse path would keep the session pointed at a conversation that no
-        // longer exists, which is precisely the state this call exists to
-        // avoid. There is nothing here to reuse either way.
-        if (id === conversationId) await createConversation();
+        // which is simply the empty-composer state now — the next message
+        // starts a conversation. The server has already detached the session
+        // (`_detach_deleted_conversation`); this catches our own state up so
+        // the header stops naming a conversation that is gone.
+        if (id === conversationId) {
+          dispatch({ type: "history", turns: [] });
+          setConversationId(null);
+          setOpenConversationRow(null);
+        }
       } catch (error) {
         report(error);
       }
     },
-    [conversationId, createConversation, refreshConversations, report],
+    [conversationId, refreshConversations, report],
   );
 
   /* ── Changing what a conversation *is* ──────────────────────────────
@@ -1757,6 +1771,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
           // action. A sequence cannot work: the first attachment hands priority
           // to the agent, making every later attachment the wrong actor type.
           await sdk("frontend.submit", attachmentSubmitArgs(files, text));
+          // **Before hydrating, not after.** This message may be the one that
+          // created the conversation, and `hydrateSentAttachments` reads the
+          // id on its first line and gives up when it is null — so the chips
+          // would keep their optimistic names for the life of the page.
+          await adoptConversation();
           void hydrateSentAttachments(
             files.map((file) => file.name),
             text,
@@ -1765,11 +1784,12 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         }
 
         await sdk("frontend.submit", { input_kind: "text", text });
+        await adoptConversation();
       } catch (error) {
         report(error);
       }
     },
-    [hydrateSentAttachments, report],
+    [adoptConversation, hydrateSentAttachments, report],
   );
 
   const onCancel = useCallback(async () => {

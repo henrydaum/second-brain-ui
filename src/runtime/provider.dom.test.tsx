@@ -43,7 +43,6 @@ vi.mock("@/lib/commands", () => ({
 vi.mock("@/lib/conversations", () => ({
   listConversations: async () => ({ items: [], hasMore: false, categories: [] }),
   CONVERSATION_PAGE: 50,
-  isUnused: () => false,
   PLACEHOLDER_TITLE: "",
   setConversationTitle: async () => true,
   setConversationCategory: async () => true,
