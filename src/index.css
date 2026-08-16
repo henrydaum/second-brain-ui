@@ -316,6 +316,19 @@
     background: transparent;
   }
 
+  /**
+   * The thumb, with a floor under its length.
+   *
+   * Left alone, the browser sizes it to the fraction of the document on screen
+   * and puts no lower bound on the result — so the longer the note, the smaller
+   * the handle, and a long one shrinks to a dot that is both hard to read as a
+   * position and hard to catch with a pointer. Exactly backwards: a long
+   * document is when the scrollbar matters most.
+   *
+   * 2.5rem is a comfortable grab target, and the axis is set twice because a
+   * wide table scrolls sideways through this same class — `min-height` governs
+   * the vertical bar and does nothing at all for the horizontal one.
+   */
   .document-scrollbar::-webkit-scrollbar-thumb {
     background-color: color-mix(
       in srgb,
@@ -325,6 +338,15 @@
     background-clip: padding-box;
     border: 2px solid transparent;
     border-radius: 9999px;
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+  }
+
+  /* No stepper arrows. Customising `::-webkit-scrollbar` at all is what brings
+   * the platform's default buttons back into play, and a bar this quiet should
+   * not have two grey triangles pinned to the ends of it. */
+  .document-scrollbar::-webkit-scrollbar-button {
+    display: none;
   }
 
   .document-scrollbar:hover::-webkit-scrollbar-thumb {
