@@ -47,6 +47,16 @@ export const FileViewerDialog: FC = () => {
       if (focused instanceof HTMLMediaElement) return;
       if (focused instanceof HTMLElement && focused.isContentEditable) return;
       if (focused instanceof HTMLInputElement) return;
+      // A wide table scrolls sideways with these same two keys now that its box
+      // can hold focus. Same rule as the media elements above: whatever has
+      // focus has first claim on a key it uses.
+      if (
+        focused instanceof HTMLElement &&
+        focused.dataset.slot === "file-view" &&
+        focused.scrollWidth > focused.clientWidth
+      ) {
+        return;
+      }
       stepView(event.key === "ArrowLeft" ? -1 : 1);
     };
     window.addEventListener("keydown", onKey);
@@ -65,9 +75,24 @@ export const FileViewerDialog: FC = () => {
       <DialogContent
         className="h-[min(92dvh,52rem)] min-w-0 w-[calc(100vw-1rem)] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-3 sm:w-full sm:max-w-4xl sm:p-4"
         overlayClassName="bg-black/50"
+        /**
+         * Focus the document itself where there is one, so the arrow keys
+         * scroll it without a click first.
+         *
+         * The frame usually is not there yet — the bytes are still in flight
+         * and what is mounted is the skeleton — in which case the dialog takes
+         * focus as it always did, and the frame claims it a moment later when
+         * it mounts. This branch is for the other case: a file already in the
+         * text cache renders before Radix gets here, and without it the dialog
+         * would take focus straight back off the document.
+         */
         onOpenAutoFocus={(event) => {
           event.preventDefault();
-          (event.currentTarget as HTMLElement | null)?.focus();
+          const content = event.currentTarget as HTMLElement | null;
+          const document_ = content?.querySelector<HTMLElement>(
+            '[data-slot="file-view"][tabindex]',
+          );
+          (document_ ?? content)?.focus();
         }}
       >
         <DialogHeader className="min-w-0 pe-12">

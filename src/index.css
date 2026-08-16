@@ -280,14 +280,19 @@
   /**
    * A scroller for something you *read*, rather than something you skim.
    *
-   * The global bar above is 6px and fully transparent until the pointer is over
-   * its scroller. That is exactly right for a list — the bar is chrome, and
-   * chrome that appears when reached for is chrome that stays out of the way.
-   * It is the wrong trade in the file viewer, where the bar is the only thing
-   * that says *how much of this note there is and where in it you are*, and
-   * where a person reading with the keyboard never hovers the scroller at all.
+   * It follows the global bar above in appearing only under the pointer — the
+   * bar is chrome, and chrome that shows up when reached for is chrome that
+   * stays out of the way of the thing you are actually reading. What it does
+   * not follow is the size: at 6px the thumb is a hair, and in a document you
+   * are aiming at it deliberately rather than glancing at it.
    *
-   * So: always drawn, quietly, and darkening as it is approached and grabbed.
+   * **A fade would be better than a switch, and is not available.** Chromium
+   * paints these pseudo-elements through its scrollbar theme rather than as
+   * ordinary boxes, and does not run transitions on them — the declaration
+   * below is kept because it costs nothing and is what the rule *means*, but
+   * expect the change to be instant. A genuinely animated bar would have to be
+   * a real element drawn over the content, which is a great deal of machinery
+   * for a fade.
    *
    * **The width is padding, not thickness.** A 6px thumb is hard to catch and a
    * 10px one drawn edge to edge looks like a gutter rail. `background-clip:
@@ -320,9 +325,13 @@
   @supports not selector(::-webkit-scrollbar) {
     .document-scrollbar {
       scrollbar-width: thin;
+      scrollbar-color: transparent transparent;
+    }
+
+    .document-scrollbar:hover {
       scrollbar-color: color-mix(
           in srgb,
-          var(--muted-foreground) 30%,
+          var(--muted-foreground) 38%,
           transparent
         )
         transparent;
@@ -374,16 +383,13 @@
    * the vertical bar and does nothing at all for the horizontal one.
    */
   .document-scrollbar::-webkit-scrollbar-thumb {
-    background-color: color-mix(
-      in srgb,
-      var(--muted-foreground) 22%,
-      transparent
-    );
+    background-color: transparent;
     background-clip: padding-box;
     border: 2px solid transparent;
     border-radius: 9999px;
     min-height: 2.5rem;
     min-width: 2.5rem;
+    transition: background-color 150ms ease;
   }
 
   /**

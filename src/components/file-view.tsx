@@ -74,12 +74,29 @@ const Frame: FC<{
    *  that actually does it. A plain prop — React 19 stopped needing
    *  `forwardRef` for this. */
   ref?: Ref<HTMLDivElement>;
-}> = ({ children, className, ref }) => (
+  /**
+   * The accessible name, for the frames that scroll — and what makes them
+   * focusable.
+   *
+   * **A scrollable box that cannot take focus cannot be scrolled from the
+   * keyboard**, and only Firefox gives one a tab stop unasked. Without this the
+   * arrow keys do nothing in the viewer: the browser scrolls the nearest
+   * scrollable *ancestor* of whatever has focus, and the box holding the
+   * document is a descendant of the dialog rather than an ancestor of anything
+   * focusable. One `tabindex` buys arrows, Page Up/Down, Home and End, all of
+   * them native and none of them written here.
+   */
+  scrolls?: string;
+}> = ({ children, className, ref, scrolls }) => (
   <div
     ref={ref}
     data-slot="file-view"
+    tabIndex={scrolls === undefined ? undefined : 0}
+    aria-label={scrolls}
     className={cn(
       "bg-muted/30 flex items-center justify-center overflow-hidden rounded-lg border",
+      scrolls !== undefined &&
+        "focus-visible:ring-ring outline-none focus-visible:ring-2",
       className,
     )}
   >
@@ -148,6 +165,30 @@ function useKind(path: string): FileKind | null {
   }, [path]);
 
   return kind;
+}
+
+/**
+ * The ref every scrolling frame takes: it keeps its place, and it takes focus.
+ *
+ * The focus half only applies at `full`, where the file *is* the screen it is
+ * on — so the arrow keys scroll it the moment it opens, with no click first.
+ * Inline in a transcript the same call would be scroll-jacking: a file preview
+ * appearing mid-conversation must not steal the caret from the composer.
+ *
+ * `preventScroll` because the place has just been restored and revealing a
+ * freshly focused element is exactly the kind of thing that would undo it.
+ */
+function useScroller(path: string, variant: string, size: FileViewSize) {
+  const remember = useRememberedScroll(path, variant);
+
+  return useCallback(
+    (node: HTMLDivElement | null) => {
+      const cleanup = remember(node);
+      if (node && size === "full") node.focus({ preventScroll: true });
+      return cleanup;
+    },
+    [remember, size],
+  );
 }
 
 type Loaded = { text: string; truncated: boolean; total: number };
@@ -285,7 +326,7 @@ const AudioView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => 
 
 const TableView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
   const { loaded, failure } = useText(path);
-  const scroller = useRememberedScroll(path, size);
+  const scroller = useScroller(path, size, size);
   if (failure) return <Unavailable path={path} reason={failure} size={size} />;
   if (!loaded) return <Loading path={path} size={size} />;
 
@@ -306,6 +347,7 @@ const TableView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => 
           must not make the whole conversation scroll sideways. */}
       <Frame
         ref={scroller}
+        scrolls={nameOf(path)}
         className="document-scrollbar block w-full min-h-0 flex-1 overflow-auto"
       >
         <table className="w-full border-collapse text-xs">
@@ -373,7 +415,7 @@ const MarkdownView: FC<{ path: string; size: FileViewSize }> = ({
   // Preview and Source are the same file at wildly different heights, so they
   // remember where they were separately — landing halfway down the source
   // because that is halfway down the rendering would be worse than the top.
-  const scroller = useRememberedScroll(path, `${size}:${mode}`);
+  const scroller = useScroller(path, `${size}:${mode}`, size);
   // Null wherever the viewer is mounted outside the file-activity provider,
   // which is what makes following a link between notes optional rather than a
   // crash — see `useFileActivityMaybe`.
@@ -402,6 +444,7 @@ const MarkdownView: FC<{ path: string; size: FileViewSize }> = ({
     <div className={cn("flex w-full flex-col", size === "full" && "h-full")}>
       <Frame
         ref={scroller}
+        scrolls={nameOf(path)}
         className={cn(
           "document-scrollbar block w-full overflow-auto",
           size === "full" ? "min-h-0 flex-1" : "max-h-80",
@@ -443,7 +486,7 @@ const MarkdownView: FC<{ path: string; size: FileViewSize }> = ({
 
 const TextView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
   const { loaded, failure } = useText(path);
-  const scroller = useRememberedScroll(path, size);
+  const scroller = useScroller(path, size, size);
   if (failure) return <Unavailable path={path} reason={failure} size={size} />;
   if (!loaded) return <Loading path={path} size={size} />;
 
@@ -451,6 +494,7 @@ const TextView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
     <div className={cn("flex w-full flex-col", size === "full" && "h-full")}>
       <Frame
         ref={scroller}
+        scrolls={nameOf(path)}
         className={cn(
           "document-scrollbar block w-full overflow-auto p-3",
           size === "full" ? "min-h-0 flex-1" : "max-h-80",
