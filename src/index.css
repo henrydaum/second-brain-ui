@@ -334,8 +334,30 @@
     height: 10px;
   }
 
+  /**
+   * The track, held clear of the frame's own corners.
+   *
+   * A scrollbar is laid out against the *box*, which is square, while the frame
+   * around it is `rounded-lg` — so a thumb at either extreme runs under the
+   * curve and is sliced by it, and the bar reads as sitting on top of the panel
+   * rather than inside it. Margin on the track is what shortens the thumb's
+   * travel to the straight part of the edge.
+   *
+   * `--radius-lg` rather than a number, because that is the radius it is
+   * dodging: change the frame's corner and this follows it. Per orientation,
+   * since the inset has to be along the bar and a margin across it would
+   * squeeze the bar's width instead.
+   */
   .document-scrollbar::-webkit-scrollbar-track {
     background: transparent;
+  }
+
+  .document-scrollbar::-webkit-scrollbar-track:vertical {
+    margin-block: var(--radius-lg);
+  }
+
+  .document-scrollbar::-webkit-scrollbar-track:horizontal {
+    margin-inline: var(--radius-lg);
   }
 
   /**
@@ -365,67 +387,24 @@
   }
 
   /**
-   * Stepper arrows, kept — and therefore drawn.
+   * No stepper arrows.
    *
-   * Scrolling a click at a time is worth having in a long document, and
-   * customising a scrollbar is precisely what takes the platform's own buttons
-   * away: once `::-webkit-scrollbar` is styled, the buttons are there but have
-   * no size and no glyph until both are given.
+   * Not for want of trying: they were drawn here with a mask, and a scrollbar
+   * part does not paint like an ordinary box — Chromium honours geometry,
+   * background and border on these pseudo-elements and quietly ignores
+   * `mask-image`, so each button rendered as the solid square its background
+   * colour describes and nothing else. Painting a glyph would mean a
+   * `background-image` per direction *and* per theme, four assets to keep in
+   * step with a palette they cannot read, which is a poor trade for a control
+   * a wheel and two keys already cover.
    *
-   * **A mask rather than a background image**, so the arrow takes its colour
-   * from the palette and follows light and dark with everything else. An SVG in
-   * `background-image` would be stuck with whatever fill it was written with,
-   * and would need two copies to cover both themes.
-   *
-   * Chromium offers a button at each *corner* of the bar — four in all. An
-   * increment at the start and a decrement at the end are the double-button
-   * arrangement nobody has missed since Mac OS 9, so those two are dropped.
+   * The platform's own arrows are not available either. Styling
+   * `::-webkit-scrollbar` at all is what replaces the native scrollbar, and
+   * keeping the native one means giving up the thumb's minimum length — see the
+   * `@supports` note above.
    */
   .document-scrollbar::-webkit-scrollbar-button {
-    display: block;
-    background-color: color-mix(
-      in srgb,
-      var(--muted-foreground) 40%,
-      transparent
-    );
-    mask-repeat: no-repeat;
-    mask-position: center;
-    mask-size: 7px 7px;
-  }
-
-  .document-scrollbar::-webkit-scrollbar-button:hover {
-    background-color: color-mix(
-      in srgb,
-      var(--muted-foreground) 75%,
-      transparent
-    );
-  }
-
-  .document-scrollbar::-webkit-scrollbar-button:vertical {
-    height: 12px;
-  }
-  .document-scrollbar::-webkit-scrollbar-button:horizontal {
-    width: 12px;
-  }
-
-  .document-scrollbar::-webkit-scrollbar-button:vertical:start:increment,
-  .document-scrollbar::-webkit-scrollbar-button:vertical:end:decrement,
-  .document-scrollbar::-webkit-scrollbar-button:horizontal:start:increment,
-  .document-scrollbar::-webkit-scrollbar-button:horizontal:end:decrement {
     display: none;
-  }
-
-  .document-scrollbar::-webkit-scrollbar-button:vertical:start:decrement {
-    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M4 2.5 7 6H1z'/%3E%3C/svg%3E");
-  }
-  .document-scrollbar::-webkit-scrollbar-button:vertical:end:increment {
-    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M4 5.5 1 2h6z'/%3E%3C/svg%3E");
-  }
-  .document-scrollbar::-webkit-scrollbar-button:horizontal:start:decrement {
-    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M2.5 4 6 1v6z'/%3E%3C/svg%3E");
-  }
-  .document-scrollbar::-webkit-scrollbar-button:horizontal:end:increment {
-    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M5.5 4 2 7V1z'/%3E%3C/svg%3E");
   }
 
   .document-scrollbar:hover::-webkit-scrollbar-thumb {
