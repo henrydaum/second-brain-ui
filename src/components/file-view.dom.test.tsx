@@ -18,11 +18,15 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FileView } from "@/components/file-view";
+import {
+  MarkdownModePicker,
+  setMarkdownMode,
+} from "@/components/markdown-mode";
 import { forgetFile } from "@/lib/files";
 
 // Testing Library only registers its own cleanup when the test globals are
@@ -147,8 +151,7 @@ describe("a Markdown file in the file viewer", () => {
     expect(offsite.getAttribute("rel")).toContain("noreferrer");
   });
 
-  it("shows the source on request, and remembers that for the next file", async () => {
-    const user = userEvent.setup();
+  it("follows the shared Preview/Source choice, for every file", async () => {
     // The highlighter splits a line into a span per token, so the source is
     // read off the block as a whole rather than looked up as a run of text.
     const sourceIn = (root: HTMLElement) =>
@@ -156,14 +159,16 @@ describe("a Markdown file in the file viewer", () => {
 
     const first = serve("# Monday\n");
     const one = render(<FileView path={first} />);
-
     await screen.findByRole("heading", { level: 1, name: "Monday" });
-    await user.click(screen.getByRole("button", { name: "Source" }));
+
+    // The control itself is three components away, in the viewer's footer —
+    // this is the half that has to hear about it. See `markdown-mode.tsx`.
+    act(() => setMarkdownMode("source"));
     expect(screen.queryByRole("heading", { name: "Monday" })).toBeNull();
     expect(sourceIn(one.container)).toContain("# Monday");
 
-    // The preference is a mood, not a setting: it follows you to the next file
-    // so that wanting source does not mean clicking for it all day.
+    // The choice is a mood rather than a per-file setting: it carries to the
+    // next note, so wanting source does not mean asking for it all day.
     one.unmount();
     const second = serve("# Tuesday\n");
     const two = render(<FileView path={second} />);
@@ -171,9 +176,41 @@ describe("a Markdown file in the file viewer", () => {
     await waitFor(() => expect(sourceIn(two.container)).toContain("# Tuesday"));
     expect(screen.queryByRole("heading", { name: "Tuesday" })).toBeNull();
 
-    // Put it back, so the default this suite started from is the default the
-    // next test sees.
-    await user.click(screen.getByRole("button", { name: "Preview" }));
+    // Put it back, so the default this suite started from is the one the next
+    // test sees — the store outlives any single render.
+    act(() => setMarkdownMode("preview"));
     await screen.findByRole("heading", { level: 1, name: "Tuesday" });
+  });
+});
+
+/**
+ * The control that drives the view above.
+ *
+ * It lives in the viewer dialog's footer rather than over the file, so that it
+ * costs no vertical space — which is precisely why it cannot be tested through
+ * `FileView`, and why it is worth pinning that pressing it moves the shared
+ * state the view reads.
+ */
+describe("the Preview/Source picker", () => {
+  afterEach(() => act(() => setMarkdownMode("preview")));
+
+  it("reports which state is on, and switches to the other", async () => {
+    const user = userEvent.setup();
+    render(<MarkdownModePicker />);
+
+    expect(screen.getByRole("button", { name: "Preview" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Source" }));
+    expect(screen.getByRole("button", { name: "Source" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Preview" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 });

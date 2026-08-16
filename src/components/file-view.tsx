@@ -29,17 +29,13 @@ import {
   useState,
   type FC,
   type ReactNode,
+  type Ref,
 } from "react";
-import {
-  CodeXmlIcon,
-  DownloadIcon,
-  EyeIcon,
-  FileIcon,
-  MusicIcon,
-} from "lucide-react";
+import { DownloadIcon, FileIcon, MusicIcon } from "lucide-react";
 
 import { HighlightedCode } from "@/components/assistant-ui/code-block";
 import { DotMatrix } from "@/components/assistant-ui/dot-matrix";
+import { useMarkdownMode } from "@/components/markdown-mode";
 import { MarkdownPreview } from "@/components/markdown-preview";
 import { fileUrl } from "@/lib/client";
 import { delimiterFor, parseDelimited } from "@/lib/csv";
@@ -55,6 +51,7 @@ import {
   suffixOf,
   type FileKind,
 } from "@/lib/files";
+import { useRememberedScroll } from "@/lib/scroll-memory";
 import { cn } from "@/lib/utils";
 import { useFileActivityMaybe } from "@/runtime/file-activity-provider";
 
@@ -70,11 +67,16 @@ type FileViewSize = "inline" | "full";
 
 /* ── The shared frame ───────────────────────────────────────────────── */
 
-const Frame: FC<{ children: ReactNode; className?: string }> = ({
-  children,
-  className,
-}) => (
+const Frame: FC<{
+  children: ReactNode;
+  className?: string;
+  /** For the frames that scroll, so `useRememberedScroll` can reach the box
+   *  that actually does it. A plain prop — React 19 stopped needing
+   *  `forwardRef` for this. */
+  ref?: Ref<HTMLDivElement>;
+}> = ({ children, className, ref }) => (
   <div
+    ref={ref}
     data-slot="file-view"
     className={cn(
       "bg-muted/30 flex items-center justify-center overflow-hidden rounded-lg border",
@@ -283,6 +285,7 @@ const AudioView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => 
 
 const TableView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
   const { loaded, failure } = useText(path);
+  const scroller = useRememberedScroll(path, size);
   if (failure) return <Unavailable path={path} reason={failure} size={size} />;
   if (!loaded) return <Loading path={path} size={size} />;
 
@@ -301,7 +304,10 @@ const TableView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => 
     <div className={cn("flex w-full flex-col", size === "full" && "h-full")}>
       {/* The scroll lives here, not on the page: a table thirty columns wide
           must not make the whole conversation scroll sideways. */}
-      <Frame className="block w-full min-h-0 flex-1 overflow-auto">
+      <Frame
+        ref={scroller}
+        className="document-scrollbar block w-full min-h-0 flex-1 overflow-auto"
+      >
         <table className="w-full border-collapse text-xs">
           <thead className="bg-muted/60 sticky top-0">
             <tr>
@@ -350,23 +356,24 @@ const TableView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => 
  * thing being inspected, and that rendering it hides the difference between a
  * file and its output. That argument holds for a file the agent just produced
  * and it is simply wrong for the far commoner case: a note out of the vault,
- * which was written to be read. So the reader picks, and the picker is right
- * there rather than buried — one control, two states, no menu.
+ * which was written to be read. So the reader picks.
  *
- * **The choice sticks for the session.** Somebody who wants source wants it for
- * the next file too, and a toggle that resets on every open is a toggle you
- * press all day. Held in a module variable rather than in storage: it is a mood
- * rather than a setting, and it should not outlive the tab.
+ * **The picker is not here.** It sits in the viewer's footer, next to the
+ * download link, because a control of its own costs a band of vertical space
+ * above every note whether anybody touches it or not — see
+ * `components/markdown-mode.tsx` for how the two halves find each other, and
+ * why that is a module rather than a context.
  */
-type MarkdownMode = "preview" | "source";
-let preferredMode: MarkdownMode = "preview";
-
 const MarkdownView: FC<{ path: string; size: FileViewSize }> = ({
   path,
   size,
 }) => {
   const { loaded, failure } = useText(path);
-  const [mode, setMode] = useState<MarkdownMode>(preferredMode);
+  const mode = useMarkdownMode();
+  // Preview and Source are the same file at wildly different heights, so they
+  // remember where they were separately — landing halfway down the source
+  // because that is halfway down the rendering would be worse than the top.
+  const scroller = useRememberedScroll(path, `${size}:${mode}`);
   // Null wherever the viewer is mounted outside the file-activity provider,
   // which is what makes following a link between notes optional rather than a
   // crash — see `useFileActivityMaybe`.
@@ -388,22 +395,15 @@ const MarkdownView: FC<{ path: string; size: FileViewSize }> = ({
     [],
   );
 
-  const choose = (next: MarkdownMode) => {
-    preferredMode = next;
-    setMode(next);
-  };
-
   if (failure) return <Unavailable path={path} reason={failure} size={size} />;
   if (!loaded) return <Loading path={path} size={size} />;
 
   return (
     <div className={cn("flex w-full flex-col", size === "full" && "h-full")}>
-      <div className="mb-1.5 flex shrink-0 justify-end">
-        <ModePicker mode={mode} onChoose={choose} />
-      </div>
       <Frame
+        ref={scroller}
         className={cn(
-          "block w-full overflow-auto",
+          "document-scrollbar block w-full overflow-auto",
           size === "full" ? "min-h-0 flex-1" : "max-h-80",
         )}
       >
@@ -441,52 +441,18 @@ const MarkdownView: FC<{ path: string; size: FileViewSize }> = ({
   );
 };
 
-/** The two states, as one object. `aria-pressed` rather than a radio group:
- *  these are two buttons that do a thing, not a field with a value. */
-const ModePicker: FC<{
-  mode: MarkdownMode;
-  onChoose: (mode: MarkdownMode) => void;
-}> = ({ mode, onChoose }) => (
-  <div
-    role="group"
-    aria-label="How to show this file"
-    className="bg-muted/50 inline-flex items-center gap-0.5 rounded-md border p-0.5"
-  >
-    {(
-      [
-        ["preview", "Preview", EyeIcon],
-        ["source", "Source", CodeXmlIcon],
-      ] as const
-    ).map(([value, label, Icon]) => (
-      <button
-        key={value}
-        type="button"
-        aria-pressed={mode === value}
-        onClick={() => onChoose(value)}
-        className={cn(
-          "focus-visible:ring-ring inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs outline-none focus-visible:ring-2",
-          mode === value
-            ? "bg-background text-foreground shadow-xs"
-            : "text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <Icon className="size-3.5" aria-hidden />
-        {label}
-      </button>
-    ))}
-  </div>
-);
-
 const TextView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
   const { loaded, failure } = useText(path);
+  const scroller = useRememberedScroll(path, size);
   if (failure) return <Unavailable path={path} reason={failure} size={size} />;
   if (!loaded) return <Loading path={path} size={size} />;
 
   return (
     <div className={cn("flex w-full flex-col", size === "full" && "h-full")}>
       <Frame
+        ref={scroller}
         className={cn(
-          "block w-full overflow-auto p-3",
+          "document-scrollbar block w-full overflow-auto p-3",
           size === "full" ? "min-h-0 flex-1" : "max-h-80",
         )}
       >

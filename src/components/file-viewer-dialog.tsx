@@ -13,6 +13,7 @@ import { useEffect, type FC } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from "lucide-react";
 
 import { FileView } from "@/components/file-view";
+import { MarkdownModePicker } from "@/components/markdown-mode";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import {
   Dialog,
@@ -22,7 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { fileUrl } from "@/lib/client";
-import { nameOf } from "@/lib/files";
+import { guessKind, nameOf } from "@/lib/files";
 import { useFileActivity } from "@/runtime/file-activity-provider";
 
 export const FileViewerDialog: FC = () => {
@@ -124,11 +125,20 @@ export const FileViewerDialog: FC = () => {
         </div>
 
         <div className="text-muted-foreground flex min-w-0 items-center justify-between gap-3 text-xs">
-          <span>
-            {many
-              ? `${viewing.index + 1} of ${viewing.paths.length}`
-              : " "}
-          </span>
+          {/* The footer is where a control belongs that would otherwise want a
+              band of its own above the file, costing a strip of height on every
+              note whether anybody touches it or not. `guessKind` rather than
+              `kindOf` because Markdown is settled by extension in both — it is
+              the one kind whose immediate answer and asked answer cannot
+              differ, so there is nothing to wait for. */}
+          <div className="flex min-w-0 items-center gap-3">
+            {guessKind(path) === "markdown" && <MarkdownModePicker />}
+            {many && (
+              <span className="shrink-0">
+                {viewing.index + 1} of {viewing.paths.length}
+              </span>
+            )}
+          </div>
           <a
             href={fileUrl(path)}
             download={nameOf(path)}

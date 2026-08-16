@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { recallPlace, rememberPlace } from "@/lib/scroll-memory";
+
 const sdk = vi.fn();
 
 // The whole client module is stubbed rather than just `sdk`: `fileUrl` and
@@ -310,6 +312,19 @@ describe("readText", () => {
       text: "after",
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops where you were in it too, for the same reason", async () => {
+    // The bytes and the scroll offset go stale on the same event. An offset
+    // into a document that has since been rewritten points at whatever happens
+    // to be there now, which is worse than starting at the top.
+    fetchMock.mockResolvedValue(reply("before"));
+    await readText("/srv/moving.md");
+    rememberPlace("/srv/moving.md", "full:preview", 640);
+
+    forgetFile("/srv/moving.md");
+
+    expect(recallPlace("/srv/moving.md", "full:preview")).toBe(0);
   });
 
   it("never caches a failure", async () => {

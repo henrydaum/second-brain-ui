@@ -25,6 +25,7 @@
  */
 
 import { authHeaders, fileUrl, sdk } from "@/lib/client";
+import { forgetPlaces } from "@/lib/scroll-memory";
 
 /* ── Naming ─────────────────────────────────────────────────────────── */
 
@@ -516,9 +517,12 @@ export function readText(path: string): Promise<WholeText> {
 
 /** Drop what was held for a path, because it is not that file any more. Called
  *  with every path a ledger poll turns up — the agent writing a file is exactly
- *  the event that makes a cached copy of it a lie. */
+ *  the event that makes a cached copy of it a lie, and it makes a remembered
+ *  scroll offset into one too: a place in a document that has since been
+ *  rewritten points at whatever happens to be there now. */
 export function forgetFile(path: string): void {
   texts.delete(path);
+  forgetPlaces(path);
 }
 
 /**

@@ -276,6 +276,77 @@
     width: 0;
     height: 0;
   }
+
+  /**
+   * A scroller for something you *read*, rather than something you skim.
+   *
+   * The global bar above is 6px and fully transparent until the pointer is over
+   * its scroller. That is exactly right for a list — the bar is chrome, and
+   * chrome that appears when reached for is chrome that stays out of the way.
+   * It is the wrong trade in the file viewer, where the bar is the only thing
+   * that says *how much of this note there is and where in it you are*, and
+   * where a person reading with the keyboard never hovers the scroller at all.
+   *
+   * So: always drawn, quietly, and darkening as it is approached and grabbed.
+   *
+   * **The width is padding, not thickness.** A 6px thumb is hard to catch and a
+   * 10px one drawn edge to edge looks like a gutter rail. `background-clip:
+   * padding-box` behind a transparent border gives a 6px thumb inside a 10px
+   * target, which is comfortable to hit and sits clear of the frame's own
+   * border instead of against it. Firefox has no equivalent, and `thin` is the
+   * closest honest answer there.
+   *
+   * `overscroll-behavior: contain` because this scroller is usually inside a
+   * dialog: reaching the end of a note should stop, not hand the momentum to
+   * the page behind it and scroll the conversation away underneath.
+   */
+  .document-scrollbar {
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--muted-foreground) 30%, transparent)
+      transparent;
+  }
+
+  .document-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .document-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .document-scrollbar::-webkit-scrollbar-thumb {
+    background-color: color-mix(
+      in srgb,
+      var(--muted-foreground) 22%,
+      transparent
+    );
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 9999px;
+  }
+
+  .document-scrollbar:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(
+      in srgb,
+      var(--muted-foreground) 38%,
+      transparent
+    );
+  }
+
+  .document-scrollbar::-webkit-scrollbar-thumb:hover,
+  .document-scrollbar::-webkit-scrollbar-thumb:active {
+    background-color: color-mix(
+      in srgb,
+      var(--muted-foreground) 58%,
+      transparent
+    );
+  }
+
+  .document-scrollbar::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
 
 /* Do not reset `box-shadow` here. Tailwind and the Radix-backed controls use
