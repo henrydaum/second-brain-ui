@@ -1,7 +1,7 @@
 /**
  * Showing a host file, whatever it turns out to be.
  *
- * One component, one prop, six outcomes — because the alternative is every
+ * One component, one prop, eight outcomes — because the alternative is every
  * caller deciding for itself what a `.png` is, and a drawer that draws files
  * differently from the transcript that produced them.
  *
@@ -22,15 +22,25 @@
  * to thirty lines each and they only make sense next to the frame they share.
  */
 
-import { useEffect, useState, type FC, type ReactNode } from "react";
 import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FC,
+  type ReactNode,
+} from "react";
+import {
+  CodeXmlIcon,
   DownloadIcon,
+  EyeIcon,
   FileIcon,
   MusicIcon,
 } from "lucide-react";
 
 import { HighlightedCode } from "@/components/assistant-ui/code-block";
 import { DotMatrix } from "@/components/assistant-ui/dot-matrix";
+import { MarkdownPreview } from "@/components/markdown-preview";
 import { fileUrl } from "@/lib/client";
 import { delimiterFor, parseDelimited } from "@/lib/csv";
 import {
@@ -46,6 +56,7 @@ import {
   type FileKind,
 } from "@/lib/files";
 import { cn } from "@/lib/utils";
+import { useFileActivityMaybe } from "@/runtime/file-activity-provider";
 
 /** How much of a table anybody reads in a pane. Past this it is a data set
  *  rather than a document, and the download link is the honest offer. */
@@ -331,6 +342,141 @@ const TableView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => 
   );
 };
 
+/**
+ * Markdown, rendered — with the source one click away.
+ *
+ * **Rendering it by default is a reversal, and a deliberate one.** This used to
+ * go through `TextView` on the argument that what the agent *wrote* is the
+ * thing being inspected, and that rendering it hides the difference between a
+ * file and its output. That argument holds for a file the agent just produced
+ * and it is simply wrong for the far commoner case: a note out of the vault,
+ * which was written to be read. So the reader picks, and the picker is right
+ * there rather than buried — one control, two states, no menu.
+ *
+ * **The choice sticks for the session.** Somebody who wants source wants it for
+ * the next file too, and a toggle that resets on every open is a toggle you
+ * press all day. Held in a module variable rather than in storage: it is a mood
+ * rather than a setting, and it should not outlive the tab.
+ */
+type MarkdownMode = "preview" | "source";
+let preferredMode: MarkdownMode = "preview";
+
+const MarkdownView: FC<{ path: string; size: FileViewSize }> = ({
+  path,
+  size,
+}) => {
+  const { loaded, failure } = useText(path);
+  const [mode, setMode] = useState<MarkdownMode>(preferredMode);
+  // Null wherever the viewer is mounted outside the file-activity provider,
+  // which is what makes following a link between notes optional rather than a
+  // crash — see `useFileActivityMaybe`.
+  const activity = useFileActivityMaybe();
+
+  /**
+   * Following a link, as a callback that never changes identity.
+   *
+   * Through a ref because the context value does change — a new one every time
+   * the agent touches a file — and a fresh callback would defeat the memo on
+   * `MarkdownPreview`, re-parsing the whole note each time. Nothing here needs
+   * the *current* activity except at the moment of a click, which is exactly
+   * what a ref is for.
+   */
+  const latest = useRef(activity);
+  latest.current = activity;
+  const openFile = useCallback(
+    (target: string) => latest.current?.view([target], 0),
+    [],
+  );
+
+  const choose = (next: MarkdownMode) => {
+    preferredMode = next;
+    setMode(next);
+  };
+
+  if (failure) return <Unavailable path={path} reason={failure} size={size} />;
+  if (!loaded) return <Loading path={path} size={size} />;
+
+  return (
+    <div className={cn("flex w-full flex-col", size === "full" && "h-full")}>
+      <div className="mb-1.5 flex shrink-0 justify-end">
+        <ModePicker mode={mode} onChoose={choose} />
+      </div>
+      <Frame
+        className={cn(
+          "block w-full overflow-auto",
+          size === "full" ? "min-h-0 flex-1" : "max-h-80",
+        )}
+      >
+        {mode === "preview" ? (
+          <MarkdownPreview
+            text={loaded.text}
+            path={path}
+            onOpenFile={activity ? openFile : undefined}
+            // A measure, not a full-bleed column: the dialog is as wide as the
+            // screen allows and prose set across all of it is unreadable. The
+            // inline copy is already narrow, so it only pays the padding.
+            className={cn(
+              "p-3",
+              size === "full" && "mx-auto max-w-[72ch] p-4 sm:p-6",
+            )}
+          />
+        ) : (
+          <HighlightedCode
+            code={loaded.text}
+            language="md"
+            // The `Frame` is already the surface; a second background inside it
+            // reads as a lighter panel floating in a darker one.
+            transparent
+            className="p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap"
+          />
+        )}
+      </Frame>
+      {loaded.truncated && (
+        <p className="text-muted-foreground mt-1.5 shrink-0 text-[11px]">
+          The first {formatBytes(loaded.text.length)} of{" "}
+          {formatBytes(loaded.total)} — download it to see the rest.
+        </p>
+      )}
+    </div>
+  );
+};
+
+/** The two states, as one object. `aria-pressed` rather than a radio group:
+ *  these are two buttons that do a thing, not a field with a value. */
+const ModePicker: FC<{
+  mode: MarkdownMode;
+  onChoose: (mode: MarkdownMode) => void;
+}> = ({ mode, onChoose }) => (
+  <div
+    role="group"
+    aria-label="How to show this file"
+    className="bg-muted/50 inline-flex items-center gap-0.5 rounded-md border p-0.5"
+  >
+    {(
+      [
+        ["preview", "Preview", EyeIcon],
+        ["source", "Source", CodeXmlIcon],
+      ] as const
+    ).map(([value, label, Icon]) => (
+      <button
+        key={value}
+        type="button"
+        aria-pressed={mode === value}
+        onClick={() => onChoose(value)}
+        className={cn(
+          "focus-visible:ring-ring inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs outline-none focus-visible:ring-2",
+          mode === value
+            ? "bg-background text-foreground shadow-xs"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <Icon className="size-3.5" aria-hidden />
+        {label}
+      </button>
+    ))}
+  </div>
+);
+
 const TextView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
   const { loaded, failure } = useText(path);
   if (failure) return <Unavailable path={path} reason={failure} size={size} />;
@@ -344,10 +490,10 @@ const TextView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
           size === "full" ? "min-h-0 flex-1" : "max-h-80",
         )}
       >
-        {/* Shown as source rather than rendered, including for Markdown. What
-            the agent wrote is the thing being inspected here, and rendering it
-            would quietly hide the difference between a file and its output.
-            Coloured by extension, through the same highlighter the chat's
+        {/* Shown as source, which for everything that reaches here is the only
+            thing it could be — Markdown, the one text format with a rendering
+            of its own, goes to `MarkdownView` above and keeps this as its other
+            half. Coloured by extension, through the same highlighter the chat's
             fenced blocks use — a file read here and the same file quoted in a
             reply should not look like two different things. */}
         <HighlightedCode
@@ -488,7 +634,7 @@ export const FileView: FC<{ path: string; size?: FileViewSize }> = ({
   const kind = useKind(path);
   if (kind === null) return <Loading path={path} size={size} />;
 
-  // No `default`: a seventh kind is a compile error here rather than a blank
+  // No `default`: a ninth kind is a compile error here rather than a blank
   // pane somebody notices in a month.
   switch (kind) {
     case "image":
@@ -499,6 +645,8 @@ export const FileView: FC<{ path: string; size?: FileViewSize }> = ({
       return <AudioView path={path} size={size} />;
     case "table":
       return <TableView path={path} size={size} />;
+    case "markdown":
+      return <MarkdownView path={path} size={size} />;
     case "text":
       return <TextView path={path} size={size} />;
     case "embed":

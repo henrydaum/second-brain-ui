@@ -23,6 +23,7 @@ const {
   kindOf,
   nameOf,
   readText,
+  resolveAgainst,
   suffixOf,
 } = await import("@/lib/files");
 
@@ -32,7 +33,7 @@ describe("guessIconKind", () => {
     ["results.csv", "table"],
     ["analysis.PY", "code"],
     ["component.tsx", "code"],
-    ["notes.md", "download"],
+    ["notes.md", "markdown"],
   ])("classifies %s as %s", (path, kind) => {
     expect(guessIconKind(path)).toBe(kind);
   });
@@ -77,6 +78,38 @@ describe("naming", () => {
   });
 });
 
+describe("resolveAgainst", () => {
+  it("joins a relative path to the directory it was written in", () => {
+    expect(resolveAgainst("/srv/vault", "attachments/chart.png")).toBe(
+      "/srv/vault/attachments/chart.png",
+    );
+    expect(resolveAgainst("/srv/vault/daily", "../plan.md")).toBe(
+      "/srv/vault/plan.md",
+    );
+    expect(resolveAgainst("/srv/vault", "./here.md")).toBe("/srv/vault/here.md");
+  });
+
+  it("leaves an already-absolute path alone", () => {
+    expect(resolveAgainst("/srv/vault", "/etc/hosts")).toBe("/etc/hosts");
+    expect(resolveAgainst("/srv/vault", "C:\\notes\\plan.md")).toBe(
+      "C:\\notes\\plan.md",
+    );
+  });
+
+  it("keeps the separator the host used", () => {
+    expect(resolveAgainst("C:\\Users\\henry", "notes\\plan.md")).toBe(
+      "C:\\Users\\henry\\notes\\plan.md",
+    );
+  });
+
+  it("stops at the root rather than walking off the top of it", () => {
+    // A note with one `../` too many should resolve to somewhere merely wrong,
+    // not to something that reads as a different volume.
+    expect(resolveAgainst("/srv", "../../../etc/hosts")).toBe("/etc/hosts");
+    expect(resolveAgainst("C:\\", "..\\..\\x.md")).toBe("C:\\x.md");
+  });
+});
+
 describe("formatBytes", () => {
   it("scales into readable units", () => {
     expect(formatBytes(512)).toBe("512 B");
@@ -102,6 +135,21 @@ describe("kindOf", () => {
     return expect(kindOf("/srv/report.csv")).resolves.toBe("table");
   });
 
+  it("renders a .md even though modality calls it text", async () => {
+    // Same disagreement as .csv, and the same resolution: "text" is the right
+    // answer to how the model should ingest a note and the wrong one for how a
+    // person should read it.
+    sdk.mockResolvedValue("text");
+    await expect(kindOf("/srv/vault/plan.md")).resolves.toBe("markdown");
+    await expect(kindOf("/srv/vault/README.markdown")).resolves.toBe("markdown");
+    // Never even asked: the extension decided it.
+    expect(sdk).not.toHaveBeenCalled();
+
+    // `.mdx` is deliberately not in that set — it is source with imports and
+    // JSX in it, and rendering the JSX away would hide most of the file.
+    await expect(kindOf("/srv/vault/post.mdx")).resolves.toBe("text");
+  });
+
   it("embeds a .pdf even though modality calls it unknown", async () => {
     sdk.mockResolvedValue("unknown");
     await expect(kindOf("/srv/paper.pdf")).resolves.toBe("embed");
@@ -117,7 +165,7 @@ describe("kindOf", () => {
     sdk.mockResolvedValueOnce("audio");
     await expect(kindOf("/srv/a.wav")).resolves.toBe("audio");
     sdk.mockResolvedValueOnce("text");
-    await expect(kindOf("/srv/a.md")).resolves.toBe("text");
+    await expect(kindOf("/srv/a.log")).resolves.toBe("text");
   });
 
   it("offers anything else as a download", async () => {

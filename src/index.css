@@ -414,6 +414,21 @@
     margin-top: 0.375rem;
   }
 
+  /* A GFM task list, which a vault note is half made of. The checkbox *is* the
+   * marker, so the bullet goes and the item shifts back into the space the
+   * bullet had — otherwise every task sits one indent further in than the plain
+   * items around it. Preflight leaves the box itself alone; only its colour and
+   * its alignment to the first line of text need saying. */
+  .aui-md :where(li.task-list-item) {
+    list-style: none;
+    margin-inline-start: -1.25rem;
+  }
+  .aui-md :where(li.task-list-item) > :where(input[type="checkbox"]) {
+    margin-inline-end: 0.5rem;
+    vertical-align: baseline;
+    accent-color: var(--primary);
+  }
+
   .aui-md :where(a) {
     color: var(--primary);
     text-decoration: underline;

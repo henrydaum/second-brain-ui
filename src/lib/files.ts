@@ -7,8 +7,9 @@
  * **Modality does not decide the renderer.** `parse.modality` answers the
  * question *how should the model ingest this*, and the viewer is asking a
  * different one — *how should a person look at this*. For most files the two
- * agree. For three they legitimately do not: `.csv` answers `"text"` and always
- * will, and `.pdf` and `.svg` answer `"unknown"` while the browser renders both
+ * agree. For a handful they legitimately do not: `.csv` and `.md` answer
+ * `"text"` and always will, though one is a table and the other is a document,
+ * and `.pdf` and `.svg` answer `"unknown"` while the browser renders both
  * perfectly. `"unknown"` means *no parser is registered*, never *not
  * renderable*. So `kindOf` below checks those extensions first and only then
  * asks.
@@ -38,6 +39,47 @@ export const nameOf = (path: string) => path.split(/[\\/]/).pop() || path;
 export function dirOf(path: string): string {
   const cut = path.search(/[\\/][^\\/]*$/);
   return cut <= 0 ? "" : path.slice(0, cut);
+}
+
+/**
+ * A relative path, made absolute against the directory it was written in.
+ *
+ * A Markdown note refers to its neighbours the way a person would —
+ * `attachments/chart.png`, `../plan.md` — and nothing else in this app has ever
+ * needed to resolve one, because every other path arrives from the kernel
+ * already whole.
+ *
+ * **The separator is the base's, not this platform's.** These are host paths
+ * and the host is somebody else's machine; `node:path` would answer with
+ * Windows separators in a browser bundle that never runs on Windows, and does
+ * not exist there anyway.
+ *
+ * `..` stops at the root rather than walking off the top of it, so a note with
+ * one `../` too many resolves to a path that is merely wrong instead of to
+ * something that reads as a different drive.
+ */
+export function resolveAgainst(dir: string, relative: string): string {
+  // Already absolute — POSIX, a Windows drive, or a UNC share. Nothing to join.
+  if (/^([\\/]|[a-z]:[\\/])/i.test(relative)) return relative;
+
+  const separator = dir.includes("\\") ? "\\" : "/";
+  const parts = dir ? dir.split(/[\\/]/) : [];
+  // A leading "" (POSIX root) or a bare "C:" is the floor; popping it would
+  // turn an absolute path into a relative one halfway through the walk.
+  const atRoot = () =>
+    parts.length === 0 ||
+    (parts.length === 1 && (parts[0] === "" || parts[0].endsWith(":")));
+
+  for (const step of relative.split(/[\\/]/)) {
+    if (step === "" || step === ".") continue;
+    if (step === "..") {
+      if (!atRoot()) parts.pop();
+      continue;
+    }
+    parts.push(step);
+  }
+
+  return parts.join(separator);
 }
 
 /**
@@ -84,6 +126,7 @@ export type FileKind =
   | "video"
   | "audio"
   | "table"
+  | "markdown"
   | "text"
   | "embed"
   | "download";
@@ -95,6 +138,18 @@ export type FileIconKind = FileKind | "code";
 
 /** Extensions a person wants as a table, whatever the model wants. */
 const TABLE = new Set([".csv", ".tsv"]);
+
+/**
+ * Extensions a person wants *rendered*, whatever the model wants.
+ *
+ * The same shape of disagreement as `.csv`: modality answers `"text"` and is
+ * right — the model should ingest a note as text — while a reader opening one
+ * wants the headings, the lists and the tables it was written to have.
+ *
+ * `.mdx` is deliberately absent. It is a source format with imports and JSX in
+ * it, and rendering the JSX away hides most of the file.
+ */
+const MARKDOWN = new Set([".md", ".markdown", ".mdown", ".mkd", ".mkdn"]);
 
 /** Programming and source/config formats that benefit from a code glyph.
  * This is deliberately icon-only: `kindOf` still asks the kernel how to open
@@ -217,14 +272,17 @@ function modalityOf(suffix: string): Promise<string> {
  * The order is the whole point and it is not modality-first:
  *
  * 1. `.csv`/`.tsv` → a table, because modality says `"text"` and means it.
- * 2. `.pdf`/`.svg` → an embed, because modality says `"unknown"` and the
+ * 2. `.md` and friends → Markdown, for the same reason: `"text"` is the right
+ *    answer to the question the kernel was asked and the wrong one here.
+ * 3. `.pdf`/`.svg` → an embed, because modality says `"unknown"` and the
  *    browser disagrees.
- * 3. then ask, and take image/video/audio/text at their word.
- * 4. anything left is a download, which is what `/files` would serve it as.
+ * 4. then ask, and take image/video/audio/text at their word.
+ * 5. anything left is a download, which is what `/files` would serve it as.
  */
 export async function kindOf(path: string): Promise<FileKind> {
   const suffix = suffixOf(path);
   if (TABLE.has(suffix)) return "table";
+  if (MARKDOWN.has(suffix)) return "markdown";
   if (EMBED.has(suffix)) return "embed";
 
   switch (await modalityOf(suffix)) {
@@ -255,6 +313,7 @@ export async function kindOf(path: string): Promise<FileKind> {
 export function guessKind(path: string): FileKind {
   const suffix = suffixOf(path);
   if (TABLE.has(suffix)) return "table";
+  if (MARKDOWN.has(suffix)) return "markdown";
   if (EMBED.has(suffix)) return "embed";
   switch (STATIC[suffix]) {
     case "image":

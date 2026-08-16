@@ -94,6 +94,20 @@ export function useFileActivity(): FileActivity {
 }
 
 /**
+ * The same context, for a caller that has to work without it.
+ *
+ * `FileView` is the one: it is mounted inside the provider everywhere the app
+ * renders it, and standalone in its own tests — and a Markdown note that only
+ * *offers* to follow a link to its neighbour should not be the thing that makes
+ * rendering one outside the tree throw. Every other reader wants the loud
+ * version above, because a Files button with no file activity behind it is a
+ * wiring mistake rather than a degraded mode.
+ */
+export function useFileActivityMaybe(): FileActivity | null {
+  return use(FileActivityContext);
+}
+
+/**
  * Which turn incremental rows belong to.
  *
  * **By identity, never by time.** A live turn is stamped `Date.now()` in this

@@ -1,5 +1,6 @@
 import { useState, type FC } from "react";
 import {
+  BookTextIcon,
   FileCode2Icon,
   FileIcon,
   FileTextIcon,
@@ -19,6 +20,10 @@ const KIND_ICONS: Record<FileIconKind, typeof FileIcon> = {
   video: VideoIcon,
   audio: MusicIcon,
   table: SheetIcon,
+  // A note is not a text file with a different extension, and the list is
+  // where that shows: a vault is mostly Markdown, so one glyph for both would
+  // make every row look the same.
+  markdown: BookTextIcon,
   text: FileTextIcon,
   embed: FileTextIcon,
   download: FileIcon,
