@@ -170,7 +170,33 @@ export const CommandPanel: FC = () => {
                         value={index}
                         checked={selected}
                         disabled={busy}
-                        onChange={() => {
+                        /**
+                         * **Sending is on the click, not on the change.**
+                         *
+                         * A step whose default is one of its choices arrives
+                         * with that choice already checked, and re-picking a
+                         * checked radio changes nothing, so it fires no change
+                         * event. With the submission hanging off `onChange`
+                         * that step was a dead end: no Continue button (picking
+                         * is what continues), and no way to deselect and pick
+                         * again — which is exactly what a one-choice step like
+                         * "how should Second Brain connect to this model" looks
+                         * like. Clicking, including a keyboard Space or the
+                         * arrow keys that move the selection, always fires
+                         * click. `onChange` is left to record selection only,
+                         * so a choice never advances the form twice.
+                         */
+                        onChange={() => setSelectedChoice(index)}
+                        onClick={() => {
+                          setSelectedChoice(index);
+                          void advance(String(choice.value));
+                        }}
+                        /* Space fires click on its own; Enter does not, and a
+                           choice step has no submit button for the browser to
+                           press implicitly, so it would otherwise do nothing. */
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") return;
+                          event.preventDefault();
                           setSelectedChoice(index);
                           void advance(String(choice.value));
                         }}
