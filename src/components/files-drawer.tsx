@@ -304,6 +304,10 @@ const Row: FC<{
       <FileThumbnail
         name={entry.path}
         path={entry.gone ? undefined : entry.path}
+        // The last thing that happened to this file, which is what makes a
+        // cached thumbnail safe: the agent editing a picture changes the
+        // timestamp, and a changed timestamp is a different cache key.
+        version={entry.ts}
         className="size-9 rounded"
         iconClassName="size-4"
       />

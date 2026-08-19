@@ -39,6 +39,7 @@ import {
 
 import { forgetFile } from "@/lib/files";
 import { readLedger, toFileEvents, type FileEvent } from "@/lib/ledger";
+import { forgetThumbnail } from "@/lib/thumbnails";
 import {
   bindByTime,
   countOf,
@@ -208,7 +209,10 @@ export function FileActivityProvider({ children }: PropsWithChildren) {
     // A row naming a file is the only notice we get that a file we may be
     // holding a copy of is no longer that file. Reading a stale version out of
     // the cache is worse than reading it again.
-    for (const event of events) forgetFile(event.path);
+    for (const event of events) {
+      forgetFile(event.path);
+      forgetThumbnail(event.path);
+    }
 
     const id = openTurnId(turns.current);
     setLive((previous) => {
