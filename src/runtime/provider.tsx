@@ -63,7 +63,7 @@ import {
   type ConversationFilter,
 } from "@/lib/conversation-categories";
 import { connect, type StreamStatus } from "@/lib/events";
-import { readConversation, type ConversationRead } from "@/lib/history";
+import { readConversation } from "@/lib/history";
 import { isPendingInput, type InputRequest } from "@/lib/input-requests";
 // `Notification` deliberately shadows the DOM global of that name here. Ours is
 // a row in the kernel's table; the browser's is a desktop popup this app does
@@ -599,35 +599,23 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const [conversationId, setConversationId] = useState<number | null>(null);
   const conversationIdRef = useRef<number | null>(null);
   conversationIdRef.current = conversationId;
-  /**
-   * Where the scrollback on screen starts, and whether anything precedes it.
-   *
-   * Refs rather than state for the cursor, because `loadOlderMessages` reads
-   * it and must not be rebuilt every time a page lands — the same reason
-   * `conversationsRef` is one. `scrollbackHasMore` is state because the button
-   * that offers the next page is drawn from it.
-   */
-  const oldestRowRef = useRef<number | null>(null);
-  const [scrollbackHasMore, setScrollbackHasMore] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   /** Guards against two pages of the same cursor being in flight at once — an
    *  intersection observer will happily fire again before the first returns. */
   const loadingOlderRef = useRef(false);
-
   /**
-   * Adopt a freshly read page as the whole scrollback.
+   * The paging cursor, readable from a callback without being a dependency of
+   * one — the same trick `conversationsRef` plays.
    *
-   * One helper because four call sites replace history — boot, an identity
-   * switch, opening a conversation, and a stale-tab refetch — and a cursor set
-   * at three of them is worse than one set at none: paging would work until
-   * you arrived by the fourth route, and then silently stop.
+   * It *lives* in the reducer, beside the turns it describes, because it was
+   * provider state briefly and that was a mistake: six sites replace the
+   * scrollback and every one of them had to remember to update the cursor too.
+   * One did not. Now the `history` action carries it and forgetting is a type
+   * error.
    */
-  const adoptScrollback = useCallback((read: ConversationRead) => {
-    oldestRowRef.current = read.oldestId;
-    setScrollbackHasMore(read.hasMore);
-    setLoadingOlderMessages(false);
-    loadingOlderRef.current = false;
-  }, []);
+  const scrollbackRef = useRef(state.scrollback);
+  scrollbackRef.current = state.scrollback;
+  const scrollbackHasMore = state.scrollback.hasMore;
   conversationsRef.current = conversations;
   /**
    * `refreshConversations`, reachable from callbacks declared above it.
@@ -799,8 +787,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         if (bound !== null) {
           const read = await readConversation(bound);
           if (!cancelled) {
-            dispatch({ type: "history", turns: read.turns });
-            adoptScrollback(read);
+            dispatch({ type: "history", turns: read.turns,
+                       hasMore: read.hasMore, oldestId: read.oldestId });
             setConversationId(bound);
             setOpenConversationRow(read.conversation);
           }
@@ -892,8 +880,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       conversationIdRef.current = bound;
       setConversationId(bound);
       const read = await readConversation(bound);
-      dispatch({ type: "history", turns: read.turns });
-      adoptScrollback(read);
+      dispatch({ type: "history", turns: read.turns,
+                 hasMore: read.hasMore, oldestId: read.oldestId });
       setOpenConversationRow(read.conversation);
     } catch (error) {
       report(error);
@@ -1581,7 +1569,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    */
   const loadOlderMessages = useCallback(async () => {
     const id = conversationIdRef.current;
-    const before = oldestRowRef.current;
+    const before = scrollbackRef.current.oldestId;
     if (id === null || before === null) return;
     if (loadingOlderRef.current) return;
     loadingOlderRef.current = true;
@@ -1591,11 +1579,16 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       // Switching conversations mid-flight makes this page belong to one
       // nobody is looking at. Same guard `noteCompaction` makes.
       if (conversationIdRef.current !== id) return;
-      dispatch({ type: "olderTurns", turns: read.turns });
-      // Only advance the cursor if the page actually carried something, or a
-      // page of rows the client renders none of would strand it forever.
-      if (read.oldestId !== null) oldestRowRef.current = read.oldestId;
-      setScrollbackHasMore(read.hasMore && read.oldestId !== null);
+      dispatch({
+        type: "olderTurns",
+        turns: read.turns,
+        // A page that carried nothing renderable still moves the cursor, or
+        // the next request asks for the same rows forever. `hasMore` is
+        // conditioned on there being a cursor at all, since without one there
+        // is no way to ask again.
+        hasMore: read.hasMore && read.oldestId !== null,
+        oldestId: read.oldestId ?? scrollbackRef.current.oldestId,
+      });
     } catch (error) {
       report(error);
     } finally {
@@ -1630,8 +1623,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
           return;
         }
         const read = await readConversation(id);
-        dispatch({ type: "history", turns: read.turns });
-        adoptScrollback(read);
+        dispatch({ type: "history", turns: read.turns,
+                   hasMore: read.hasMore, oldestId: read.oldestId });
         setConversationId(id);
         setOpenConversationRow(read.conversation);
         await syncSession();
@@ -1664,9 +1657,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       });
       // Not a `setState` no-op: `history` also clears a half-answered form and
       // a finished command's panel, which is what "start over" means here.
-      dispatch({ type: "history", turns: [] });
-      adoptScrollback({ turns: [], conversation: null, hasMore: false,
-                        oldestId: null });
+      dispatch({ type: "history", turns: [], hasMore: false, oldestId: null });
       setConversationId(null);
       setOpenConversationRow(null);
       await refreshConversations();
@@ -1694,7 +1685,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         // (`_detach_deleted_conversation`); this catches our own state up so
         // the header stops naming a conversation that is gone.
         if (id === conversationId) {
-          dispatch({ type: "history", turns: [] });
+          dispatch({ type: "history", turns: [], hasMore: false,
+                     oldestId: null });
           setConversationId(null);
           setOpenConversationRow(null);
         }
@@ -1942,9 +1934,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     const id = session?.conversation_id ?? null;
     if (id === null) return;
     const read = await readConversation(id);
-    dispatch({ type: "history", turns: read.turns });
-    adoptScrollback(read);
-  }, [adoptScrollback]);
+    dispatch({ type: "history", turns: read.turns,
+               hasMore: read.hasMore, oldestId: read.oldestId });
+  }, []);
 
   const runtime = useExternalStoreRuntime({
     messages: state.turns,

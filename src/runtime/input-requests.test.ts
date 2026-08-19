@@ -46,7 +46,7 @@ describe("a question survives what the conversation does", () => {
     // the agent sat blocked until its 300s timeout.
     const questions = run({ type: "raised", request: ask("approve_1") });
 
-    reduce(initialState, { type: "history", turns: [] });
+    reduce(initialState, { type: "history", turns: [], hasMore: false, oldestId: null });
 
     expect(held(questions)).toEqual(["approve_1"]);
   });

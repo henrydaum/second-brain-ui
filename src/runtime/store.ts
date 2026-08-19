@@ -194,6 +194,14 @@ export type State = {
    * carries text and no stream id, the comparison has to be on the text itself.
    * Bounded, because this only ever needs to catch a repeat of something recent.
    */
+  /**
+   * Where the scrollback on screen starts, and whether more precedes it.
+   *
+   * Beside the turns rather than in the provider, because it is a fact *about*
+   * them: `conv.read` answers with a page, and which page is not something a
+   * separate piece of state can be trusted to stay in step with.
+   */
+  scrollback: { hasMore: boolean; oldestId: number | null };
   shownText: string[];
   /**
    * Per live stream, the text an earlier half of a split reply already shows.
@@ -215,6 +223,7 @@ export const initialState: State = {
   suppressNextCancellationNotice: false,
   buttons: [],
   error: null,
+  scrollback: { hasMore: false, oldestId: null },
   shownText: [],
   carried: {},
 };
@@ -238,8 +247,17 @@ export type Action =
   /** Replace the latest optimistic user-file records with the canonical
    * cached paths read from its newly stored conversation row. */
   | { type: "hydrateSentAttachments"; attachments: MessageAttachment[] }
-  /** Scrollback, read from `conv.read` at boot. Replaces everything. */
-  | { type: "history"; turns: Turn[] }
+  /**
+   * Scrollback, read from `conv.read` at boot. Replaces everything.
+   *
+   * **The paging cursor rides along, and that is the point.** It used to be
+   * set separately by the provider after each of these, which meant six call
+   * sites had to remember — and one of them (deleting the conversation you are
+   * reading) did not, leaving a "load earlier" affordance on screen for a
+   * conversation that no longer existed. Carrying it here makes forgetting a
+   * type error instead of a silent one.
+   */
+  | { type: "history"; turns: Turn[]; hasMore: boolean; oldestId: number | null }
   /**
    * An older page, read as somebody scrolls up. Goes on the *front*.
    *
@@ -250,7 +268,12 @@ export type Action =
    * scrolled up to read something would watch the turn they were waiting on
    * disappear.
    */
-  | { type: "olderTurns"; turns: Turn[] }
+  | {
+      type: "olderTurns";
+      turns: Turn[];
+      hasMore: boolean;
+      oldestId: number | null;
+    }
   /**
    * A compaction marker read back after one happened, appended to what is on
    * screen.
@@ -517,18 +540,29 @@ export function reduce(state: State, action: Action): State {
       // the stream replays the real question within a round trip, this read
       // takes two or three, and the later dispatch threw away what had just
       // arrived. See `runtime/input-requests.ts`.
-      return { ...initialState, turns: action.turns };
+      return {
+        ...initialState,
+        turns: action.turns,
+        scrollback: { hasMore: action.hasMore, oldestId: action.oldestId },
+      };
 
     case "olderTurns": {
       // Ids are the guard rather than a nicety. A page boundary can be re-read
       // — a retried request, a cursor asked for twice — and a duplicated turn
       // is not merely untidy: `toTurns` keys stored turns by row id, so React
       // would see two children with one key and drop one of them, silently.
-      if (action.turns.length === 0) return state;
       const known = new Set(state.turns.map((turn) => turn.id));
       const fresh = action.turns.filter((turn) => !known.has(turn.id));
-      if (fresh.length === 0) return state;
-      return { ...state, turns: [...fresh, ...state.turns] };
+      // The cursor moves even when the page carried nothing this can render —
+      // a page of rows that are all bookkeeping still advances where the next
+      // one starts, and `hasMore` going false is exactly how the affordance
+      // knows to disappear.
+      const scrollback = { hasMore: action.hasMore, oldestId: action.oldestId };
+      const settled =
+        scrollback.hasMore === state.scrollback.hasMore &&
+        scrollback.oldestId === state.scrollback.oldestId;
+      if (fresh.length === 0 && settled) return state;
+      return { ...state, turns: [...fresh, ...state.turns], scrollback };
     }
 
     case "said": {
