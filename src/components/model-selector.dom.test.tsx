@@ -35,6 +35,9 @@ describe("compactModelName", () => {
   it.each([
     ["anthropic/sonnet-4.6", "Sonnet 4.6"],
     ["openai/gpt-5.4", "GPT 5.4"],
+    ["minimax/minimax-m3", "MiniMax M3"],
+    ["deepseek-v3.2", "DeepSeek V3.2"],
+    ["openai/gpt-oss-120b", "GPT OSS 120B"],
     ["claude_opus", "Claude Opus"],
     ["gateway/team/model-name", "Model Name"],
     ["gateway/team/", "Team"],
