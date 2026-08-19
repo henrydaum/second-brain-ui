@@ -13,7 +13,14 @@
  * nothing here is passed any props about the conversation.
  */
 
-import { useEffect, useState, type FC } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FC,
+} from "react";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -62,6 +69,7 @@ import { activityFor, type Activity } from "@/lib/activity";
 import { elapsedLabel, fullTimestamp, shortTimestamp } from "@/lib/time";
 import { FINE_POINTER_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
+import { useConversations } from "@/runtime/provider";
 import { SENT_AT } from "@/runtime/convert";
 
 /**
@@ -171,6 +179,133 @@ const userMessageComponents = {
   tools: { Fallback: ToolFallback },
 } as const;
 
+/**
+ * The top of the scrollback, and the way further up.
+ *
+ * `conv.read` answers with a page rather than a whole conversation, so there
+ * is genuinely more above — this is what asks for it.
+ *
+ * **The scroll anchoring is the whole difficulty.** Prepending rows moves
+ * everything already on screen down by however tall the new rows are, so
+ * without correction the reader is thrown an arbitrary distance from the line
+ * they were reading. Recording `scrollHeight` before the page lands and adding
+ * the difference back afterwards keeps the same content under the same pixel.
+ * It has to happen before the browser paints, which is what
+ * `requestAnimationFrame` inside a layout-effect-shaped callback buys.
+ *
+ * Loading is triggered by an observer rather than a button press, but the
+ * button is still there and still real: an observer that never fires — because
+ * the sentinel is offscreen, because the browser lacks the API — leaves the
+ * person a way up, and one that fires does not need them to press it.
+ */
+const LoadOlder: FC = () => {
+  const { scrollbackHasMore, loadingOlderMessages, loadOlderMessages } =
+    useConversations();
+  const sentinel = useRef<HTMLDivElement | null>(null);
+  /** How tall the scrollback was before a page landed, or null when idle.
+   *  A ref rather than state: writing it must not cause the render whose
+   *  effect is about to read it. */
+  const anchor = useRef<{ height: number; top: number } | null>(null);
+  const turns = useAuiState((s) => s.thread.messages.length);
+
+  /** Whichever ancestor actually scrolls. Walked rather than held by ref,
+   *  because the element belongs to assistant-ui's `ThreadPrimitive.Viewport`
+   *  and is not ours. */
+  const viewportOf = (node: HTMLElement | null) => {
+    let scroller: HTMLElement | null = node?.parentElement ?? null;
+    while (scroller && scroller.scrollHeight <= scroller.clientHeight) {
+      scroller = scroller.parentElement;
+    }
+    return scroller;
+  };
+
+  /**
+   * Put the reader back on the line they were reading.
+   *
+   * **In a layout effect, keyed on the turn count** — not in a callback after
+   * the `await`. `loadOlderMessages` resolves when the dispatch is *scheduled*,
+   * not when React has committed the new rows, so measuring there (even inside
+   * `requestAnimationFrame`) can read the pre-prepend height and compute a
+   * correction of zero. That produces exactly the jump this exists to prevent,
+   * and only sometimes, which is the worst way for it to be wrong. A layout
+   * effect runs after commit and before paint, which is the one moment the new
+   * height is real and nobody has seen it yet.
+   */
+  useLayoutEffect(() => {
+    const held = anchor.current;
+    if (!held) return;
+    anchor.current = null;
+    const viewport = viewportOf(sentinel.current);
+    if (!viewport) return;
+    // `scroll-smooth` is on the viewport, and animating this would show the
+    // reader sliding away from their line and back. Assigning `scrollTop`
+    // rather than calling `scrollTo` because the smooth behaviour is CSS, and
+    // a direct assignment is not subject to it.
+    viewport.scrollTop = held.top + (viewport.scrollHeight - held.height);
+  }, [turns]);
+
+  const loadAnchored = useCallback(async () => {
+    const viewport = viewportOf(sentinel.current);
+    if (viewport) {
+      anchor.current = { height: viewport.scrollHeight, top: viewport.scrollTop };
+    }
+    await loadOlderMessages();
+  }, [loadOlderMessages]);
+
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !scrollbackHasMore || loadingOlderMessages) return;
+    if (typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadAnchored();
+      },
+      // A little ahead of the edge, so the page is on its way before the reader
+      // arrives at the gap rather than after. Restoring the anchor above is
+      // also what stops this cascading: the correction scrolls the viewport
+      // down past everything that just arrived, which carries the sentinel back
+      // out of view. Without it the sentinel stays put and fires again
+      // immediately, pulling page after page in one burst.
+      { rootMargin: "400px 0px 0px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [scrollbackHasMore, loadingOlderMessages, loadAnchored]);
+
+  if (!scrollbackHasMore) return null;
+
+  return (
+    <div
+      ref={sentinel}
+      className="mx-auto w-full max-w-(--thread-max-width) py-2"
+      aria-busy={loadingOlderMessages || undefined}
+    >
+      {loadingOlderMessages ? (
+        // Standing in for the turns about to arrive, so the gap fills with
+        // something the shape of the answer rather than with nothing.
+        <div className="flex animate-pulse flex-col gap-y-8" aria-hidden>
+          <div className="ml-auto h-10 w-2/5 rounded-2xl bg-muted" />
+          <div className="flex flex-col gap-2">
+            <div className="h-4 w-11/12 rounded bg-muted" />
+            <div className="h-4 w-4/5 rounded bg-muted" />
+          </div>
+        </div>
+      ) : (
+        <div className="flex justify-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void loadAnchored()}
+            className="text-muted-foreground text-xs"
+          >
+            Load earlier messages
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const Thread: FC = () => {
   // A conversation with nothing in it centres the composer, the way a new chat
   // does everywhere else. The zero-message geometry applies during loading as
@@ -223,6 +358,11 @@ export const Thread: FC = () => {
             tall as the strip, or a copy button would sit on top of the next
             message. Everything else about the rhythm is unchanged: one spacing
             between every pair of messages, whoever they are from. */}
+        {/* Outside the `empty:hidden` list below, and above it: this is the
+            top of the conversation, and it must not be part of the run of
+            messages whose spacing that container owns. */}
+        <LoadOlder />
+
         <div className="mb-14 flex flex-col gap-y-8 empty:hidden">
           <ThreadPrimitive.Messages>
             {({ message }) => {

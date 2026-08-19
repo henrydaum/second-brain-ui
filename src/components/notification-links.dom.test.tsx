@@ -116,6 +116,9 @@ function stub(over: Partial<provider.SecondBrain>) {
     renameConversation: vi.fn(),
     categoriseConversation: vi.fn(),
     conversationsHasMore: false,
+    scrollbackHasMore: false,
+    loadingOlderMessages: false,
+    loadOlderMessages: vi.fn(),
     loadMoreConversations: vi.fn(),
     conversationCategories: [],
     conversationFilter: { type: "category", category: null } as const,
@@ -355,6 +358,7 @@ describe("Settings lands where it was asked to", () => {
         buttons: [],
         error: null,
         shownText: [],
+      scrollback: { hasMore: false, oldestId: null },
         carried: {},
         form: {
           name: "agent",

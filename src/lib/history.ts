@@ -371,6 +371,19 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
 export type ConversationRead = {
   turns: Turn[];
   /**
+   * Whether the conversation continues above what came back.
+   *
+   * `conv.read` answers with a *page* — the newest one unless asked otherwise
+   * — because a transcript grows without limit and a whole one eventually
+   * exceeds what the kernel can put on one wire message. It used to answer
+   * with everything, which is how an 18 MB conversation stopped the frontend
+   * from serving anything at all.
+   */
+  hasMore: boolean;
+  /** The id of the oldest row on this page — the cursor for the next one up.
+   *  `null` only when the page is empty. */
+  oldestId: number | null;
+  /**
    * The conversation's own row.
    *
    * **The open conversation is session state, not a row in the sidebar's
@@ -397,23 +410,62 @@ export type ConversationRead = {
  * therefore costs no Request of its own — it reads what opening the
  * conversation had already fetched.
  */
-export async function readConversation(id: number): Promise<ConversationRead> {
+/** How to page. `before` walks upwards from a row already on screen. */
+export type ReadOptions = {
+  /** Ask for the newest rows *older* than this id, rather than the newest. */
+  before?: number | null;
+  /** Rows to ask for. The server bounds the answer by bytes regardless, so
+   *  this is a preference and not a guarantee — see `hasMore`. */
+  limit?: number | null;
+};
+
+export async function readConversation(
+  id: number,
+  options: ReadOptions = {},
+): Promise<ConversationRead> {
+  const request: Record<string, unknown> = { id, details: true };
+  if (typeof options.before === "number") request.before_id = options.before;
+  if (typeof options.limit === "number") request.limit = options.limit;
+
   const data = await sdk<
     | StoredMessage[]
-    | { messages?: StoredMessage[]; conversation?: Conversation | null }
+    | {
+        messages?: StoredMessage[];
+        conversation?: Conversation | null;
+        has_more?: boolean;
+        oldest_id?: number | null;
+      }
     | null
-  >("conv.read", { id, details: true });
+  >("conv.read", request);
 
+  // The bare-array shape is an older kernel, which had no paging and answered
+  // with the whole conversation. Saying `hasMore: false` is right for it:
+  // there was never another page to ask for.
   if (Array.isArray(data)) {
-    return { turns: toTurns(data), conversation: null };
+    return {
+      turns: toTurns(data),
+      conversation: null,
+      hasMore: false,
+      oldestId: data.length ? (data[0]?.id ?? null) : null,
+    };
   }
 
+  const rows = data?.messages ?? [];
   const row = data?.conversation;
   return {
-    turns: toTurns(data?.messages ?? []),
+    turns: toTurns(rows),
     // An older kernel answers `{}` rather than omitting it; a row with no id is
     // not a conversation, and treating it as one would put an untitled ghost in
     // the header.
     conversation: row && typeof row.id === "number" ? row : null,
+    hasMore: data?.has_more === true,
+    // Preferring the server's own cursor over `rows[0].id` is not pedantry:
+    // the two agree today, and the server is the one that knows what it
+    // skipped on the way — a page made entirely of rows a client does not
+    // render would otherwise report a cursor it never saw.
+    oldestId:
+      typeof data?.oldest_id === "number"
+        ? data.oldest_id
+        : (rows[0]?.id ?? null),
   };
 }
