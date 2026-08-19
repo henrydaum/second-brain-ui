@@ -58,22 +58,12 @@ import { ModelSelector } from "@/components/model-selector";
 import { SecurityModePicker } from "@/components/security-mode-picker";
 import { TurnFilesButton, TurnShownFile } from "@/components/turn-files";
 import { VoiceNoteButton } from "@/components/voice-note";
+import { activityFor, type Activity } from "@/lib/activity";
 import { elapsedLabel, fullTimestamp, shortTimestamp } from "@/lib/time";
 import { FINE_POINTER_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { SENT_AT } from "@/runtime/convert";
 
-/**
- * Shown while the agent has the turn but has not said anything yet.
- *
- * Without it, sending a message looks like nothing happened until the first
- * token arrives. **With it unguarded, it lies.** assistant-ui renders this slot
- * whenever a message has nothing to show *or*, by default, whenever the last
- * part is not text — and a command turn ends on a tool-call part, so "Thinking"
- * would appear next to a finished command and stay there. `isRunning` follows
- * the `typing` frame, which is the server's own statement about whether it
- * still has the turn, so it is the only honest thing to key this on.
- */
 /**
  * How long before the turn starts saying how long it has been.
  *
@@ -102,6 +92,21 @@ function useElapsedSeconds(since: number | undefined, active: boolean) {
   return Math.max(0, Math.floor((now - since) / 1000));
 }
 
+/**
+ * Shown while the agent has the turn but has nothing on screen to show for it.
+ *
+ * Without it, sending a message looks like nothing happened until the first
+ * token arrives. **With it unguarded, it lies.** assistant-ui offers this slot
+ * whenever a message has nothing to show *or*, by default, whenever the last
+ * part is not text — and a command turn ends on a tool-call part, so "Working"
+ * would appear next to a finished command and stay there. `isRunning` follows
+ * the `typing` frame, which is the server's own statement about whether it
+ * still has the turn, so it is the only honest thing to key the clock on.
+ *
+ * **Whether this is drawn at all is not its own decision.** `useActivity` makes
+ * that call for the whole message, so that this and the markdown cursor cannot
+ * both answer yes — see `@/lib/activity`.
+ */
 const WorkingIndicator: FC = () => {
   const running = useAuiState((s) => s.thread.isRunning);
   // The turn's own start, from `metadata.custom` rather than assistant-ui's
@@ -135,25 +140,35 @@ const WorkingIndicator: FC = () => {
   );
 };
 
-/** How every message's parts are drawn. One object, reused by both roles, so
- *  markdown and tool rendering cannot drift between them. */
-const messageComponents = {
-  Text: MarkdownText,
-  Empty: WorkingIndicator,
-  tools: { Fallback: ToolFallback },
-} as const;
+/** The one indicator this message may draw, if any. The rule and the reason
+ *  for it are in `@/lib/activity`; this is only the wiring to the store. */
+function useActivity(): Activity {
+  return useAuiState((s) => {
+    const parts = s.message.parts;
+    return activityFor({
+      threadRunning: s.thread.isRunning,
+      isLast: s.message.isLast,
+      messageStatus: s.message.status?.type,
+      lastPart: parts[parts.length - 1],
+    });
+  });
+}
 
 /**
- * A user message ending in a data part is complete, not empty.
+ * How a user message's parts are drawn.
  *
+ * **A user message ending in a data part is complete, not empty.**
  * `MessagePrimitive.Parts` asks its Empty renderer to fill a message whose last
- * part is non-text. That is useful for the assistant's blank running turn, but
- * a voice note is precisely such a non-text user message; sharing the assistant
- * fallback put "Working" inside the attachment bubble while the agent replied.
+ * part is non-text, and a voice note is precisely such a message. This shared
+ * one object with the assistant, whose `Empty` was `WorkingIndicator` — which
+ * put "Working" inside the attachment bubble while the agent replied. The
+ * assistant does not come through `Parts` at all now, and there is exactly one
+ * place its indicator is placed from; nothing here may grow a second.
  */
 const userMessageComponents = {
-  ...messageComponents,
+  Text: MarkdownText,
   Empty: () => null,
+  tools: { Fallback: ToolFallback },
 } as const;
 
 export const Thread: FC = () => {
@@ -382,60 +397,78 @@ const ComposerAction: FC = () => {
   );
 };
 
-const AssistantMessage: FC = () => (
-  <MessagePrimitive.Root
-    data-role="assistant"
-    className="fade-in animate-in relative mx-auto w-full max-w-(--thread-max-width) duration-150"
-  >
-    {/* `relative` so the footer below can be positioned against the *content*,
-        putting its top edge exactly at the last line of the reply. */}
-    <div className="text-foreground relative px-2 leading-relaxed wrap-break-word">
-      {/* `unstable_showEmptyOnNonTextEnd` defaults to true, which puts the
-          working indicator after any message not ending in text — a command
-          turn ends on its tool-call part, so it would sit beside a finished
-          command forever. An indicator belongs where there is nothing to see,
-          not next to a tool block that already reports its own state. */}
-      <MessagePrimitive.GroupedParts
-        groupBy={groupPartByType({ "tool-call": ["group-tool"] })}
+const AssistantMessage: FC = () => {
+  const activity = useActivity();
+
+  return (
+    <MessagePrimitive.Root
+      data-role="assistant"
+      data-activity={activity}
+      className="fade-in animate-in relative mx-auto w-full max-w-(--thread-max-width) duration-150"
+    >
+      {/* `relative` so the footer below can be positioned against the *content*,
+          putting its top edge exactly at the last line of the reply. */}
+      <div
+        className="text-foreground relative px-2 leading-relaxed wrap-break-word"
+        /* Turning off the markdown package's streaming dot for this message.
+           `styles/dot.css` draws it as `content: var(--aui-content)`, and going
+           through a custom property is the seam it leaves for exactly this. Set
+           on the message rather than per part because the property inherits: one
+           declaration covers every `.aui-md` here, so no earlier paragraph can
+           keep pulsing behind the "Working" line below. */
+        style={
+          activity === "streaming"
+            ? undefined
+            : { ["--aui-content" as string]: "none" }
+        }
       >
-        {({ part, children }) => {
-          switch (part.type) {
-            case "group-tool":
-              return (
-                <ToolGroupRoot>
-                  <ToolGroupTrigger
-                    count={part.indices.length}
-                    active={part.status.type === "running"}
-                  />
-                  <ToolGroupContent>{children}</ToolGroupContent>
-                </ToolGroupRoot>
-              );
-            case "text":
-              return <MarkdownText />;
-            case "tool-call":
-              return part.toolUI ?? <ToolFallback {...part} />;
-            case "indicator":
-              return <WorkingIndicator />;
-            case "data":
-              return part.dataRendererUI;
-            default:
-              return null;
-          }
-        }}
-      </MessagePrimitive.GroupedParts>
-      {/* After the parts rather than among them: the ledger records that a turn
-          showed you a file, not where in the turn it did. See
-          `components/turn-files.tsx`. */}
-      <TurnShownFile />
-      <MessagePrimitive.Error>
-        <ErrorPrimitive.Root className="border-destructive bg-destructive/10 text-destructive mt-2 rounded-md border p-3 text-sm">
-          <ErrorPrimitive.Message />
-        </ErrorPrimitive.Root>
-      </MessagePrimitive.Error>
-      <AssistantMessageFooter />
-    </div>
-  </MessagePrimitive.Root>
-);
+        {/* `indicator="never"`, and the slot is filled below instead. Every mode
+            assistant-ui offers decides from the *shape* of the last part — and
+            `no-text`, the default, would put "Working" beside a finished command
+            because a command turn ends on its tool-call part. What the last part
+            contains is the question, and `useActivity` is where it is asked. */}
+        <MessagePrimitive.GroupedParts
+          indicator="never"
+          groupBy={groupPartByType({ "tool-call": ["group-tool"] })}
+        >
+          {({ part, children }) => {
+            switch (part.type) {
+              case "group-tool":
+                return (
+                  <ToolGroupRoot>
+                    <ToolGroupTrigger
+                      count={part.indices.length}
+                      active={part.status.type === "running"}
+                    />
+                    <ToolGroupContent>{children}</ToolGroupContent>
+                  </ToolGroupRoot>
+                );
+              case "text":
+                return <MarkdownText />;
+              case "tool-call":
+                return part.toolUI ?? <ToolFallback {...part} />;
+              case "data":
+                return part.dataRendererUI;
+              default:
+                return null;
+            }
+          }}
+        </MessagePrimitive.GroupedParts>
+        {activity === "working" && <WorkingIndicator />}
+        {/* After the parts rather than among them: the ledger records that a turn
+            showed you a file, not where in the turn it did. See
+            `components/turn-files.tsx`. */}
+        <TurnShownFile />
+        <MessagePrimitive.Error>
+          <ErrorPrimitive.Root className="border-destructive bg-destructive/10 text-destructive mt-2 rounded-md border p-3 text-sm">
+            <ErrorPrimitive.Message />
+          </ErrorPrimitive.Root>
+        </MessagePrimitive.Error>
+        <AssistantMessageFooter />
+      </div>
+    </MessagePrimitive.Root>
+  );
+};
 
 /**
  * Height of the footer strip under an assistant message.
