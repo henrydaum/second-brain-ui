@@ -241,6 +241,17 @@ export type Action =
   /** Scrollback, read from `conv.read` at boot. Replaces everything. */
   | { type: "history"; turns: Turn[] }
   /**
+   * An older page, read as somebody scrolls up. Goes on the *front*.
+   *
+   * Deliberately not `history`, for the reason `compacted` is not either: that
+   * clause resets every transient thing the reducer holds — a half-answered
+   * form, a command panel still being read, a streaming reply. None of those
+   * have anything to do with rows arriving above them, and a person who
+   * scrolled up to read something would watch the turn they were waiting on
+   * disappear.
+   */
+  | { type: "olderTurns"; turns: Turn[] }
+  /**
    * A compaction marker read back after one happened, appended to what is on
    * screen.
    *
@@ -507,6 +518,18 @@ export function reduce(state: State, action: Action): State {
       // takes two or three, and the later dispatch threw away what had just
       // arrived. See `runtime/input-requests.ts`.
       return { ...initialState, turns: action.turns };
+
+    case "olderTurns": {
+      // Ids are the guard rather than a nicety. A page boundary can be re-read
+      // — a retried request, a cursor asked for twice — and a duplicated turn
+      // is not merely untidy: `toTurns` keys stored turns by row id, so React
+      // would see two children with one key and drop one of them, silently.
+      if (action.turns.length === 0) return state;
+      const known = new Set(state.turns.map((turn) => turn.id));
+      const fresh = action.turns.filter((turn) => !known.has(turn.id));
+      if (fresh.length === 0) return state;
+      return { ...state, turns: [...fresh, ...state.turns] };
+    }
 
     case "said": {
       // **Command interaction never enters the transcript.** Two shapes of it:

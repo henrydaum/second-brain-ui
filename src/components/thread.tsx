@@ -13,7 +13,7 @@
  * nothing here is passed any props about the conversation.
  */
 
-import { useEffect, useState, type FC } from "react";
+import { useCallback, useEffect, useRef, useState, type FC } from "react";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -61,6 +61,7 @@ import { VoiceNoteButton } from "@/components/voice-note";
 import { elapsedLabel, fullTimestamp, shortTimestamp } from "@/lib/time";
 import { FINE_POINTER_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
+import { useConversations } from "@/runtime/provider";
 import { SENT_AT } from "@/runtime/convert";
 
 /**
@@ -156,6 +157,90 @@ const userMessageComponents = {
   Empty: () => null,
 } as const;
 
+/**
+ * The top of the scrollback, and the way further up.
+ *
+ * `conv.read` answers with a page rather than a whole conversation, so there
+ * is genuinely more above — this is what asks for it.
+ *
+ * **The scroll anchoring is the whole difficulty.** Prepending rows moves
+ * everything already on screen down by however tall the new rows are, so
+ * without correction the reader is thrown an arbitrary distance from the line
+ * they were reading. Recording `scrollHeight` before the page lands and adding
+ * the difference back afterwards keeps the same content under the same pixel.
+ * It has to happen before the browser paints, which is what
+ * `requestAnimationFrame` inside a layout-effect-shaped callback buys.
+ *
+ * Loading is triggered by an observer rather than a button press, but the
+ * button is still there and still real: an observer that never fires — because
+ * the sentinel is offscreen, because the browser lacks the API — leaves the
+ * person a way up, and one that fires does not need them to press it.
+ */
+const LoadOlder: FC = () => {
+  const { scrollbackHasMore, loadingOlderMessages, loadOlderMessages } =
+    useConversations();
+  const sentinel = useRef<HTMLDivElement | null>(null);
+
+  const loadAnchored = useCallback(async () => {
+    // The viewport is whichever ancestor actually scrolls. Found by walking up
+    // rather than by ref, because the element belongs to assistant-ui's
+    // `ThreadPrimitive.Viewport` and is not ours to hold.
+    let viewport: HTMLElement | null = sentinel.current?.parentElement ?? null;
+    while (viewport && viewport.scrollHeight <= viewport.clientHeight) {
+      viewport = viewport.parentElement;
+    }
+    const before = viewport?.scrollHeight ?? 0;
+    const offset = viewport?.scrollTop ?? 0;
+    await loadOlderMessages();
+    if (!viewport) return;
+    requestAnimationFrame(() => {
+      // `scroll-smooth` is on the viewport, and animating this correction is
+      // exactly wrong — it would show the reader sliding away from their line
+      // and back. `behavior: "instant"` makes the adjustment invisible, which
+      // is the point of making it at all.
+      viewport.scrollTo({
+        top: offset + (viewport.scrollHeight - before),
+        behavior: "instant",
+      });
+    });
+  }, [loadOlderMessages]);
+
+  useEffect(() => {
+    const node = sentinel.current;
+    if (!node || !scrollbackHasMore || loadingOlderMessages) return;
+    if (typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadAnchored();
+      },
+      // A little ahead of the edge, so the page is on its way before the
+      // reader arrives at the gap rather than after.
+      { rootMargin: "400px 0px 0px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [scrollbackHasMore, loadingOlderMessages, loadAnchored]);
+
+  if (!scrollbackHasMore) return null;
+
+  return (
+    <div
+      ref={sentinel}
+      className="mx-auto flex w-full max-w-(--thread-max-width) justify-center py-2"
+    >
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={loadingOlderMessages}
+        onClick={() => void loadAnchored()}
+        className="text-muted-foreground text-xs"
+      >
+        {loadingOlderMessages ? "Loading earlier messages…" : "Load earlier messages"}
+      </Button>
+    </div>
+  );
+};
+
 export const Thread: FC = () => {
   // A conversation with nothing in it centres the composer, the way a new chat
   // does everywhere else. The zero-message geometry applies during loading as
@@ -208,6 +293,11 @@ export const Thread: FC = () => {
             tall as the strip, or a copy button would sit on top of the next
             message. Everything else about the rhythm is unchanged: one spacing
             between every pair of messages, whoever they are from. */}
+        {/* Outside the `empty:hidden` list below, and above it: this is the
+            top of the conversation, and it must not be part of the run of
+            messages whose spacing that container owns. */}
+        <LoadOlder />
+
         <div className="mb-14 flex flex-col gap-y-8 empty:hidden">
           <ThreadPrimitive.Messages>
             {({ message }) => {

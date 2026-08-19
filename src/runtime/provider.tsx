@@ -63,7 +63,7 @@ import {
   type ConversationFilter,
 } from "@/lib/conversation-categories";
 import { connect, type StreamStatus } from "@/lib/events";
-import { readConversation } from "@/lib/history";
+import { readConversation, type ConversationRead } from "@/lib/history";
 import { isPendingInput, type InputRequest } from "@/lib/input-requests";
 // `Notification` deliberately shadows the DOM global of that name here. Ours is
 // a row in the kernel's table; the browser's is a desktop popup this app does
@@ -237,6 +237,20 @@ export type SecondBrain = {
   conversationsHasMore: boolean;
   /** Fetch it and append. */
   loadMoreConversations: () => Promise<void>;
+  /**
+   * Whether the open conversation continues *above* the scrollback on screen.
+   *
+   * The sidebar's paging one row down is the same shape and exists for
+   * convenience; this one is not optional. `conv.read` answers with a page
+   * because a transcript grows without limit — compaction shrinks what the
+   * model sees and deletes nothing — so there is no size at which the whole
+   * thing can be asked for.
+   */
+  scrollbackHasMore: boolean;
+  /** Whether a page of older messages is in flight. */
+  loadingOlderMessages: boolean;
+  /** Fetch the page above and prepend it. */
+  loadOlderMessages: () => Promise<void>;
   /** Every category that exists, with how many are in it — counted by the
    *  server over the whole table, not over the page it sent. */
   conversationCategories: CategoryCount[];
@@ -394,6 +408,9 @@ type ConversationDomain = Pick<
   | "categoriseConversation"
   | "conversationsHasMore"
   | "loadMoreConversations"
+  | "scrollbackHasMore"
+  | "loadingOlderMessages"
+  | "loadOlderMessages"
   | "conversationCategories"
   | "conversationFilter"
   | "setConversationFilter"
@@ -582,6 +599,35 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const [conversationId, setConversationId] = useState<number | null>(null);
   const conversationIdRef = useRef<number | null>(null);
   conversationIdRef.current = conversationId;
+  /**
+   * Where the scrollback on screen starts, and whether anything precedes it.
+   *
+   * Refs rather than state for the cursor, because `loadOlderMessages` reads
+   * it and must not be rebuilt every time a page lands — the same reason
+   * `conversationsRef` is one. `scrollbackHasMore` is state because the button
+   * that offers the next page is drawn from it.
+   */
+  const oldestRowRef = useRef<number | null>(null);
+  const [scrollbackHasMore, setScrollbackHasMore] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  /** Guards against two pages of the same cursor being in flight at once — an
+   *  intersection observer will happily fire again before the first returns. */
+  const loadingOlderRef = useRef(false);
+
+  /**
+   * Adopt a freshly read page as the whole scrollback.
+   *
+   * One helper because four call sites replace history — boot, an identity
+   * switch, opening a conversation, and a stale-tab refetch — and a cursor set
+   * at three of them is worse than one set at none: paging would work until
+   * you arrived by the fourth route, and then silently stop.
+   */
+  const adoptScrollback = useCallback((read: ConversationRead) => {
+    oldestRowRef.current = read.oldestId;
+    setScrollbackHasMore(read.hasMore);
+    setLoadingOlderMessages(false);
+    loadingOlderRef.current = false;
+  }, []);
   conversationsRef.current = conversations;
   /**
    * `refreshConversations`, reachable from callbacks declared above it.
@@ -754,6 +800,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
           const read = await readConversation(bound);
           if (!cancelled) {
             dispatch({ type: "history", turns: read.turns });
+            adoptScrollback(read);
             setConversationId(bound);
             setOpenConversationRow(read.conversation);
           }
@@ -846,6 +893,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       setConversationId(bound);
       const read = await readConversation(bound);
       dispatch({ type: "history", turns: read.turns });
+      adoptScrollback(read);
       setOpenConversationRow(read.conversation);
     } catch (error) {
       report(error);
@@ -1271,7 +1319,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     const id = conversationIdRef.current;
     if (id === null) return;
     try {
-      const { turns } = await readConversation(id);
+      // A small page on purpose: the marker was written moments ago, so it is
+      // at the recent end by construction and a default page would be 200 rows
+      // fetched to read the last one.
+      const { turns } = await readConversation(id, { limit: 20 });
       const marker = [...turns]
         .reverse()
         .find((turn) => turn.role === "system");
@@ -1517,6 +1568,43 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   }, [status, state.typing, refreshConversations]);
 
   /**
+   * Fetch the page above what is on screen and prepend it.
+   *
+   * The cursor is the oldest row the client actually holds, not a page number:
+   * rows arrive while somebody is reading, and an offset would slide under
+   * them. Same reason the ledger pages by `since_id`.
+   *
+   * Failure is deliberately quiet about `hasMore`. Leaving it true means the
+   * affordance stays and the person can try again, where clearing it would
+   * present a transient network error as the top of the conversation — a lie
+   * that cannot be recovered from without reloading the page.
+   */
+  const loadOlderMessages = useCallback(async () => {
+    const id = conversationIdRef.current;
+    const before = oldestRowRef.current;
+    if (id === null || before === null) return;
+    if (loadingOlderRef.current) return;
+    loadingOlderRef.current = true;
+    setLoadingOlderMessages(true);
+    try {
+      const read = await readConversation(id, { before });
+      // Switching conversations mid-flight makes this page belong to one
+      // nobody is looking at. Same guard `noteCompaction` makes.
+      if (conversationIdRef.current !== id) return;
+      dispatch({ type: "olderTurns", turns: read.turns });
+      // Only advance the cursor if the page actually carried something, or a
+      // page of rows the client renders none of would strand it forever.
+      if (read.oldestId !== null) oldestRowRef.current = read.oldestId;
+      setScrollbackHasMore(read.hasMore && read.oldestId !== null);
+    } catch (error) {
+      report(error);
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlderMessages(false);
+    }
+  }, [report]);
+
+  /**
    * Point the session at another conversation.
    *
    * Not a view change — `conv.load` re-points the *session*, so after this the
@@ -1543,8 +1631,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         }
         const read = await readConversation(id);
         dispatch({ type: "history", turns: read.turns });
+        adoptScrollback(read);
         setConversationId(id);
-          setOpenConversationRow(read.conversation);
+        setOpenConversationRow(read.conversation);
         await syncSession();
         await refreshConversations();
       } catch (error) {
@@ -1576,6 +1665,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       // Not a `setState` no-op: `history` also clears a half-answered form and
       // a finished command's panel, which is what "start over" means here.
       dispatch({ type: "history", turns: [] });
+      adoptScrollback({ turns: [], conversation: null, hasMore: false,
+                        oldestId: null });
       setConversationId(null);
       setOpenConversationRow(null);
       await refreshConversations();
@@ -1677,7 +1768,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         wait = Math.min(wait * 2, 1200);
       }
       try {
-        const { turns } = await readConversation(id);
+        // Likewise: this wants the newest user turn, and asking for a whole
+        // page of a long conversation six times over — which the backoff below
+        // may well do — is the cost this argument removes.
+        const { turns } = await readConversation(id, { limit: 20 });
         const user = [...turns].reverse().find((turn) => turn.role === "user");
         const storedText =
           user?.parts
@@ -1847,8 +1941,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     );
     const id = session?.conversation_id ?? null;
     if (id === null) return;
-    dispatch({ type: "history", turns: (await readConversation(id)).turns });
-  }, []);
+    const read = await readConversation(id);
+    dispatch({ type: "history", turns: read.turns });
+    adoptScrollback(read);
+  }, [adoptScrollback]);
 
   const runtime = useExternalStoreRuntime({
     messages: state.turns,
@@ -1949,6 +2045,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       categoriseConversation,
       conversationsHasMore,
       loadMoreConversations,
+      scrollbackHasMore,
+      loadingOlderMessages,
+      loadOlderMessages,
       conversationCategories,
       conversationFilter,
       setConversationFilter,
@@ -1965,6 +2064,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       categoriseConversation,
       conversationsHasMore,
       loadMoreConversations,
+      scrollbackHasMore,
+      loadingOlderMessages,
+      loadOlderMessages,
       conversationCategories,
       conversationFilter,
       setConversationFilter,
