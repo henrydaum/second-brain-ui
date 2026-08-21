@@ -391,6 +391,9 @@ export function connect(
   /** Grows per *definite* failure and resets the moment a stream is accepted,
    *  so the delay describes the current outage rather than the page's history. */
   let retryDelay = FIRST_RETRY_MS;
+  /** A stream this page gave up rather than fought for, and owes itself the
+   *  moment somebody looks at it again. See `standDown`. */
+  let deferred = false;
 
   const cancelAttempt = () => {
     if (attempt === null) return;
@@ -406,6 +409,32 @@ export function connect(
       attempt = null;
       reopen();
     }, ms);
+  };
+
+  /**
+   * Give the stream up rather than take it back, until somebody looks.
+   *
+   * **Two tabs on one thread cannot both have it.** The server keeps one
+   * stream per thread and a second `GET /events` replaces the first, so a page
+   * that reconnects the instant it is displaced recovers nothing — it displaces
+   * the other one, is displaced again three seconds later, and the two hand the
+   * session back and forth for as long as both are open. That is not free: each
+   * turn of it re-reads the catalogue, the conversation, the pending questions
+   * and the notifications, and blinks the session *unattended* in between —
+   * and an unsafe Request landing in one of those gaps is refused outright
+   * rather than raising a dialog.
+   *
+   * A hidden tab has no claim worth any of that. So it stops competing: the
+   * `EventSource` is closed, which is also what stops the browser's own retry
+   * from quietly re-entering the fight, and `deferred` remembers that this page
+   * owes itself a stream. Foregrounding pays it — see `onVisibilityChange`.
+   * The tab somebody is reading wins, which is the right one to win.
+   */
+  const standDown = () => {
+    cancelAttempt();
+    stream?.close();
+    stream = null;
+    deferred = true;
   };
 
   const open = (status: StreamStatus) => {
@@ -426,6 +455,7 @@ export function connect(
 
     const source = new EventSource(url);
     stream = source;
+    deferred = false;
     onStatus(status);
 
     // **Every attempt is on the clock from the moment it is made.** Nothing
@@ -435,6 +465,11 @@ export function connect(
     armAttempt(STALLED_ATTEMPT_MS);
 
     source.onopen = () => {
+      // Guarded like `onerror` below, and for the mirror of its reason: a
+      // stream already replaced can still deliver its own `open`, and acting on
+      // it would cancel the live attempt's deadline and call a connection this
+      // page no longer holds good.
+      if (source !== stream) return;
       everOpened = true;
       // The outage is over, so the delay it accumulated describes nothing. A
       // later one starts quick again rather than inheriting this one's ceiling.
@@ -452,6 +487,13 @@ export function connect(
       // Acting on it would tear down a connection that is fine.
       if (source !== stream) return;
       onStatus("reconnecting");
+      // Not while nobody is looking: the commonest reason a healthy stream ends
+      // is another tab taking it, and this one is in no position to want it
+      // back. See `standDown`.
+      if (document.hidden) {
+        standDown();
+        return;
+      }
       if (source.readyState === EventSource.CLOSED) {
         const delay = retryDelay;
         retryDelay = Math.min(retryDelay * 2, LONGEST_RETRY_MS);
@@ -490,6 +532,13 @@ export function connect(
    *  holding open would otherwise stay held. */
   function reopen() {
     if (abandoned) return;
+    // The deadline on an attempt can come due on a page nobody is looking at —
+    // it was made just before the tab went away. Same answer as a failure while
+    // hidden, and settled the same way on the way back.
+    if (document.hidden) {
+      standDown();
+      return;
+    }
     cancelAttempt();
     stream?.close();
     open("reconnecting");
@@ -498,8 +547,14 @@ export function connect(
   /**
    * Foregrounding the page, and what it is worth doing about it.
    *
-   * Two rules, because the two cases are not equally certain. A stream that had
-   * been working and is no longer `OPEN` — `CLOSED`, or stuck `CONNECTING` on a
+   * **The first rule is the one this page wrote itself.** A tab that stood down
+   * while hidden holds no stream on purpose — see `standDown` — and being
+   * looked at is the whole of what it was waiting for, so it takes one back
+   * without consulting anything else.
+   *
+   * The rest is about a stream that was *lost* rather than given up, and it
+   * takes two rules because the two cases are not equally certain. A stream
+   * that had been working and is no longer `OPEN` — `CLOSED`, or stuck `CONNECTING` on a
    * backoff a suspended page never got to run down — is unambiguously carrying
    * nothing, and is reopened however brief the absence was. A stream that says
    * `OPEN` may be perfectly healthy, so only a long absence is taken as
@@ -518,6 +573,14 @@ export function connect(
 
     const away = hiddenAt === 0 ? 0 : Date.now() - hiddenAt;
     hiddenAt = 0;
+
+    // A stream given up rather than lost, so neither rule applies: there is no
+    // stream to read a `readyState` off and no absence worth measuring. This
+    // page stood down because nobody was reading it, and somebody is now.
+    if (deferred) {
+      reopen();
+      return;
+    }
 
     const dropped = everOpened && stream?.readyState !== EventSource.OPEN;
     if (!dropped && away < LONG_ENOUGH_AWAY_MS) return;

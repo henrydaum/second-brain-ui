@@ -419,3 +419,69 @@ describe("a backend that went away", () => {
     expect(openedCount()).toBe(1);
   });
 });
+
+/**
+ * Two tabs of the same app, which is one session split in two.
+ *
+ * The server keeps one stream per thread and a second `GET /events` replaces
+ * the first, so both tabs reconnecting on sight is not two clients recovering —
+ * it is one stream being taken back and forth every three seconds, forever.
+ * What that costs is invisible from the status line: four re-reads a turn, and
+ * a blink of nobody attending the session, in which an unsafe Request is
+ * refused rather than asked about.
+ */
+describe("another tab taking the stream", () => {
+  it("leaves it to the other tab while nobody is looking at this one", () => {
+    const onStatus = vi.fn();
+    const close = connect(vi.fn(), onStatus);
+    latest().accept();
+    const taken = latest();
+
+    hide();
+    // The eviction, as this tab sees it: the socket ends mid-stream, which is
+    // indistinguishable from any other drop and is why the rule is about who is
+    // looking rather than about what happened.
+    taken.drop();
+    vi.advanceTimersByTime(30_000);
+
+    expect(openedCount()).toBe(1);
+    // Closed, not merely left alone: an `EventSource` retries on its own, and a
+    // page that only declined to *book* a retry would still be back in the
+    // fight three seconds later without asking anybody.
+    expect(taken.readyState).toBe(FakeEventSource.CLOSED);
+    expect(onStatus).toHaveBeenLastCalledWith("reconnecting");
+    close();
+  });
+
+  it("takes it back when somebody looks at this one again", () => {
+    const close = connect(vi.fn(), vi.fn());
+    latest().accept();
+    latest().deliver("7", { kind: "typing", payload: true });
+
+    hide();
+    latest().drop();
+    show();
+
+    expect(openedCount()).toBe(2);
+    // Standing down is not forgetting: the turn that ran in the other tab is
+    // what this one comes back needing.
+    expect(latest().url).toContain("since=7");
+    close();
+  });
+
+  it("stands down on a deadline as well as on a failure", () => {
+    const close = connect(vi.fn(), vi.fn());
+
+    // Nothing has been accepted here, so this is the attempt's own deadline
+    // coming due rather than anything the server said. It must not strand the
+    // tab: `everOpened` is false and a brief absence proves nothing, so only
+    // remembering the stream is owed brings it back.
+    hide();
+    vi.advanceTimersByTime(3_000);
+    expect(openedCount()).toBe(1);
+
+    show();
+    expect(openedCount()).toBe(2);
+    close();
+  });
+});
