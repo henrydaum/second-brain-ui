@@ -67,7 +67,10 @@ function ReasoningRow() {
 
   return (
     <div
-      className="flex items-center gap-3 px-2 py-1.5"
+      // `min-h-9` rather than padding: it is the height every menu item above
+      // is on, and the agent profile row below is on the same floor, so the
+      // three read as one rhythm instead of three heights.
+      className="flex min-h-9 items-center gap-3 px-2"
       // Printable keys only, which is exactly what the menu's typeahead listens
       // for — it would otherwise throw focus back to a model whose name starts
       // with whatever was typed. Arrow keys are deliberately let through, so
@@ -150,7 +153,7 @@ export function ModelSelector() {
       <DropdownMenuContent
         align="end"
         side="top"
-        className="w-[min(22rem,calc(100vw-2rem))]"
+        className="w-[min(20rem,calc(100vw-2rem))]"
       >
         <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
           Default language model
@@ -187,8 +190,12 @@ export function ModelSelector() {
         <DropdownMenuSeparator />
         <ReasoningRow />
         <DropdownMenuSeparator />
-        <div className="text-muted-foreground px-2 py-1 text-xs">
-          Agent profile: <span className="text-foreground">{agentProfile}</span>
+        <div className="text-muted-foreground flex min-h-9 items-center px-2 text-xs">
+          {/* Wrapped so the label and value stay one inline run — as direct
+              children of a flex box the space between them is discarded. */}
+          <span className="min-w-0 truncate">
+            Agent profile: <span className="text-foreground">{agentProfile}</span>
+          </span>
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

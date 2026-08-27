@@ -29,7 +29,10 @@ function DropdownMenuSeparator({
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
   return (
     <DropdownMenuPrimitive.Separator
-      className={cn("bg-border -mx-1 my-1 h-px", className)}
+      // The inset has one job: cancel the content's own padding, so the rule
+      // runs edge to edge. It must therefore stay equal to that `p-1.5` — at
+      // `-mx-1` it fell 2px short on each side in every menu.
+      className={cn("bg-border -mx-1.5 my-1 h-px", className)}
       {...props}
     />
   );
