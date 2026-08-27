@@ -62,14 +62,19 @@ const Probe = () => {
 };
 
 const ModelProbe = () => {
-  const { modelName, agentProfile, models, setModel } = useModels();
+  const { modelName, agentProfile, models, setModel, reasoningEffort, setReasoningEffort } =
+    useModels();
   return (
     <>
       <span data-testid="model">{modelName}</span>
       <span data-testid="agent">{agentProfile}</span>
       <span data-testid="models">{models.map((model) => model.model_name).join(",")}</span>
+      <span data-testid="reasoning">{reasoningEffort}</span>
       <button type="button" onClick={() => void setModel("openrouter/gpt-5.4")}>
         Switch
+      </button>
+      <button type="button" onClick={() => void setReasoningEffort("high")}>
+        Think harder
       </button>
     </>
   );
@@ -147,7 +152,7 @@ describe("a page that loads in the middle of a turn", () => {
 
 describe("global model synchronization", () => {
   it("reads the default model, agent profile, and configured models", async () => {
-    sdk.mockImplementation(async (type: string) => {
+    sdk.mockImplementation(async (type: string, args?: { key?: string }) => {
       if (type === "session.get") {
         return {
           conversation_id: 7,
@@ -159,7 +164,11 @@ describe("global model synchronization", () => {
       if (type === "llm.list") {
         return { profiles: [{ model_name: "anthropic/sonnet-4.6" }] };
       }
-      if (type === "config.read") return "anthropic/sonnet-4.6";
+      if (type === "config.read") {
+        return args?.key === "llm_profiles"
+          ? { "anthropic/sonnet-4.6": { llm_extra_params: { reasoning_effort: "low" } } }
+          : "anthropic/sonnet-4.6";
+      }
       return null;
     });
 
@@ -174,6 +183,7 @@ describe("global model synchronization", () => {
     );
     expect(screen.getByTestId("agent")).toHaveTextContent("researcher");
     expect(screen.getByTestId("models")).toHaveTextContent("anthropic/sonnet-4.6");
+    expect(screen.getByTestId("reasoning")).toHaveTextContent("low");
   });
 
   it("switches the global default through config.write", async () => {
@@ -205,6 +215,126 @@ describe("global model synchronization", () => {
       value: "openrouter/gpt-5.4",
       scope: "plugin",
     });
+  });
+
+  /**
+   * `config.write` takes one whole top-level setting, so a nested field means
+   * writing `llm_profiles` back entire. Everything this does not mean to touch
+   * has to survive that — the other profiles, the sibling fields of the one it
+   * does touch, and above all the API key, which comes back as a handle and is
+   * restored by the kernel only if the handle is written back unchanged.
+   */
+  it("writes one profile's effort back without disturbing the rest", async () => {
+    const stored = {
+      "anthropic/sonnet-4.6": {
+        llm_endpoint: "https://api.anthropic.com/v1",
+        secret_llm_api_key: "<secret:secret_llm_api_key>",
+        llm_capabilities: { image: true, audio: false },
+        llm_extra_params: { reasoning_effort: "low", temperature: 0.4 },
+      },
+      "openrouter/gpt-5.4": { llm_endpoint: "https://openrouter.ai/api/v1" },
+    };
+    sdk.mockImplementation(async (type: string, args?: { key?: string }) => {
+      if (type === "session.get") return { mode: "ask", busy: false };
+      if (type === "llm.list") return { profiles: [] };
+      if (type === "config.read") {
+        return args?.key === "llm_profiles" ? stored : "anthropic/sonnet-4.6";
+      }
+      if (type === "config.write") return true;
+      return null;
+    });
+    const user = userEvent.setup();
+    render(
+      <SecondBrainProvider>
+        <ModelProbe />
+      </SecondBrainProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("reasoning")).toHaveTextContent("low"),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Think harder" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("reasoning")).toHaveTextContent("high"),
+    );
+
+    expect(sdk).toHaveBeenCalledWith("config.write", {
+      key: "llm_profiles",
+      scope: "plugin",
+      value: {
+        "anthropic/sonnet-4.6": {
+          llm_endpoint: "https://api.anthropic.com/v1",
+          secret_llm_api_key: "<secret:secret_llm_api_key>",
+          llm_capabilities: { image: true, audio: false },
+          llm_extra_params: { reasoning_effort: "high", temperature: 0.4 },
+        },
+        "openrouter/gpt-5.4": { llm_endpoint: "https://openrouter.ai/api/v1" },
+      },
+    });
+  });
+
+  it("puts the effort back when the write is refused", async () => {
+    sdk.mockImplementation(async (type: string, args?: { key?: string }) => {
+      if (type === "session.get") return { mode: "ask", busy: false };
+      if (type === "llm.list") return { profiles: [] };
+      if (type === "config.read") {
+        return args?.key === "llm_profiles"
+          ? { "anthropic/sonnet-4.6": { llm_extra_params: { reasoning_effort: "low" } } }
+          : "anthropic/sonnet-4.6";
+      }
+      if (type === "config.write") throw new Error("approval_declined");
+      return null;
+    });
+    const user = userEvent.setup();
+    render(
+      <SecondBrainProvider>
+        <ModelProbe />
+      </SecondBrainProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("reasoning")).toHaveTextContent("low"),
+    );
+
+    // Declining the approval dialog is a refused write like any other, and the
+    // optimistic segment must not be left standing on a value nothing stored.
+    await user.click(screen.getByRole("button", { name: "Think harder" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("reasoning")).toHaveTextContent("low"),
+    );
+  });
+
+  it("refuses to invent a profile the setting does not have", async () => {
+    sdk.mockImplementation(async (type: string, args?: { key?: string }) => {
+      if (type === "session.get") return { mode: "ask", busy: false };
+      if (type === "llm.list") return { profiles: [] };
+      if (type === "config.read") {
+        return args?.key === "llm_profiles"
+          ? { "someone/else": {} }
+          : "anthropic/sonnet-4.6";
+      }
+      if (type === "config.write") return true;
+      return null;
+    });
+    const user = userEvent.setup();
+    render(
+      <SecondBrainProvider>
+        <ModelProbe />
+      </SecondBrainProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("model")).toHaveTextContent("anthropic/sonnet-4.6"),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Think harder" }));
+    // A profile carrying nothing but extra params reads as a configured model
+    // and cannot answer, so no write at all is the right outcome.
+    await waitFor(() =>
+      expect(screen.getByTestId("reasoning")).toHaveTextContent("medium"),
+    );
+    expect(sdk).not.toHaveBeenCalledWith(
+      "config.write",
+      expect.objectContaining({ key: "llm_profiles" }),
+    );
   });
 });
 

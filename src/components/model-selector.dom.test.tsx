@@ -6,7 +6,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const setModel = vi.fn();
-const openSettings = vi.fn();
+const setReasoningEffort = vi.fn();
+
+// Mutable so a test can put the panel in one state without a second mock.
+let reasoningEffort = "medium";
+let settingReasoning = false;
 
 vi.mock("@/runtime/provider", () => ({
   useModels: () => ({
@@ -20,15 +24,21 @@ vi.mock("@/runtime/provider", () => ({
     modelsFailure: false,
     switchingModel: false,
     setModel,
+    reasoningEffort,
+    settingReasoning,
+    setReasoningEffort,
   }),
-  useSettings: () => ({ openSettings }),
 }));
 
 const { ModelSelector, compactModelName } = await import(
   "@/components/model-selector"
 );
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  reasoningEffort = "medium";
+  settingReasoning = false;
+});
 afterEach(cleanup);
 
 describe("compactModelName", () => {
@@ -64,7 +74,7 @@ describe("ModelSelector", () => {
       .toHaveTextContent("researcher");
   });
 
-  it("selects through the SDK state action and links to agent settings", async () => {
+  it("selects through the SDK state action", async () => {
     const user = userEvent.setup();
     render(<ModelSelector />);
     await user.click(screen.getByRole("button", { name: /Model:/ }));
@@ -72,9 +82,53 @@ describe("ModelSelector", () => {
       screen.getByRole("menuitemradio", { name: "openrouter/sonnet-4.6" }),
     );
     expect(setModel).toHaveBeenCalledWith("openrouter/sonnet-4.6");
+  });
+});
 
+describe("the reasoning row", () => {
+  const openPanel = async () => {
+    const user = userEvent.setup();
+    render(<ModelSelector />);
     await user.click(screen.getByRole("button", { name: /Model:/ }));
-    await user.click(screen.getByRole("menuitem", { name: "Manage models and agents" }));
-    expect(openSettings).toHaveBeenCalledWith("agents");
+    return user;
+  };
+
+  it("shows the stored effort, and Medium when there is none", async () => {
+    await openPanel();
+    expect(screen.getByRole("radio", { name: "Med" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("radio", { name: "High" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+
+    cleanup();
+    reasoningEffort = "off";
+    await openPanel();
+    expect(screen.getByRole("radio", { name: "Off" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  it("sets the effort without closing the panel", async () => {
+    const user = await openPanel();
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    expect(setReasoningEffort).toHaveBeenCalledWith("high");
+    // Picking a model is a decision you leave on; effort is one you may want to
+    // change twice, so the menu has to survive the click.
+    expect(screen.getByRole("radiogroup", { name: "Reasoning effort" }))
+      .toBeInTheDocument();
+  });
+
+  it("goes inert while a write is in flight", async () => {
+    settingReasoning = true;
+    const user = await openPanel();
+    const high = screen.getByRole("radio", { name: "High" });
+    expect(high).toBeDisabled();
+    await user.click(high);
+    expect(setReasoningEffort).not.toHaveBeenCalled();
   });
 });

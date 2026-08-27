@@ -315,6 +315,13 @@ export type SecondBrain = {
   modelsFailure: boolean;
   switchingModel: boolean;
   setModel: (modelName: string) => Promise<void>;
+  /** How hard the selected profile is told to think. Per profile, not global:
+   *  it lives in that profile's `llm_extra_params`, so switching model switches
+   *  this too. A profile that has never been given one reads as `medium`,
+   *  which is what the provider resolves a blank to. */
+  reasoningEffort: ReasoningEffort;
+  settingReasoning: boolean;
+  setReasoningEffort: (effort: ReasoningEffort) => Promise<void>;
 
   /**
    * What the system has told you.
@@ -367,6 +374,33 @@ export type LlmProfile = {
   loaded?: boolean;
 };
 
+export type ReasoningEffort = "off" | "low" | "medium" | "high";
+
+const REASONING_EFFORTS: ReasoningEffort[] = ["off", "low", "medium", "high"];
+
+/**
+ * One profile as `config.read` returns it, which is not what `llm.list` returns.
+ *
+ * `llm.list` answers "which profiles exist"; the extra params are only in the
+ * setting. Every other field is declared unknown rather than omitted because
+ * this shape is written back whole — see `setReasoningEffort` — and a narrower
+ * type would invite dropping the fields it does not name.
+ */
+type LlmProfileConfig = {
+  llm_extra_params?: { reasoning_effort?: string | null } | null;
+  [field: string]: unknown;
+};
+
+/** A stored effort as the UI understands it. Blank means the profile has never
+ *  been given one, and the provider treats that as `medium`, so that is what
+ *  the control shows rather than an empty segment. */
+export function normalizeEffort(value: unknown): ReasoningEffort {
+  const effort = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return (REASONING_EFFORTS as string[]).includes(effort)
+    ? (effort as ReasoningEffort)
+    : "medium";
+}
+
 /**
  * The provider's whole surface, in one type.
  *
@@ -394,6 +428,9 @@ type ModelDomain = Pick<
   | "modelsFailure"
   | "switchingModel"
   | "setModel"
+  | "reasoningEffort"
+  | "settingReasoning"
+  | "setReasoningEffort"
 >;
 type ConversationDomain = Pick<
   SecondBrain,
@@ -543,6 +580,13 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsFailure, setModelsFailure] = useState(false);
   const [switchingModel, setSwitchingModel] = useState(false);
+  const [reasoningEffort, setReasoningEffortState] =
+    useState<ReasoningEffort>("medium");
+  const [settingReasoning, setSettingReasoning] = useState(false);
+  /** The profiles setting as it was last read. A ref rather than state because
+   *  nothing renders it — it exists so switching model can show that profile's
+   *  effort without another round trip. The write path re-reads regardless. */
+  const llmProfilesRef = useRef<Record<string, LlmProfileConfig>>({});
 
   // `isLoading` covers the gap between "the page is up" and "scrollback is on
   // screen", so the thread does not flash an empty-conversation welcome at
@@ -1207,15 +1251,19 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    */
   const syncSession = useCallback(async () => {
     setModelsLoading(true);
-    const [sessionResult, modelsResult, defaultModelResult] = await Promise.allSettled([
-      sdk<{
-        mode?: "lockdown" | "ask" | "yolo" | null;
-        busy?: boolean | null;
-        agent_profile?: string | null;
-      } | null>("session.get", { details: true }),
-      sdk<{ profiles?: LlmProfile[] } | null>("llm.list"),
-      sdk<string | null>("config.read", { key: "default_llm_profile" }),
-    ]);
+    const [sessionResult, modelsResult, defaultModelResult, profileConfigResult] =
+      await Promise.allSettled([
+        sdk<{
+          mode?: "lockdown" | "ask" | "yolo" | null;
+          busy?: boolean | null;
+          agent_profile?: string | null;
+        } | null>("session.get", { details: true }),
+        sdk<{ profiles?: LlmProfile[] } | null>("llm.list"),
+        sdk<string | null>("config.read", { key: "default_llm_profile" }),
+        sdk<Record<string, LlmProfileConfig> | null>("config.read", {
+          key: "llm_profiles",
+        }),
+      ]);
 
     if (sessionResult.status === "fulfilled") {
       const session = sessionResult.value;
@@ -1237,11 +1285,36 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       report(modelsResult.reason);
     }
 
+    const defaultModel =
+      defaultModelResult.status === "fulfilled"
+        ? defaultModelResult.value || null
+        : null;
     if (defaultModelResult.status === "fulfilled") {
-      setModelName(defaultModelResult.value || null);
+      setModelName(defaultModel);
     } else {
       setModelsFailure(true);
       report(defaultModelResult.reason);
+    }
+
+    // Deliberately not `modelsFailure`: the list and the default both arrived,
+    // and a panel that can still switch model is worth more than one that
+    // refuses to draw because the extra params did not load. The effort falls
+    // back to what a blank means anyway.
+    //
+    // Read from `defaultModel` rather than the `modelName` state — this batch
+    // is what sets that state, and it has not landed yet.
+    if (profileConfigResult.status === "fulfilled") {
+      const profiles = profileConfigResult.value ?? {};
+      llmProfilesRef.current = profiles;
+      setReasoningEffortState(
+        normalizeEffort(
+          defaultModel
+            ? profiles[defaultModel]?.llm_extra_params?.reasoning_effort
+            : null,
+        ),
+      );
+    } else {
+      report(profileConfigResult.reason);
     }
     setModelsLoading(false);
   }, [report]);
@@ -1342,6 +1415,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const modelNameRef = useRef<string | null>(null);
   modelNameRef.current = modelName;
   const switchingModelRef = useRef(false);
+  const reasoningEffortRef = useRef<ReasoningEffort>("medium");
+  reasoningEffortRef.current = reasoningEffort;
+  const settingReasoningRef = useRef(false);
 
   /** Change the same global default setting as `/llm`'s Set default action.
    * Optimistic UI keeps the compact control responsive; a failed Request
@@ -1350,9 +1426,18 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     async (nextModel: string) => {
       if (switchingModelRef.current || nextModel === modelNameRef.current) return;
       const previous = modelNameRef.current;
+      const previousEffort = reasoningEffortRef.current;
       switchingModelRef.current = true;
       setSwitchingModel(true);
       setModelName(nextModel);
+      // Effort belongs to the profile, so it changes with the profile. From the
+      // last read rather than a fresh one: the panel is open and the row would
+      // otherwise sit on the old model's value until a round trip finished.
+      setReasoningEffortState(
+        normalizeEffort(
+          llmProfilesRef.current[nextModel]?.llm_extra_params?.reasoning_effort,
+        ),
+      );
       try {
         await sdk<boolean>("config.write", {
           key: "default_llm_profile",
@@ -1361,11 +1446,75 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         });
       } catch (error) {
         setModelName(previous);
+        setReasoningEffortState(previousEffort);
         await syncSession();
         report(error);
       } finally {
         switchingModelRef.current = false;
         setSwitchingModel(false);
+      }
+    },
+    [report, syncSession],
+  );
+
+  /**
+   * Set the selected profile's reasoning effort.
+   *
+   * **The whole `llm_profiles` setting is written back.** `config.write` takes
+   * one top-level setting — there is no dotted path and no patch — so changing
+   * one nested field means read, modify, write, which is the idiom the SDK docs
+   * give for structured settings. The read happens here rather than reusing
+   * `llmProfilesRef` so that a change made elsewhere since this page loaded is
+   * not silently reverted by our copy.
+   *
+   * Secrets survive the round trip: the kernel hands back
+   * `<secret:secret_llm_api_key>` and restores the real value when that handle
+   * is written back, so the key is neither seen nor lost here.
+   */
+  const setReasoningEffort = useCallback(
+    async (effort: ReasoningEffort) => {
+      const model = modelNameRef.current;
+      if (settingReasoningRef.current || !model) return;
+      if (effort === reasoningEffortRef.current) return;
+      const previous = reasoningEffortRef.current;
+      settingReasoningRef.current = true;
+      setSettingReasoning(true);
+      setReasoningEffortState(effort);
+      try {
+        const profiles =
+          (await sdk<Record<string, LlmProfileConfig> | null>("config.read", {
+            key: "llm_profiles",
+          })) ?? {};
+        const profile = profiles[model];
+        // Writing a profile the setting does not have would create one with a
+        // single field and no endpoint or key, which reads as a configured
+        // model and cannot answer. Better to fail loudly and re-sync.
+        if (!profile) {
+          throw new Error(`No LLM profile named ${model} to configure.`);
+        }
+        const next = {
+          ...profiles,
+          [model]: {
+            ...profile,
+            llm_extra_params: {
+              ...profile.llm_extra_params,
+              reasoning_effort: effort,
+            },
+          },
+        };
+        await sdk<boolean>("config.write", {
+          key: "llm_profiles",
+          value: next,
+          scope: "plugin",
+        });
+        llmProfilesRef.current = next;
+      } catch (error) {
+        setReasoningEffortState(previous);
+        await syncSession();
+        report(error);
+      } finally {
+        settingReasoningRef.current = false;
+        setSettingReasoning(false);
       }
     },
     [report, syncSession],
@@ -2013,6 +2162,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       modelsFailure,
       switchingModel,
       setModel,
+      reasoningEffort,
+      settingReasoning,
+      setReasoningEffort,
     }),
     [
       models,
@@ -2022,6 +2174,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       modelsFailure,
       switchingModel,
       setModel,
+      reasoningEffort,
+      settingReasoning,
+      setReasoningEffort,
     ],
   );
   const conversationValue = useMemo<ConversationDomain>(
