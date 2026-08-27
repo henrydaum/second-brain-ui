@@ -30,17 +30,28 @@ export function compactModelName(modelName: string | null | undefined): string {
 const REASONING_LEVELS: readonly (readonly [ReasoningEffort, string])[] = [
   ["off", "Off"],
   ["low", "Low"],
-  ["medium", "Med"],
+  ["medium", "Medium"],
   ["high", "High"],
 ] as const;
 
 /**
- * The effort segments, as a row of the model panel.
+ * The effort control, as a row of the model panel.
  *
- * **A radio group, not a row of buttons.** `MarkdownModePicker` wears the same
+ * **Dots on a track, not four labelled segments.** Four boxes of text inside a
+ * bordered box inside the popover was three nested containers deep, and the
+ * labels sat at whatever width their words happened to be. A slider carries the
+ * same four positions in one shape, and the value it is on is said once, in the
+ * row's own text — the same `label: value` line the agent profile below it
+ * uses, so the two rows read as a pair rather than as a widget above a caption.
+ *
+ * The dots stay monochrome deliberately: every colour token in this palette is
+ * chroma 0 apart from `destructive`, so a coloured dot would be the only hue in
+ * the panel.
+ *
+ * **A radio group, not a row of buttons.** `MarkdownModePicker` wears similar
  * clothes but uses `aria-pressed`, because its two buttons each do a thing;
  * these four are one field carrying one value, and a screen reader should hear
- * it that way.
+ * it that way. Each dot names itself, since none of them carries visible text.
  *
  * **Not a `DropdownMenuItem`.** Menu items close the menu when chosen, which is
  * right for picking a model and wrong for a control you may want to try twice.
@@ -52,10 +63,11 @@ function ReasoningRow() {
   const { reasoningEffort, settingReasoning, switchingModel, modelName, setReasoningEffort } =
     useModels();
   const disabled = settingReasoning || switchingModel || !modelName;
+  const current = REASONING_LEVELS.find(([value]) => value === reasoningEffort);
 
   return (
     <div
-      className="flex items-center justify-between gap-2 px-2 py-1.5"
+      className="flex items-center gap-3 px-2 py-1.5"
       // Printable keys only, which is exactly what the menu's typeahead listens
       // for — it would otherwise throw focus back to a model whose name starts
       // with whatever was typed. Arrow keys are deliberately let through, so
@@ -66,33 +78,42 @@ function ReasoningRow() {
         if (event.key.length === 1) event.stopPropagation();
       }}
     >
-      <span className="text-muted-foreground text-xs">Reasoning</span>
+      <span className="text-muted-foreground min-w-0 truncate text-xs">
+        Reasoning: <span className="text-foreground">{current?.[1]}</span>
+      </span>
       <div
         role="radiogroup"
         aria-label="Reasoning effort"
         className={cn(
-          "bg-muted/40 inline-flex shrink-0 items-center gap-0.5 rounded-md border p-0.5",
+          "bg-muted/60 ms-auto flex shrink-0 items-center rounded-full px-1",
           disabled && "opacity-50",
         )}
       >
-        {REASONING_LEVELS.map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            role="radio"
-            aria-checked={reasoningEffort === value}
-            disabled={disabled}
-            onClick={() => void setReasoningEffort(value)}
-            className={cn(
-              "focus-visible:ring-ring inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px] outline-none focus-visible:ring-2 disabled:pointer-events-none",
-              reasoningEffort === value
-                ? "bg-background text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {label}
-          </button>
-        ))}
+        {REASONING_LEVELS.map(([value, label]) => {
+          const active = value === reasoningEffort;
+          return (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              aria-label={label}
+              disabled={disabled}
+              onClick={() => void setReasoningEffort(value)}
+              // The dot is small; the button around it is a touch target.
+              className="focus-visible:ring-ring group flex size-7 items-center justify-center rounded-full outline-none focus-visible:ring-2 disabled:pointer-events-none"
+            >
+              <span
+                className={cn(
+                  "rounded-full transition-all duration-150",
+                  active
+                    ? "bg-foreground size-3"
+                    : "bg-muted-foreground/50 group-hover:bg-muted-foreground size-1.5",
+                )}
+              />
+            </button>
+          );
+        })}
       </div>
     </div>
   );

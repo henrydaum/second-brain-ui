@@ -95,13 +95,17 @@ describe("the reasoning row", () => {
 
   it("shows the stored effort, and Medium when there is none", async () => {
     await openPanel();
-    expect(screen.getByRole("radio", { name: "Med" })).toHaveAttribute(
+    expect(screen.getByRole("radio", { name: "Medium" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
     expect(screen.getByRole("radio", { name: "High" })).toHaveAttribute(
       "aria-checked",
       "false",
+    );
+    // The dots carry no visible text, so the row has to say where it is.
+    expect(screen.getByText("Reasoning:").parentElement).toHaveTextContent(
+      "Reasoning: Medium",
     );
 
     cleanup();
@@ -110,6 +114,9 @@ describe("the reasoning row", () => {
     expect(screen.getByRole("radio", { name: "Off" })).toHaveAttribute(
       "aria-checked",
       "true",
+    );
+    expect(screen.getByText("Reasoning:").parentElement).toHaveTextContent(
+      "Reasoning: Off",
     );
   });
 
