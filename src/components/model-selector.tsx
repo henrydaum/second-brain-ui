@@ -1,19 +1,23 @@
-import { ChevronDownIcon, LoaderCircleIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  LoaderCircleIcon,
+  SlidersHorizontalIcon,
+} from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
 import { spellModelWord } from "@/lib/model-names";
-import { useModels, type ReasoningEffort } from "@/runtime/provider";
+import { useModels, useSettings } from "@/runtime/provider";
 
 /** A compact, provider-free label for the composer trigger. The exact profile
  * key remains untouched everywhere that identity matters. */
@@ -27,101 +31,6 @@ export function compactModelName(modelName: string | null | undefined): string {
   return words.map(spellModelWord).join(" ");
 }
 
-const REASONING_LEVELS: readonly (readonly [ReasoningEffort, string])[] = [
-  ["off", "Off"],
-  ["low", "Low"],
-  ["medium", "Medium"],
-  ["high", "High"],
-] as const;
-
-/**
- * The effort control, as a row of the model panel.
- *
- * **Dots on a track, not four labelled segments.** Four boxes of text inside a
- * bordered box inside the popover was three nested containers deep, and the
- * labels sat at whatever width their words happened to be. A slider carries the
- * same four positions in one shape, and the value it is on is said once, in the
- * row's own text — the same `label: value` line the agent profile below it
- * uses, so the two rows read as a pair rather than as a widget above a caption.
- *
- * The dots stay monochrome deliberately: every colour token in this palette is
- * chroma 0 apart from `destructive`, so a coloured dot would be the only hue in
- * the panel.
- *
- * **A radio group, not a row of buttons.** `MarkdownModePicker` wears similar
- * clothes but uses `aria-pressed`, because its two buttons each do a thing;
- * these four are one field carrying one value, and a screen reader should hear
- * it that way. Each dot names itself, since none of them carries visible text.
- *
- * **Not a `DropdownMenuItem`.** Menu items close the menu when chosen, which is
- * right for picking a model and wrong for a control you may want to try twice.
- * That leaves it outside Radix's roving focus, so it is reached by Tab rather
- * than by arrow keys, and the menu's typeahead has to be kept off the keys the
- * buttons want.
- */
-function ReasoningRow() {
-  const { reasoningEffort, settingReasoning, switchingModel, modelName, setReasoningEffort } =
-    useModels();
-  const disabled = settingReasoning || switchingModel || !modelName;
-  const current = REASONING_LEVELS.find(([value]) => value === reasoningEffort);
-
-  return (
-    <div
-      // `min-h-9` rather than padding: it is the height every menu item above
-      // is on, and the agent profile row below is on the same floor, so the
-      // three read as one rhythm instead of three heights.
-      className="flex min-h-9 items-center gap-3 px-2"
-      // Printable keys only, which is exactly what the menu's typeahead listens
-      // for — it would otherwise throw focus back to a model whose name starts
-      // with whatever was typed. Arrow keys are deliberately let through, so
-      // the model list above is still reachable from here. Escape does not
-      // depend on this either way: Radix listens for it on the document in the
-      // capture phase, so it never reaches this handler.
-      onKeyDown={(event) => {
-        if (event.key.length === 1) event.stopPropagation();
-      }}
-    >
-      <span className="text-muted-foreground min-w-0 truncate text-xs">
-        Reasoning: <span className="text-foreground">{current?.[1]}</span>
-      </span>
-      <div
-        role="radiogroup"
-        aria-label="Reasoning effort"
-        className={cn(
-          "bg-muted/60 ms-auto flex shrink-0 items-center rounded-full px-1",
-          disabled && "opacity-50",
-        )}
-      >
-        {REASONING_LEVELS.map(([value, label]) => {
-          const active = value === reasoningEffort;
-          return (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              aria-label={label}
-              disabled={disabled}
-              onClick={() => void setReasoningEffort(value)}
-              // The dot is small; the button around it is a touch target.
-              className="focus-visible:ring-ring group flex size-7 items-center justify-center rounded-full outline-none focus-visible:ring-2 disabled:pointer-events-none"
-            >
-              <span
-                className={cn(
-                  "rounded-full transition-all duration-150",
-                  active
-                    ? "bg-foreground size-3"
-                    : "bg-muted-foreground/50 group-hover:bg-muted-foreground size-1.5",
-                )}
-              />
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export function ModelSelector() {
   const [open, setOpen] = useState(false);
   const {
@@ -133,6 +42,7 @@ export function ModelSelector() {
     switchingModel,
     setModel,
   } = useModels();
+  const { openSettings } = useSettings();
   const label = modelsLoading && !modelName ? "Loading…" : compactModelName(modelName);
 
   return (
@@ -188,7 +98,35 @@ export function ModelSelector() {
           </p>
         )}
         <DropdownMenuSeparator />
-        <ReasoningRow />
+        {/*
+          * A link rather than a control.
+          *
+          * This was four dots writing `off/low/medium/high` into
+          * `reasoning_effort`, which was a guess in three directions at once:
+          * that the parameter is called that, that this model takes it, and
+          * that those are its values. None is true generally — the name is
+          * `effort` or `thinking` elsewhere, most models take a different set
+          * or none, and `off` is a level at no provider at all.
+          *
+          * Building it from what the backend reports was tried and works, but
+          * it can only ever show a control for a model something has vouched
+          * for, which is a minority of them — so the panel would offer the
+          * setting sometimes and silently not others, with no way to tell
+          * which case you were in. Settings shows every parameter a profile
+          * has and what it accepts, with the caveats attached. One
+          * destination that is always right beats a control that is
+          * occasionally present.
+          */}
+        <DropdownMenuItem
+          onClick={() => {
+            setOpen(false);
+            openSettings("agents");
+          }}
+          className="text-xs"
+        >
+          <SlidersHorizontalIcon className="size-3.5 opacity-60" />
+          Configure language models
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <div className="text-muted-foreground flex min-h-9 items-center px-2 text-xs">
           {/* Wrapped so the label and value stay one inline run — as direct

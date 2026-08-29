@@ -1,18 +1,15 @@
 /** @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const setModel = vi.fn();
-const setReasoningEffort = vi.fn();
-
-// Mutable so a test can put the panel in one state without a second mock.
-let reasoningEffort = "medium";
-let settingReasoning = false;
+const openSettings = vi.fn();
 
 vi.mock("@/runtime/provider", () => ({
+  useSettings: () => ({ openSettings }),
   useModels: () => ({
     models: [
       { model_name: "anthropic/sonnet-4.6", loaded: true },
@@ -24,9 +21,6 @@ vi.mock("@/runtime/provider", () => ({
     modelsFailure: false,
     switchingModel: false,
     setModel,
-    reasoningEffort,
-    settingReasoning,
-    setReasoningEffort,
   }),
 }));
 
@@ -36,8 +30,6 @@ const { ModelSelector, compactModelName } = await import(
 
 beforeEach(() => {
   vi.clearAllMocks();
-  reasoningEffort = "medium";
-  settingReasoning = false;
 });
 afterEach(cleanup);
 
@@ -85,7 +77,7 @@ describe("ModelSelector", () => {
   });
 });
 
-describe("the reasoning row", () => {
+describe("the settings link", () => {
   const openPanel = async () => {
     const user = userEvent.setup();
     render(<ModelSelector />);
@@ -93,49 +85,39 @@ describe("the reasoning row", () => {
     return user;
   };
 
-  it("shows the stored effort, and Medium when there is none", async () => {
-    await openPanel();
-    expect(screen.getByRole("radio", { name: "Medium" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
-    expect(screen.getByRole("radio", { name: "High" })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
-    // The dots carry no visible text, so the row has to say where it is.
-    expect(screen.getByText("Reasoning:").parentElement).toHaveTextContent(
-      "Reasoning: Medium",
+  it("sends you to the section that manages model parameters", async () => {
+    // The panel used to carry a reasoning control of its own: four values
+    // written into `reasoning_effort`. That was a guess about the parameter's
+    // name, about whether this model takes it, and about its values — and the
+    // honest version can only draw a control for models something has vouched
+    // for, which is a minority. One destination that is always right beats a
+    // control that is sometimes there.
+    const user = await openPanel();
+    await user.click(
+      screen.getByRole("menuitem", { name: "Configure language models" }),
     );
 
-    cleanup();
-    reasoningEffort = "off";
-    await openPanel();
-    expect(screen.getByRole("radio", { name: "Off" })).toHaveAttribute(
-      "aria-checked",
-      "true",
+    expect(openSettings).toHaveBeenCalledWith("agents");
+  });
+
+  it("closes the panel on the way", async () => {
+    const user = await openPanel();
+    await user.click(
+      screen.getByRole("menuitem", { name: "Configure language models" }),
     );
-    expect(screen.getByText("Reasoning:").parentElement).toHaveTextContent(
-      "Reasoning: Off",
+
+    // Settings opens over the composer, so a panel left standing would be
+    // behind it and still open when it closes.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menuitem", { name: "Configure language models" }),
+      ).not.toBeInTheDocument(),
     );
   });
 
-  it("sets the effort without closing the panel", async () => {
-    const user = await openPanel();
-    await user.click(screen.getByRole("radio", { name: "High" }));
-    expect(setReasoningEffort).toHaveBeenCalledWith("high");
-    // Picking a model is a decision you leave on; effort is one you may want to
-    // change twice, so the menu has to survive the click.
-    expect(screen.getByRole("radiogroup", { name: "Reasoning effort" }))
-      .toBeInTheDocument();
-  });
+  it("offers no reasoning control of its own", async () => {
+    await openPanel();
 
-  it("goes inert while a write is in flight", async () => {
-    settingReasoning = true;
-    const user = await openPanel();
-    const high = screen.getByRole("radio", { name: "High" });
-    expect(high).toBeDisabled();
-    await user.click(high);
-    expect(setReasoningEffort).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Reasoning/)).not.toBeInTheDocument();
   });
 });
