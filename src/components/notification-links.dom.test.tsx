@@ -163,7 +163,7 @@ describe("the links out of a notification", () => {
     );
     // And the dialog goes up now rather than a round trip later — which is also
     // where a failed submit lands.
-    expect(openSettings).toHaveBeenCalledWith("config");
+    expect(openSettings).toHaveBeenCalledWith("kernel");
   });
 
   it("sends the setting nowhere `/config` refuses to go", async () => {
@@ -181,14 +181,13 @@ describe("the links out of a notification", () => {
 
     await waitFor(() => expect(sdk).toHaveBeenCalled());
     expect(say).not.toHaveBeenCalled();
-    expect(openSettings).toHaveBeenCalledWith("config");
+    expect(openSettings).toHaveBeenCalledWith("kernel");
   });
 
   it("sends a setting managed elsewhere to the section that manages it", async () => {
-    // `default_llm_profile` is `/llm`'s to edit, which lives on Agents and
-    // Models. Configuration is the one page that provably does not list it, and
-    // asking the kernel about it is not worth a round trip when the answer is
-    // already known.
+    // `default_llm_profile` is `/llm`'s to edit, and `/llm` lives on Plugins.
+    // `/config` is the one form that provably does not list it, so asking the
+    // kernel about it is not worth a round trip when the answer is known.
     const { say, openSettings, user } = stub({
       notifications: [row({ body: "default_llm_profile" })],
     });
@@ -196,7 +195,7 @@ describe("the links out of a notification", () => {
 
     await user.click(screen.getByRole("button", { name: "Open settings" }));
 
-    expect(openSettings).toHaveBeenCalledWith("agents");
+    expect(openSettings).toHaveBeenCalledWith("plugins");
     expect(say).not.toHaveBeenCalled();
     expect(sdk).not.toHaveBeenCalled();
   });
@@ -217,7 +216,7 @@ describe("the links out of a notification", () => {
 
     // The section, with no attempt to guess which of the two you meant.
     expect(say).not.toHaveBeenCalled();
-    expect(openSettings).toHaveBeenCalledWith("config");
+    expect(openSettings).toHaveBeenCalledWith("kernel");
   });
 
   it("falls back to the section when the body is not setting names", async () => {
@@ -231,7 +230,7 @@ describe("the links out of a notification", () => {
     await user.click(screen.getByRole("button", { name: "Open settings" }));
 
     expect(say).not.toHaveBeenCalled();
-    expect(openSettings).toHaveBeenCalledWith("config");
+    expect(openSettings).toHaveBeenCalledWith("kernel");
   });
 
   it("closes the panel on the way out", async () => {
@@ -281,9 +280,9 @@ describe("the links out of a notification", () => {
 
 describe("Settings lands where it was asked to", () => {
   it("opens at the requested section rather than the default", () => {
-    // Without this the link lands on "Agents and Models", which is the default
-    // page and has nothing to do with a settings change.
-    stub({ settingsRequest: { page: "config" } });
+    // Without this the link lands on "Kernel", which is the default page and
+    // proves nothing. The requested page has to be one the default is not.
+    stub({ settingsRequest: { page: "plugins" } });
     render(
       <SettingsDialogContent
         commandActionPending={false}
@@ -291,16 +290,14 @@ describe("Settings lands where it was asked to", () => {
       />,
     );
 
-    expect(
-      screen.getByRole("heading", { name: "Configuration" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Plugins" })).toBeTruthy();
   });
 
   it("consumes the request instead of standing on it", () => {
     // A request that never cleared would undo the next navigation: press
-    // "Security" and the still-standing `config` would put you back.
+    // "Kernel" and the still-standing `plugins` would put you back.
     const { clearSettingsRequest } = stub({
-      settingsRequest: { page: "config" },
+      settingsRequest: { page: "plugins" },
     });
     render(
       <SettingsDialogContent
@@ -321,9 +318,7 @@ describe("Settings lands where it was asked to", () => {
       />,
     );
 
-    expect(
-      screen.getByRole("heading", { name: "Agents and Models" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Kernel" })).toBeTruthy();
   });
 
   it("shows immediate pending feedback and blocks duplicate command starts", async () => {
@@ -331,6 +326,9 @@ describe("Settings lands where it was asked to", () => {
     const { user } = stub({
       say,
       commands: [{ name: "llm", description: "Choose a model" }],
+      // `/llm` is on Plugins, and the dialog opens on Kernel — without this the
+      // card under test is not on screen to be clicked.
+      settingsRequest: { page: "plugins" },
     });
     render(
       <SettingsDialogContent
@@ -435,6 +433,6 @@ describe("opening settings while the agent is working", () => {
     expect(link).not.toHaveAttribute("aria-disabled");
 
     await user.click(link);
-    await waitFor(() => expect(openSettings).toHaveBeenCalledWith("config"));
+    await waitFor(() => expect(openSettings).toHaveBeenCalledWith("kernel"));
   });
 });

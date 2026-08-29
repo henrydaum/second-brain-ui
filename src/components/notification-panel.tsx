@@ -170,15 +170,20 @@ const Row: FC<{ row: Notification }> = ({ row }) => {
    * The one setting to drill into, when there is exactly one.
    *
    * **Exactly one, deliberately.** A notification naming several settings gets a
-   * single link to the Configuration section instead of a link each: the row is
-   * a line of 10px text, and three buttons on it is a menu rather than an
-   * answer. Which settings changed is already written in the body directly
-   * above, so the links would be repeating it in a less readable form.
+   * single link to the section instead of a link each: the row is a line of
+   * 10px text, and three buttons on it is a menu rather than an answer. Which
+   * settings changed is already written in the body directly above, so the
+   * links would be repeating it in a less readable form.
    *
    * Null for everything that is not a config notification, which is most of
    * them.
+   *
+   * **Asked of the source, not of the section it routes to.** `source` is the
+   * field the kernel stamps and `pageForNotification` is keyed on; the page is
+   * a rendering decision that has already been renamed once, and a config
+   * notification would stop being recognised as one the next time it moves.
    */
-  const settings = section === "config" ? settingNamesOf(row.body) : [];
+  const settings = row.source === "config" ? settingNamesOf(row.body) : [];
   const setting = settings.length === 1 ? settings[0] : null;
 
   /**
@@ -199,12 +204,12 @@ const Row: FC<{ row: Notification }> = ({ row }) => {
    * rather than nowhere.
    *
    * They do not fight. Once the command is running, Settings' own effect keeps
-   * the page on `config` because that is where `/config` belongs, so the eager
+   * the page on `kernel` because that is where `/config` belongs, so the eager
    * open and the command agree about the destination.
    */
   const openSetting = async (setting: string) => {
     const home = pageForSetting(setting);
-    openSettings(home ?? "config");
+    openSettings(home ?? "kernel");
     if (home) return;
     if (await settingIsBrowsable(setting)) void say(settingCommand(setting));
   };

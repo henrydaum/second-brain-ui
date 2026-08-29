@@ -4,6 +4,7 @@ import { ChevronRightIcon, LoaderCircleIcon } from "lucide-react";
 import { CommandPanel } from "@/components/command-panel";
 import { ThemePicker } from "@/components/theme-picker";
 import {
+  FEATURED_COMMANDS,
   SETTINGS_PAGES,
   SYSTEM_ACTIONS,
   commandPresentation,
@@ -20,16 +21,27 @@ type SettingsCommandGate = (
   action: () => void | Promise<void>,
 ) => Promise<boolean>;
 
+/**
+ * One command, as a card.
+ *
+ * `featured` is the same card given the width of the grid and a tint, for the
+ * one command on a page that is not a peer of the others — see
+ * `FEATURED_COMMANDS`. Everything else about it is deliberately identical:
+ * a card that behaved differently as well as looking different would be a
+ * second component pretending to be this one.
+ */
 function CommandCard({
   command,
   onRun,
   disabled,
   pending,
+  featured = false,
 }: {
   command: Command;
   onRun: () => void;
   disabled: boolean;
   pending: boolean;
+  featured?: boolean;
 }) {
   const presentation = commandPresentation(command);
   const Icon = presentation.icon;
@@ -39,10 +51,18 @@ function CommandCard({
       disabled={disabled}
       aria-busy={pending || undefined}
       onClick={onRun}
-      className="group bg-card hover:bg-accent/50 focus-visible:ring-ring flex w-full items-start gap-3 rounded-lg border p-3 text-start transition-colors focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50"
+      className={cn(
+        "group bg-card hover:bg-accent/50 focus-visible:ring-ring flex w-full items-start gap-3 rounded-lg border p-3 text-start transition-colors focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50",
+        featured && "border-primary/40 bg-primary/[0.03] p-4 lg:col-span-2",
+      )}
     >
-      <span className="bg-muted text-muted-foreground group-hover:text-foreground flex size-8 shrink-0 items-center justify-center rounded-md transition-colors">
-        <Icon className="size-4.5" />
+      <span
+        className={cn(
+          "bg-muted text-muted-foreground group-hover:text-foreground flex size-8 shrink-0 items-center justify-center rounded-md transition-colors",
+          featured && "bg-primary/10 text-primary size-10",
+        )}
+      >
+        <Icon className={cn("size-4.5", featured && "size-5")} />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">{presentation.title}</span>
@@ -106,7 +126,7 @@ export const SettingsDialogContent: FC<{
 }> = ({ commandActionPending, afterCurrentCommand }) => {
   const { commands, settingsRequest, clearSettingsRequest } = useSettings();
   const { say, state } = useSession();
-  const [page, setPage] = useState<SettingsPageId>("agents");
+  const [page, setPage] = useState<SettingsPageId>("kernel");
   const [pendingCommand, setPendingCommand] = useState<string | null>(null);
   const activeName = state.form?.name ?? state.command?.name;
   const commandActive = Boolean(activeName);
@@ -264,7 +284,9 @@ export const SettingsDialogContent: FC<{
               </div>
             ) : visibleCommands.length === 0 ? (
               <div className="text-muted-foreground rounded-xl border border-dashed p-8 text-center text-sm">
-                No commands are available in this section.
+                {page === "additional"
+                  ? "Nothing added yet. Install commands from the store with Manage packages, under Plugins."
+                  : "No commands are available in this section."}
               </div>
             ) : (
               <div className="grid gap-3 lg:grid-cols-2">
@@ -272,6 +294,7 @@ export const SettingsDialogContent: FC<{
                   <CommandCard
                     key={command.name}
                     command={command}
+                    featured={FEATURED_COMMANDS.has(command.name)}
                     disabled={state.typing || pendingCommand !== null}
                     pending={pendingCommand === command.name}
                     onRun={() => run(command.name)}

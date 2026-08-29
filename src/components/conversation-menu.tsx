@@ -13,15 +13,29 @@
  * differently for it — the kernel asks — but it is here too, because the
  * sidebar's copy of it appears on hover and a phone has no hover to give.
  *
- * A conversation's notification mode is deliberately *not* here. It governs
- * whether a scheduled subagent's result is pushed to you, so it belongs beside
- * the job that does the pushing rather than on every conversation that will
- * never have one — see the scheduled-jobs panel when it exists.
+ * **`/conversations` is gone from Settings entirely, and this is what replaced
+ * it.** Everything it did, the sidebar and this menu now do in the place the
+ * conversation already is — with one exception, traded knowingly.
+ *
+ * That exception is a conversation's notification mode, which nothing in the UI
+ * can now reach. It governs whether a scheduled subagent's result is pushed to
+ * you, so it belongs beside the job that does the pushing rather than on every
+ * conversation that will never have one — see the scheduled-jobs panel when it
+ * exists. Keeping a whole settings page alive as the only door to one setting
+ * on the small share of conversations a scheduled job ever writes to was the
+ * worse trade; `/conversations` still runs if it is typed.
+ *
+ * **Clearing and compacting are here for the reason renaming is.** Both act on
+ * the conversation on screen and neither is a setting — nothing about them
+ * outlives the thread they are pointed at — so a card in a settings dialog was
+ * always the wrong shape for them.
  */
 
 import { useEffect, useState, type FC } from "react";
 import {
   ChevronDownIcon,
+  EraserIcon,
+  FoldVerticalIcon,
   PencilIcon,
   PlusIcon,
   TagIcon,
@@ -53,7 +67,7 @@ import {
 } from "@/lib/conversation-categories";
 import { conversationTitle } from "@/lib/conversations";
 import { cn } from "@/lib/utils";
-import { useConversations } from "@/runtime/provider";
+import { useConversations, useSession } from "@/runtime/provider";
 
 /** The value a radio item uses for "no category". The empty string is not
  *  usable — Radix treats it as unset — and `null` is not a string. */
@@ -72,6 +86,7 @@ export const ConversationMenu: FC = () => {
     categoriseConversation,
     deleteConversation,
   } = useConversations();
+  const { say, state } = useSession();
 
   const [open, setOpen] = useState(false);
   const [asking, setAsking] = useState<Asking>(null);
@@ -169,6 +184,46 @@ export const ConversationMenu: FC = () => {
             <PlusIcon className="size-4" />
             New category
           </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          {/**
+           * The two things you do *to* a conversation rather than to its name,
+           * side by side because they are the same size of decision — one
+           * throws the messages away, the other trades them for a summary.
+           *
+           * **Menu items in a flex row, not buttons.** A `<Button>` in here
+           * would look identical and be wrong: Radix drives this menu with
+           * roving focus over its own items, so a plain button is skipped by
+           * the arrow keys and does not close the menu when it is used.
+           *
+           * **No confirmation, for the reason Delete has none.** `/compact`
+           * declares `require_approval` and `/clear` reaches the unsafe
+           * `conv.clear`, so the kernel raises its own dialog either way and
+           * asking here would be asking twice.
+           *
+           * Disabled mid-turn like the model selector's own command item: this
+           * submits a slash command, and a command cannot be submitted onto a
+           * turn that is already running.
+           */}
+          <div className="flex gap-1">
+            <DropdownMenuItem
+              className="flex-1 justify-center"
+              disabled={state.typing}
+              onSelect={() => void say("/clear")}
+            >
+              <EraserIcon className="size-4" />
+              Clear
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="flex-1 justify-center"
+              disabled={state.typing}
+              onSelect={() => void say("/compact")}
+            >
+              <FoldVerticalIcon className="size-4" />
+              Compact
+            </DropdownMenuItem>
+          </div>
 
           <DropdownMenuSeparator />
 
