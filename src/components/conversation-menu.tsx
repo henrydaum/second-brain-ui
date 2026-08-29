@@ -196,23 +196,22 @@ export const ConversationMenu: FC = () => {
            * the row wrapped. The alternative was a wider menu for the sake of
            * three glyphs the words beside them already say.
            *
-           * **Left to right is cheapest to dearest.** Compacting trades the
-           * messages for a summary, clearing takes the messages, deleting takes
-           * the conversation — so the far edge, where a slip is least likely to
-           * land, is the one that costs the most.
+           * **Left to right is cheapest to dearest, and the colour says so.**
+           * Compacting trades the messages for a summary, clearing takes the
+           * messages, deleting takes the conversation — yellow, orange, red,
+           * the ramp every other warning light uses. It reads in one glance
+           * without a label explaining it, and the far edge, where a slip is
+           * least likely to land, is the one that costs the most.
            *
-           * **Amber, because irreversible is not the same as destructive.**
-           * Clearing cannot be undone and compacting leaves a marker nothing
-           * removes, so neither should read as ordinary as Rename. Neither
-           * disposes of the conversation either, which is what the red is for
-           * and what red stops meaning if these borrow it.
+           * None of the three is ordinary and only one is destructive, which is
+           * what the two colours short of red are for: clearing cannot be
+           * undone and compacting leaves a marker nothing removes, so both want
+           * to be louder than Rename — and red stops meaning "the conversation
+           * is gone" the moment something that keeps it borrows red.
            *
-           * **Delete keeps its distance.** It is a neighbour of two routine
-           * actions now rather than alone past a divider, so it carries the
-           * wider gap and the only red in the row. It earns its place here at
-           * all because the sidebar's copy appears on hover, which on a touch
-           * screen means it never appears — it was reachable only by someone
-           * who already knew.
+           * Delete earns its place in this menu at all because the sidebar's
+           * copy appears on hover, which on a touch screen means it never
+           * appears — it was reachable only by someone who already knew.
            *
            * **None of the three confirms, because all three are confirmed
            * already.** `/compact` declares `require_approval`, `/clear` reaches
@@ -227,12 +226,13 @@ export const ConversationMenu: FC = () => {
            */}
           <div className="flex items-center gap-1">
             <DropdownMenuItem
-              className="text-caution focus:bg-caution/10 focus:text-caution flex-1 justify-center px-1.5"
+              className="text-notice focus:bg-notice/10 focus:text-notice flex-1 justify-center px-1.5"
               disabled={state.typing}
               onSelect={() => void say("/compact")}
             >
               Compact
             </DropdownMenuItem>
+            <Rule />
             <DropdownMenuItem
               className="text-caution focus:bg-caution/10 focus:text-caution flex-1 justify-center px-1.5"
               disabled={state.typing}
@@ -240,13 +240,15 @@ export const ConversationMenu: FC = () => {
             >
               Clear
             </DropdownMenuItem>
+            <Rule />
             <DropdownMenuItem
-              className="text-destructive focus:bg-destructive/10 focus:text-destructive ms-2 flex-1 justify-center px-1.5"
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive flex-1 justify-center px-1.5"
               onSelect={() => void deleteConversation(conversationId)}
             >
               Delete
             </DropdownMenuItem>
           </div>
+
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -273,6 +275,19 @@ export const ConversationMenu: FC = () => {
     </>
   );
 };
+
+/**
+ * A hairline between two cells of the action bar.
+ *
+ * Decorative, and hidden from the accessibility tree for it: a menu's items are
+ * announced as a list already, and a separator between each of three would be
+ * three announcements of nothing. `DropdownMenuSeparator` is the horizontal
+ * rule that divides *sections* of this menu and carries a real `role`, which is
+ * why this is not that.
+ */
+const Rule: FC = () => (
+  <div aria-hidden className="bg-border h-5 w-px shrink-0" />
+);
 
 /**
  * Ask for one name, in a dialog rather than inline in the menu.
