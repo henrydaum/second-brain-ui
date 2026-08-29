@@ -32,15 +32,7 @@
  */
 
 import { useEffect, useState, type FC } from "react";
-import {
-  ChevronDownIcon,
-  EraserIcon,
-  FoldVerticalIcon,
-  PencilIcon,
-  PlusIcon,
-  TagIcon,
-  Trash2Icon,
-} from "lucide-react";
+import { ChevronDownIcon, PencilIcon, PlusIcon, TagIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -188,77 +180,73 @@ export const ConversationMenu: FC = () => {
           <DropdownMenuSeparator />
 
           {/**
-           * The two things you do *to* a conversation rather than to its name —
-           * one trades the messages for a summary, the other throws them away.
+           * Everything you do *to* a conversation, in one bar across the
+           * bottom.
            *
-           * **In that order, and it keeps going past them.** Compacting costs
-           * the least, clearing costs every message, deleting costs the
-           * conversation: the menu gets heavier downwards, so the thing you
-           * reach for by accident is the one that takes the least back.
+           * **Three across works where two did not, and the count is the
+           * reason.** As a pair these sat under a menu whose every label starts
+           * at the same inset, close enough to that list to be read as two of
+           * its rows and too misaligned to be two of its rows. Three filling
+           * the width is not a list at all; it is the footer of one, which is a
+           * shape people already know and which owes the rows above it no
+           * alignment.
            *
-           * **A row each, though they were a pair of columns first.** Side by
-           * side they fit in half the height and read as an afterthought: every
-           * other label in this menu starts at the same inset behind its icon,
-           * and two centred halves put neither of these on that line. Centring
-           * misaligned both, left-aligning would have rescued only the first,
-           * and a menu is scanned down its left edge. The row of height back is
-           * the cheaper thing to spend.
+           * **No icons, and that is what makes it fit.** With them the three
+           * labels want about 266px inside a menu that has 248px to give, so
+           * the row wrapped. The alternative was a wider menu for the sake of
+           * three glyphs the words beside them already say.
+           *
+           * **Left to right is cheapest to dearest.** Compacting trades the
+           * messages for a summary, clearing takes the messages, deleting takes
+           * the conversation — so the far edge, where a slip is least likely to
+           * land, is the one that costs the most.
            *
            * **Amber, because irreversible is not the same as destructive.**
            * Clearing cannot be undone and compacting leaves a marker nothing
            * removes, so neither should read as ordinary as Rename. Neither
-           * disposes of the conversation either, which is what the red below is
-           * for and what it stops meaning if this borrows it.
+           * disposes of the conversation either, which is what the red is for
+           * and what red stops meaning if these borrow it.
            *
-           * **No confirmation, for the reason Delete has none.** `/compact`
-           * declares `require_approval` and `/clear` reaches the unsafe
-           * `conv.clear`, so the kernel raises its own dialog either way and
+           * **Delete keeps its distance.** It is a neighbour of two routine
+           * actions now rather than alone past a divider, so it carries the
+           * wider gap and the only red in the row. It earns its place here at
+           * all because the sidebar's copy appears on hover, which on a touch
+           * screen means it never appears — it was reachable only by someone
+           * who already knew.
+           *
+           * **None of the three confirms, because all three are confirmed
+           * already.** `/compact` declares `require_approval`, `/clear` reaches
+           * the unsafe `conv.clear`, and `conv.delete` is unsafe outright: the
+           * kernel raises its own dialog for each and this waits on it, so
            * asking here would be asking twice.
            *
-           * Disabled mid-turn like the model selector's own command item: this
-           * submits a slash command, and a command cannot be submitted onto a
-           * turn that is already running.
+           * Only the two commands go dim mid-turn, like the model selector's
+           * own command item — a command cannot be submitted onto a running
+           * turn. Deleting is a Request rather than a command and does not
+           * queue behind one.
            */}
-          <DropdownMenuItem
-            className="text-caution focus:bg-caution/10 focus:text-caution"
-            disabled={state.typing}
-            onSelect={() => void say("/compact")}
-          >
-            <FoldVerticalIcon className="size-4" />
-            Compact
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="text-caution focus:bg-caution/10 focus:text-caution"
-            disabled={state.typing}
-            onSelect={() => void say("/clear")}
-          >
-            <EraserIcon className="size-4" />
-            Clear
-          </DropdownMenuItem>
-
-          <DropdownMenuSeparator />
-
-          {/**
-           * The one destructive thing, and now the only place a phone can
-           * reach it.
-           *
-           * The sidebar's own delete appears on hover, which on a touch screen
-           * means it never appears at all — it was there, and could be tapped,
-           * but only by someone who already knew. This is where the rest of
-           * what a conversation *is* is edited, so it is where the answer to
-           * "get rid of this one" belongs too.
-           *
-           * **No confirmation here.** `conv.delete` is the unsafe Request the
-           * file header names: the kernel raises its own approval dialog and
-           * this waits on it, so asking first would be asking twice.
-           */}
-          <DropdownMenuItem
-            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-            onSelect={() => void deleteConversation(conversationId)}
-          >
-            <Trash2Icon className="size-4" />
-            Delete
-          </DropdownMenuItem>
+          <div className="flex items-center gap-1">
+            <DropdownMenuItem
+              className="text-caution focus:bg-caution/10 focus:text-caution flex-1 justify-center px-1.5"
+              disabled={state.typing}
+              onSelect={() => void say("/compact")}
+            >
+              Compact
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-caution focus:bg-caution/10 focus:text-caution flex-1 justify-center px-1.5"
+              disabled={state.typing}
+              onSelect={() => void say("/clear")}
+            >
+              Clear
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive ms-2 flex-1 justify-center px-1.5"
+              onSelect={() => void deleteConversation(conversationId)}
+            >
+              Delete
+            </DropdownMenuItem>
+          </div>
         </DropdownMenuContent>
       </DropdownMenu>
 
