@@ -315,18 +315,13 @@ export type SecondBrain = {
   modelsFailure: boolean;
   switchingModel: boolean;
   setModel: (modelName: string) => Promise<void>;
-  /** How hard the selected profile is told to think, or `null` when the
-   *  backend cannot vouch for a dial on this model. Per profile, not global:
-   *  it lives in that profile's `llm_extra_params`, so switching model
-   *  switches this too. */
-  reasoningControl: ReasoningControl | null;
+  /** How hard the selected profile is told to think. Per profile, not global:
+   *  it lives in that profile's `llm_extra_params`, so switching model switches
+   *  this too. A profile that has never been given one reads as `medium`,
+   *  which is what the provider resolves a blank to. */
+  reasoningEffort: ReasoningEffort;
   settingReasoning: boolean;
-  /** Ask the backend what this model takes. Cheap to call repeatedly — the
-   *  kernel caches the answer per model — so the panel refreshes on open
-   *  rather than holding a copy that a `/llm` edit could make stale. */
-  refreshReasoning: () => Promise<void>;
-  /** Set the reasoning value, or clear it with `null`. */
-  setReasoningValue: (value: string | null) => Promise<void>;
+  setReasoningEffort: (effort: ReasoningEffort) => Promise<void>;
 
   /**
    * What the system has told you.
@@ -377,95 +372,33 @@ export type SecondBrain = {
 export type LlmProfile = {
   model_name: string;
   loaded?: boolean;
-  endpoint?: string;
 };
 
-/**
- * One row of `llm.list({ params })` — what the backend says a model accepts.
- *
- * `role` is how a client finds the reasoning dial without recognising its
- * name. The parameter is spelled `reasoning_effort` at one provider, `effort`
- * or `thinking` at another, and matching on those here would be provider
- * vocabulary in the UI. The backend stamps the role; this file never learns a
- * name.
- */
-type LlmParamRow = {
-  name: string;
-  label?: string;
-  choices?: string[];
-  supported?: boolean;
-  role?: string;
-  note?: string;
-};
+export type ReasoningEffort = "off" | "low" | "medium" | "high";
 
-/**
- * The reasoning control for the selected model, or `null` for no control.
- *
- * Built from the backend's answer rather than from a fixed ladder, because the
- * ladder was a guess in three directions at once: that the parameter is called
- * `reasoning_effort`, that the model takes it, and that `off/low/medium/high`
- * are its values. None of the three is true generally.
- *
- * `null` whenever the backend cannot vouch for **both** the parameter and its
- * values. That is deliberately silence rather than a fallback: a control
- * offering values nothing said were accepted is worse than no control, and the
- * setting stays fully reachable in `/llm`, which reports rather than asserts.
- */
-export type ReasoningControl = {
-  /** The parameter that carries it, whatever this provider calls it. */
-  param: string;
-  /** Accepted values, in the order the backend gave them. Never empty. */
-  choices: string[];
-  /** What the profile sends today; `null` when it sets nothing. */
-  value: string | null;
-};
+const REASONING_EFFORTS: ReasoningEffort[] = ["off", "low", "medium", "high"];
 
 /**
  * One profile as `config.read` returns it, which is not what `llm.list` returns.
  *
  * `llm.list` answers "which profiles exist"; the extra params are only in the
  * setting. Every other field is declared unknown rather than omitted because
- * this shape is written back whole — see `setReasoningValue` — and a narrower
+ * this shape is written back whole — see `setReasoningEffort` — and a narrower
  * type would invite dropping the fields it does not name.
- *
- * `llm_extra_params` names no member, because the kernel does not either: the
- * reasoning dial is whichever key the backend gave the reasoning role.
  */
 type LlmProfileConfig = {
-  llm_extra_params?: Record<string, unknown> | null;
+  llm_extra_params?: { reasoning_effort?: string | null } | null;
   [field: string]: unknown;
 };
 
-/**
- * The row a reasoning control can be built from, or `undefined`.
- *
- * Three conditions, and the second is the one worth stating. `supported` means
- * the backend affirmatively lists this parameter for this model — it is not
- * "the call would fail without it", since a configured parameter is sent
- * regardless. Requiring it here is what keeps the panel from offering a dial
- * whose values are a guess, and it is why most gateway-routed models show no
- * control at all: nothing can distinguish "this model does not reason" from
- * "no record of this model", so neither is claimed.
- */
-export function reasoningRow(rows: LlmParamRow[]): LlmParamRow | undefined {
-  return rows.find(
-    (row) =>
-      row.role === "reasoning" &&
-      row.supported === true &&
-      Array.isArray(row.choices) &&
-      row.choices.length > 0,
-  );
-}
-
-/** What a profile currently sends for `param`, as the control reads it. */
-export function storedValue(
-  profile: LlmProfileConfig | undefined,
-  param: string,
-): string | null {
-  const held = profile?.llm_extra_params?.[param];
-  // A stored `null` means "send nothing", which is what an absent key means
-  // too now that the kernel supplies no default. Both read as "not set".
-  return typeof held === "string" && held ? held : null;
+/** A stored effort as the UI understands it. Blank means the profile has never
+ *  been given one, and the provider treats that as `medium`, so that is what
+ *  the control shows rather than an empty segment. */
+export function normalizeEffort(value: unknown): ReasoningEffort {
+  const effort = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return (REASONING_EFFORTS as string[]).includes(effort)
+    ? (effort as ReasoningEffort)
+    : "medium";
 }
 
 /**
@@ -495,10 +428,9 @@ type ModelDomain = Pick<
   | "modelsFailure"
   | "switchingModel"
   | "setModel"
-  | "reasoningControl"
+  | "reasoningEffort"
   | "settingReasoning"
-  | "refreshReasoning"
-  | "setReasoningValue"
+  | "setReasoningEffort"
 >;
 type ConversationDomain = Pick<
   SecondBrain,
@@ -648,8 +580,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsFailure, setModelsFailure] = useState(false);
   const [switchingModel, setSwitchingModel] = useState(false);
-  const [reasoningControl, setReasoningControl] =
-    useState<ReasoningControl | null>(null);
+  const [reasoningEffort, setReasoningEffortState] =
+    useState<ReasoningEffort>("medium");
   const [settingReasoning, setSettingReasoning] = useState(false);
   /** The profiles setting as it was last read. A ref rather than state because
    *  nothing renders it — it exists so switching model can show that profile's
@@ -1366,14 +1298,21 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
     // Deliberately not `modelsFailure`: the list and the default both arrived,
     // and a panel that can still switch model is worth more than one that
-    // refuses to draw because the extra params did not load.
+    // refuses to draw because the extra params did not load. The effort falls
+    // back to what a blank means anyway.
     //
-    // No reasoning control is built here. Whether there is one is a question
-    // about the *model*, answered by the backend, and asking it costs a round
-    // trip that boot should not spend on a panel nobody has opened —
-    // `refreshReasoning` runs when it does.
+    // Read from `defaultModel` rather than the `modelName` state — this batch
+    // is what sets that state, and it has not landed yet.
     if (profileConfigResult.status === "fulfilled") {
-      llmProfilesRef.current = profileConfigResult.value ?? {};
+      const profiles = profileConfigResult.value ?? {};
+      llmProfilesRef.current = profiles;
+      setReasoningEffortState(
+        normalizeEffort(
+          defaultModel
+            ? profiles[defaultModel]?.llm_extra_params?.reasoning_effort
+            : null,
+        ),
+      );
     } else {
       report(profileConfigResult.reason);
     }
@@ -1476,60 +1415,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const modelNameRef = useRef<string | null>(null);
   modelNameRef.current = modelName;
   const switchingModelRef = useRef(false);
-  const reasoningControlRef = useRef<ReasoningControl | null>(null);
-  reasoningControlRef.current = reasoningControl;
+  const reasoningEffortRef = useRef<ReasoningEffort>("medium");
+  reasoningEffortRef.current = reasoningEffort;
   const settingReasoningRef = useRef(false);
-
-  /**
-   * Ask the backend what reasoning dial this model has, if any.
-   *
-   * **Asked per model, every time the panel opens.** The answer is a fact
-   * about the model rather than about the profile, so it cannot be cached
-   * alongside the profile list, and it can change under us — installing a
-   * backend or editing the parameter in `/llm` both move it. The kernel
-   * caches it per model, so repeat opens cost a round trip and no work.
-   *
-   * **Silence on failure.** No control is the ordinary answer here — most
-   * models have none — so a failed lookup and a model without a dial are
-   * shown the same way, and neither is worth a banner. What would be worth
-   * one is a control built on a guess, which is what this replaced.
-   */
-  const refreshReasoning = useCallback(
-    async (forModel?: string) => {
-      const model = forModel ?? modelNameRef.current;
-      if (!model) {
-        setReasoningControl(null);
-        return;
-      }
-      // From the profile config rather than the `llm.list` row: it is already
-      // a ref, it is the same value, and it is the copy this file writes back.
-      const held = llmProfilesRef.current[model]?.llm_endpoint;
-      const endpoint = typeof held === "string" ? held : "";
-      try {
-        const answer = await sdk<{ params?: LlmParamRow[] } | null>(
-          "llm.list",
-          { params: model, endpoint },
-        );
-        const row = reasoningRow(answer?.params ?? []);
-        // Read against the model asked about, not the one selected now: a
-        // switch during the round trip would otherwise write this answer onto
-        // whatever is selected by the time it lands.
-        if (modelNameRef.current !== model) return;
-        setReasoningControl(
-          row
-            ? {
-                param: row.name,
-                choices: row.choices ?? [],
-                value: storedValue(llmProfilesRef.current[model], row.name),
-              }
-            : null,
-        );
-      } catch {
-        setReasoningControl(null);
-      }
-    },
-    [],
-  );
 
   /** Change the same global default setting as `/llm`'s Set default action.
    * Optimistic UI keeps the compact control responsive; a failed Request
@@ -1538,26 +1426,27 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     async (nextModel: string) => {
       if (switchingModelRef.current || nextModel === modelNameRef.current) return;
       const previous = modelNameRef.current;
-      const previousControl = reasoningControlRef.current;
+      const previousEffort = reasoningEffortRef.current;
       switchingModelRef.current = true;
       setSwitchingModel(true);
       setModelName(nextModel);
-      // Cleared, not carried over. The control describes *this model* — which
-      // parameter, which values — so the old model's is not a stale value but
-      // a claim about the wrong thing. `refreshReasoning` below asks about the
-      // new one; until it answers the row is simply absent, which is also what
-      // it will be for most models.
-      setReasoningControl(null);
+      // Effort belongs to the profile, so it changes with the profile. From the
+      // last read rather than a fresh one: the panel is open and the row would
+      // otherwise sit on the old model's value until a round trip finished.
+      setReasoningEffortState(
+        normalizeEffort(
+          llmProfilesRef.current[nextModel]?.llm_extra_params?.reasoning_effort,
+        ),
+      );
       try {
         await sdk<boolean>("config.write", {
           key: "default_llm_profile",
           value: nextModel,
           scope: "plugin",
         });
-        await refreshReasoning(nextModel);
       } catch (error) {
         setModelName(previous);
-        setReasoningControl(previousControl);
+        setReasoningEffortState(previousEffort);
         await syncSession();
         report(error);
       } finally {
@@ -1565,19 +1454,11 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         setSwitchingModel(false);
       }
     },
-    [refreshReasoning, report, syncSession],
+    [report, syncSession],
   );
 
   /**
-   * Set the reasoning parameter's value, or clear it with `null`.
-   *
-   * **Clearing removes the key rather than storing a word.** This wrote the
-   * literal `"off"`, which worked only while the kernel aliased that string to
-   * a null; the alias went when reasoning stopped being a kernel-special
-   * parameter, and the word was then forwarded to providers that have no such
-   * level. Removing the key leaves the provider's own default, which is the
-   * honest meaning of "not set" — note that is *not* the same as off, since a
-   * provider's default may well reason.
+   * Set the selected profile's reasoning effort.
    *
    * **The whole `llm_profiles` setting is written back.** `config.write` takes
    * one top-level setting — there is no dotted path and no patch — so changing
@@ -1590,16 +1471,15 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    * `<secret:secret_llm_api_key>` and restores the real value when that handle
    * is written back, so the key is neither seen nor lost here.
    */
-  const setReasoningValue = useCallback(
-    async (value: string | null) => {
+  const setReasoningEffort = useCallback(
+    async (effort: ReasoningEffort) => {
       const model = modelNameRef.current;
-      const control = reasoningControlRef.current;
-      if (settingReasoningRef.current || !model || !control) return;
-      if (value === control.value) return;
-      const previous = control;
+      if (settingReasoningRef.current || !model) return;
+      if (effort === reasoningEffortRef.current) return;
+      const previous = reasoningEffortRef.current;
       settingReasoningRef.current = true;
       setSettingReasoning(true);
-      setReasoningControl({ ...control, value });
+      setReasoningEffortState(effort);
       try {
         const profiles =
           (await sdk<Record<string, LlmProfileConfig> | null>("config.read", {
@@ -1612,26 +1492,16 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         if (!profile) {
           throw new Error(`No LLM profile named ${model} to configure.`);
         }
-        // The parameter this provider spells it with, never a literal. It is
-        // `reasoning_effort` at most providers and not at all of them, and the
-        // name came from the backend along with the values.
-        const extras = { ...(profile.llm_extra_params ?? {}) };
-        if (value === null) {
-          delete extras[control.param];
-        } else {
-          extras[control.param] = value;
-        }
-        const nextProfile: LlmProfileConfig = { ...profile };
-        // An empty object is not the absence of the key: a profile carrying
-        // `{}` reads as configured to anything scanning the file by hand, and
-        // every profile written before extras existed carries nothing. `/llm`
-        // drops it the same way.
-        if (Object.keys(extras).length > 0) {
-          nextProfile.llm_extra_params = extras;
-        } else {
-          delete nextProfile.llm_extra_params;
-        }
-        const next = { ...profiles, [model]: nextProfile };
+        const next = {
+          ...profiles,
+          [model]: {
+            ...profile,
+            llm_extra_params: {
+              ...profile.llm_extra_params,
+              reasoning_effort: effort,
+            },
+          },
+        };
         await sdk<boolean>("config.write", {
           key: "llm_profiles",
           value: next,
@@ -1639,7 +1509,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         });
         llmProfilesRef.current = next;
       } catch (error) {
-        setReasoningControl(previous);
+        setReasoningEffortState(previous);
         await syncSession();
         report(error);
       } finally {
@@ -2292,10 +2162,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       modelsFailure,
       switchingModel,
       setModel,
-      reasoningControl,
+      reasoningEffort,
       settingReasoning,
-      refreshReasoning,
-      setReasoningValue,
+      setReasoningEffort,
     }),
     [
       models,
@@ -2305,10 +2174,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       modelsFailure,
       switchingModel,
       setModel,
-      reasoningControl,
+      reasoningEffort,
       settingReasoning,
-      refreshReasoning,
-      setReasoningValue,
+      setReasoningEffort,
     ],
   );
   const conversationValue = useMemo<ConversationDomain>(

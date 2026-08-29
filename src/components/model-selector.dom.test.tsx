@@ -6,17 +6,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const setModel = vi.fn();
-const setReasoningValue = vi.fn();
-const refreshReasoning = vi.fn();
+const setReasoningEffort = vi.fn();
 
 // Mutable so a test can put the panel in one state without a second mock.
-// `null` is the ordinary case, not an edge one: the backend answers it for
-// every model it cannot vouch for a reasoning parameter on.
-let reasoningControl: {
-  param: string;
-  choices: string[];
-  value: string | null;
-} | null = null;
+let reasoningEffort = "medium";
 let settingReasoning = false;
 
 vi.mock("@/runtime/provider", () => ({
@@ -31,10 +24,9 @@ vi.mock("@/runtime/provider", () => ({
     modelsFailure: false,
     switchingModel: false,
     setModel,
-    reasoningControl,
+    reasoningEffort,
     settingReasoning,
-    refreshReasoning,
-    setReasoningValue,
+    setReasoningEffort,
   }),
 }));
 
@@ -44,11 +36,7 @@ const { ModelSelector, compactModelName } = await import(
 
 beforeEach(() => {
   vi.clearAllMocks();
-  reasoningControl = {
-    param: "reasoning_effort",
-    choices: ["none", "low", "medium", "high", "xhigh"],
-    value: "medium",
-  };
+  reasoningEffort = "medium";
   settingReasoning = false;
 });
 afterEach(cleanup);
@@ -105,104 +93,49 @@ describe("the reasoning row", () => {
     return user;
   };
 
-  const openReasoning = async () => {
-    const user = await openPanel();
-    await user.click(screen.getByRole("menuitem", { name: /Reasoning:/ }));
-    return user;
-  };
-
-  /**
-   * Choose a value from the open submenu, by keyboard.
-   *
-   * Radix opens a submenu on click here and leaves its items inert to a
-   * further click — jsdom has no real pointer, and the library gates item
-   * selection on pointer state it never sees. Keyboard selection is the path
-   * it supports without one, and it is a path a person genuinely uses.
-   */
-  const choose = async (
-    user: ReturnType<typeof userEvent.setup>,
-    label: string,
-  ) => {
-    const items = screen.getAllByRole("menuitemradio");
-    const target = items.find((item) => item.textContent === label);
-    if (!target) throw new Error(`no submenu item named ${label}`);
-    target.focus();
-    await user.keyboard("{Enter}");
-  };
-
-  it("is absent when the backend vouches for no reasoning parameter", async () => {
-    // The case that matters most, and the common one: a model routed through a
-    // gateway under a name litellm has no record of. Showing a control there
-    // would be asserting values nothing said were accepted.
-    reasoningControl = null;
+  it("shows the stored effort, and Medium when there is none", async () => {
     await openPanel();
-
-    expect(screen.queryByText(/Reasoning:/)).not.toBeInTheDocument();
-  });
-
-  it("offers exactly the values the backend named", async () => {
-    await openReasoning();
-
-    // Not a fixed ladder: five here, and a different provider names two or
-    // seven. `xhigh` in particular was unreachable from the old control.
-    // The model list uses the same role in the parent menu, so only the
-    // submenu's own items are compared.
-    const labels = screen
-      .getAllByRole("menuitemradio")
-      .map((item) => item.textContent)
-      .filter((label) => !label?.includes("/"));
-    expect(labels).toEqual(["Not set", "none", "low", "medium", "high", "xhigh"]);
-  });
-
-  it("says which value is set, and reads a cleared one as Not set", async () => {
-    await openPanel();
+    expect(screen.getByRole("radio", { name: "Medium" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("radio", { name: "High" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    // The dots carry no visible text, so the row has to say where it is.
     expect(screen.getByText("Reasoning:").parentElement).toHaveTextContent(
-      "Reasoning: medium",
+      "Reasoning: Medium",
     );
 
     cleanup();
-    // `null` is a profile that sets nothing, which leaves the provider's own
-    // default. Deliberately not called "Off" — a provider default may well
-    // still reason, and only a value it names, like `none`, means off.
-    reasoningControl = {
-      param: "reasoning_effort",
-      choices: ["none", "low", "high"],
-      value: null,
-    };
+    reasoningEffort = "off";
     await openPanel();
+    expect(screen.getByRole("radio", { name: "Off" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     expect(screen.getByText("Reasoning:").parentElement).toHaveTextContent(
-      "Reasoning: Not set",
+      "Reasoning: Off",
     );
   });
 
-  it("sets the value the backend named", async () => {
-    const user = await openReasoning();
-    await choose(user, "high");
-
-    expect(setReasoningValue).toHaveBeenCalledWith("high");
-  });
-
-  it("clears the parameter rather than storing a word for it", async () => {
-    // The old control wrote the literal "off", which the kernel used to alias
-    // to a null and no longer does — so the word reached providers that have
-    // no such level. Clearing is `null`, and the write path deletes the key.
-    reasoningControl = {
-      param: "reasoning_effort",
-      choices: ["low", "high"],
-      value: "high",
-    };
-    const user = await openReasoning();
-    await choose(user, "Not set");
-
-    expect(setReasoningValue).toHaveBeenCalledWith(null);
+  it("sets the effort without closing the panel", async () => {
+    const user = await openPanel();
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    expect(setReasoningEffort).toHaveBeenCalledWith("high");
+    // Picking a model is a decision you leave on; effort is one you may want to
+    // change twice, so the menu has to survive the click.
+    expect(screen.getByRole("radiogroup", { name: "Reasoning effort" }))
+      .toBeInTheDocument();
   });
 
   it("goes inert while a write is in flight", async () => {
     settingReasoning = true;
-    await openPanel();
-
-    expect(screen.getByRole("menuitem", { name: /Reasoning:/ })).toHaveAttribute(
-      "data-disabled",
-    );
+    const user = await openPanel();
+    const high = screen.getByRole("radio", { name: "High" });
+    expect(high).toBeDisabled();
+    await user.click(high);
+    expect(setReasoningEffort).not.toHaveBeenCalled();
   });
 });

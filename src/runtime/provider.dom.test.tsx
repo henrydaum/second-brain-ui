@@ -62,21 +62,18 @@ const Probe = () => {
 };
 
 const ModelProbe = () => {
-  const { modelName, agentProfile, models, setModel, reasoningControl, refreshReasoning, setReasoningValue } =
+  const { modelName, agentProfile, models, setModel, reasoningEffort, setReasoningEffort } =
     useModels();
   return (
     <>
       <span data-testid="model">{modelName}</span>
       <span data-testid="agent">{agentProfile}</span>
       <span data-testid="models">{models.map((model) => model.model_name).join(",")}</span>
-      <span data-testid="reasoning">{reasoningControl?.value ?? "none"}</span>
+      <span data-testid="reasoning">{reasoningEffort}</span>
       <button type="button" onClick={() => void setModel("openrouter/gpt-5.4")}>
         Switch
       </button>
-      <button type="button" onClick={() => void refreshReasoning()}>
-        Look up reasoning
-      </button>
-      <button type="button" onClick={() => void setReasoningValue("high")}>
+      <button type="button" onClick={() => void setReasoningEffort("high")}>
         Think harder
       </button>
     </>
@@ -153,26 +150,6 @@ describe("a page that loads in the middle of a turn", () => {
   });
 });
 
-/**
- * What `llm.list({ params })` answers for a model that has a reasoning dial.
- *
- * The panel asks this on open rather than at boot, because whether a control
- * exists is a fact about the *model* and the backend is the only thing that
- * knows it. Every test that touches the control therefore has to press "Look
- * up reasoning" first, exactly as opening the panel does.
- */
-const REASONING_PARAMS = {
-  params: [
-    { name: "temperature", supported: true, choices: [] },
-    {
-      name: "reasoning_effort",
-      role: "reasoning",
-      supported: true,
-      choices: ["low", "medium", "high"],
-    },
-  ],
-};
-
 describe("global model synchronization", () => {
   it("reads the default model, agent profile, and configured models", async () => {
     sdk.mockImplementation(async (type: string, args?: { key?: string }) => {
@@ -206,79 +183,7 @@ describe("global model synchronization", () => {
     );
     expect(screen.getByTestId("agent")).toHaveTextContent("researcher");
     expect(screen.getByTestId("models")).toHaveTextContent("anthropic/sonnet-4.6");
-    // No control at boot, even though the profile carries a value: whether
-    // there is a dial is a question about the model, and asking it is a round
-    // trip that boot should not spend on a panel nobody has opened.
-    expect(screen.getByTestId("reasoning")).toHaveTextContent("none");
-  });
-
-  it("builds the control from the backend, not from a fixed ladder", async () => {
-    sdk.mockImplementation(async (type: string, args?: { key?: string; params?: string }) => {
-      if (type === "session.get") return { mode: "ask", busy: false };
-      if (type === "llm.list") {
-        return args?.params
-          ? REASONING_PARAMS
-          : { profiles: [{ model_name: "anthropic/sonnet-4.6" }] };
-      }
-      if (type === "config.read") {
-        return args?.key === "llm_profiles"
-          ? { "anthropic/sonnet-4.6": { llm_extra_params: { reasoning_effort: "low" } } }
-          : "anthropic/sonnet-4.6";
-      }
-      return null;
-    });
-    const user = userEvent.setup();
-    render(
-      <SecondBrainProvider>
-        <ModelProbe />
-      </SecondBrainProvider>,
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("model")).toHaveTextContent("anthropic/sonnet-4.6"),
-    );
-
-    await user.click(screen.getByRole("button", { name: "Look up reasoning" }));
-
-    await waitFor(() =>
-      expect(screen.getByTestId("reasoning")).toHaveTextContent("low"),
-    );
-  });
-
-  it("has no control when the backend vouches for none", async () => {
-    // The common case: a model routed through a gateway under a name litellm
-    // has no record of. Nothing can tell "does not reason" from "no record",
-    // so neither is claimed and the row simply does not appear.
-    sdk.mockImplementation(async (type: string, args?: { key?: string; params?: string }) => {
-      if (type === "session.get") return { mode: "ask", busy: false };
-      if (type === "llm.list") {
-        return args?.params
-          ? { params: [{ name: "reasoning_effort", role: "reasoning", supported: false, choices: [] }] }
-          : { profiles: [{ model_name: "anthropic/sonnet-4.6" }] };
-      }
-      if (type === "config.read") {
-        return args?.key === "llm_profiles"
-          ? { "anthropic/sonnet-4.6": { llm_extra_params: { reasoning_effort: "low" } } }
-          : "anthropic/sonnet-4.6";
-      }
-      return null;
-    });
-    const user = userEvent.setup();
-    render(
-      <SecondBrainProvider>
-        <ModelProbe />
-      </SecondBrainProvider>,
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("model")).toHaveTextContent("anthropic/sonnet-4.6"),
-    );
-
-    await user.click(screen.getByRole("button", { name: "Look up reasoning" }));
-
-    // Still none, and the stored `low` is deliberately not shown: a value the
-    // backend will not vouch for is not evidence of a control.
-    await waitFor(() =>
-      expect(screen.getByTestId("reasoning")).toHaveTextContent("none"),
-    );
+    expect(screen.getByTestId("reasoning")).toHaveTextContent("low");
   });
 
   it("switches the global default through config.write", async () => {
@@ -329,11 +234,9 @@ describe("global model synchronization", () => {
       },
       "openrouter/gpt-5.4": { llm_endpoint: "https://openrouter.ai/api/v1" },
     };
-    sdk.mockImplementation(async (type: string, args?: { key?: string; params?: string }) => {
+    sdk.mockImplementation(async (type: string, args?: { key?: string }) => {
       if (type === "session.get") return { mode: "ask", busy: false };
-      if (type === "llm.list") {
-        return args?.params ? REASONING_PARAMS : { profiles: [] };
-      }
+      if (type === "llm.list") return { profiles: [] };
       if (type === "config.read") {
         return args?.key === "llm_profiles" ? stored : "anthropic/sonnet-4.6";
       }
@@ -346,7 +249,6 @@ describe("global model synchronization", () => {
         <ModelProbe />
       </SecondBrainProvider>,
     );
-    await user.click(screen.getByRole("button", { name: "Look up reasoning" }));
     await waitFor(() =>
       expect(screen.getByTestId("reasoning")).toHaveTextContent("low"),
     );
@@ -372,11 +274,9 @@ describe("global model synchronization", () => {
   });
 
   it("puts the effort back when the write is refused", async () => {
-    sdk.mockImplementation(async (type: string, args?: { key?: string; params?: string }) => {
+    sdk.mockImplementation(async (type: string, args?: { key?: string }) => {
       if (type === "session.get") return { mode: "ask", busy: false };
-      if (type === "llm.list") {
-        return args?.params ? REASONING_PARAMS : { profiles: [] };
-      }
+      if (type === "llm.list") return { profiles: [] };
       if (type === "config.read") {
         return args?.key === "llm_profiles"
           ? { "anthropic/sonnet-4.6": { llm_extra_params: { reasoning_effort: "low" } } }
@@ -391,7 +291,6 @@ describe("global model synchronization", () => {
         <ModelProbe />
       </SecondBrainProvider>,
     );
-    await user.click(screen.getByRole("button", { name: "Look up reasoning" }));
     await waitFor(() =>
       expect(screen.getByTestId("reasoning")).toHaveTextContent("low"),
     );
@@ -405,11 +304,9 @@ describe("global model synchronization", () => {
   });
 
   it("refuses to invent a profile the setting does not have", async () => {
-    sdk.mockImplementation(async (type: string, args?: { key?: string; params?: string }) => {
+    sdk.mockImplementation(async (type: string, args?: { key?: string }) => {
       if (type === "session.get") return { mode: "ask", busy: false };
-      if (type === "llm.list") {
-        return args?.params ? REASONING_PARAMS : { profiles: [] };
-      }
+      if (type === "llm.list") return { profiles: [] };
       if (type === "config.read") {
         return args?.key === "llm_profiles"
           ? { "someone/else": {} }
@@ -427,13 +324,12 @@ describe("global model synchronization", () => {
     await waitFor(() =>
       expect(screen.getByTestId("model")).toHaveTextContent("anthropic/sonnet-4.6"),
     );
-    await user.click(screen.getByRole("button", { name: "Look up reasoning" }));
 
     await user.click(screen.getByRole("button", { name: "Think harder" }));
     // A profile carrying nothing but extra params reads as a configured model
     // and cannot answer, so no write at all is the right outcome.
     await waitFor(() =>
-      expect(screen.getByTestId("reasoning")).toHaveTextContent("none"),
+      expect(screen.getByTestId("reasoning")).toHaveTextContent("medium"),
     );
     expect(sdk).not.toHaveBeenCalledWith(
       "config.write",
