@@ -28,7 +28,6 @@ export type SettingsPageId =
   | "security"
   | "plugins"
   | "config"
-  | "packages"
   | "misc";
 
 type SettingsPage = {
@@ -64,12 +63,6 @@ export const SETTINGS_PAGES: SettingsPage[] = [
     icon: FileCogIcon,
   },
   {
-    id: "packages",
-    label: "Packages",
-    description: "Browse, install, and remove Second Brain packages.",
-    icon: PackageIcon,
-  },
-  {
     id: "misc",
     label: "Miscellaneous",
     description: "Other kernel commands and commands provided by installed packages.",
@@ -80,9 +73,15 @@ export const SETTINGS_PAGES: SettingsPage[] = [
 const PAGE_COMMANDS: Record<SettingsPageId, ReadonlySet<string>> = {
   agents: new Set(["llm", "agent"]),
   security: new Set(["mode", "permissions"]),
-  plugins: new Set(["commands", "tools", "tasks", "services", "frontends"]),
+  plugins: new Set([
+    "commands",
+    "tools",
+    "tasks",
+    "services",
+    "frontends",
+    "packages",
+  ]),
   config: new Set(["config"]),
-  packages: new Set(["packages"]),
   misc: new Set(),
 };
 
