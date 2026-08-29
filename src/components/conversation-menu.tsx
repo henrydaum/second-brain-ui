@@ -188,14 +188,27 @@ export const ConversationMenu: FC = () => {
           <DropdownMenuSeparator />
 
           {/**
-           * The two things you do *to* a conversation rather than to its name,
-           * side by side because they are the same size of decision — one
-           * throws the messages away, the other trades them for a summary.
+           * The two things you do *to* a conversation rather than to its name —
+           * one trades the messages for a summary, the other throws them away.
            *
-           * **Menu items in a flex row, not buttons.** A `<Button>` in here
-           * would look identical and be wrong: Radix drives this menu with
-           * roving focus over its own items, so a plain button is skipped by
-           * the arrow keys and does not close the menu when it is used.
+           * **In that order, and it keeps going past them.** Compacting costs
+           * the least, clearing costs every message, deleting costs the
+           * conversation: the menu gets heavier downwards, so the thing you
+           * reach for by accident is the one that takes the least back.
+           *
+           * **A row each, though they were a pair of columns first.** Side by
+           * side they fit in half the height and read as an afterthought: every
+           * other label in this menu starts at the same inset behind its icon,
+           * and two centred halves put neither of these on that line. Centring
+           * misaligned both, left-aligning would have rescued only the first,
+           * and a menu is scanned down its left edge. The row of height back is
+           * the cheaper thing to spend.
+           *
+           * **Amber, because irreversible is not the same as destructive.**
+           * Clearing cannot be undone and compacting leaves a marker nothing
+           * removes, so neither should read as ordinary as Rename. Neither
+           * disposes of the conversation either, which is what the red below is
+           * for and what it stops meaning if this borrows it.
            *
            * **No confirmation, for the reason Delete has none.** `/compact`
            * declares `require_approval` and `/clear` reaches the unsafe
@@ -206,24 +219,22 @@ export const ConversationMenu: FC = () => {
            * submits a slash command, and a command cannot be submitted onto a
            * turn that is already running.
            */}
-          <div className="flex gap-1">
-            <DropdownMenuItem
-              className="flex-1 justify-center"
-              disabled={state.typing}
-              onSelect={() => void say("/clear")}
-            >
-              <EraserIcon className="size-4" />
-              Clear
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="flex-1 justify-center"
-              disabled={state.typing}
-              onSelect={() => void say("/compact")}
-            >
-              <FoldVerticalIcon className="size-4" />
-              Compact
-            </DropdownMenuItem>
-          </div>
+          <DropdownMenuItem
+            className="text-caution focus:bg-caution/10 focus:text-caution"
+            disabled={state.typing}
+            onSelect={() => void say("/compact")}
+          >
+            <FoldVerticalIcon className="size-4" />
+            Compact
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-caution focus:bg-caution/10 focus:text-caution"
+            disabled={state.typing}
+            onSelect={() => void say("/clear")}
+          >
+            <EraserIcon className="size-4" />
+            Clear
+          </DropdownMenuItem>
 
           <DropdownMenuSeparator />
 
