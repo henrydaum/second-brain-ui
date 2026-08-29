@@ -17,7 +17,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { spellModelWord } from "@/lib/model-names";
-import { useModels, useSettings } from "@/runtime/provider";
+import { useModels, useSession, useSettings } from "@/runtime/provider";
+
+/**
+ * One argument of a command line, quoted for the kernel's `shlex` parser.
+ *
+ * Model names are the user's own text and routinely carry `/`; nothing stops
+ * one carrying a quote. Single quotes are literal to `shlex`, so the only
+ * character needing care is the quote itself, closed and re-opened around an
+ * escaped one.
+ */
+function quoteArg(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
 
 /** A compact, provider-free label for the composer trigger. The exact profile
  * key remains untouched everywhere that identity matters. */
@@ -43,6 +55,34 @@ export function ModelSelector() {
     setModel,
   } = useModels();
   const { openSettings } = useSettings();
+  const { say, state } = useSession();
+
+  /**
+   * Open this model's parameters, not merely the section that lists models.
+   *
+   * `/llm <model> edit` fills the two steps before the one worth arriving at,
+   * so the form lands on the field list — every setting this profile has, each
+   * configured parameter with its value, and Add a parameter. Opening the
+   * section alone would be one click from the composer and one more from
+   * there, which is what the panel already offered.
+   *
+   * **The dialog goes up before the command, and the order is the point** —
+   * the same order `notification-panel` uses for the same reason. `openSettings`
+   * puts it there now; the command is a round trip away, and a link that did
+   * nothing visible until the server answered would read as broken. It also
+   * decides where a *failed* submit lands: a settings page, rather than
+   * nowhere.
+   */
+  const configureModel = () => {
+    // Checked here as well as on the item. Radix disables an item with
+    // `pointer-events: none`, which is presentation — it is the right thing
+    // for the pointer and it is not a guarantee, and this one is about not
+    // submitting a command onto a running turn.
+    if (!modelName || state.typing) return;
+    setOpen(false);
+    openSettings("agents");
+    void say(`/llm ${quoteArg(modelName)} edit`);
+  };
   const label = modelsLoading && !modelName ? "Loading…" : compactModelName(modelName);
 
   return (
@@ -118,14 +158,17 @@ export function ModelSelector() {
           * occasionally present.
           */}
         <DropdownMenuItem
-          onClick={() => {
-            setOpen(false);
-            openSettings("agents");
-          }}
+          onClick={configureModel}
+          // While a turn is running, every way back *out* of Settings — closing
+          // it, or moving to another section — submits `/cancel`, which lands
+          // on that turn. Ending a turn is a decision, and it should be made at
+          // the composer's Stop button rather than arrived at by following a
+          // link about a parameter. Same guard the notification links use.
+          disabled={!modelName || state.typing}
           className="text-xs"
         >
           <SlidersHorizontalIcon className="size-3.5 opacity-60" />
-          Configure language models
+          Configure this model
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <div className="text-muted-foreground flex min-h-9 items-center px-2 text-xs">
