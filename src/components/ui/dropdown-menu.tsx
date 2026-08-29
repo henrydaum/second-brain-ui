@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 
 import { cn } from "@/lib/utils";
@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const DropdownMenu = DropdownMenuPrimitive.Root;
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
+const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 
 function DropdownMenuItem({
   className,
@@ -69,6 +70,51 @@ function DropdownMenuLabel({
   );
 }
 
+/**
+ * A submenu's own row in the parent menu.
+ *
+ * Carries the chevron itself rather than leaving each caller to add one: a
+ * submenu that does not say it opens a submenu reads as an item that does
+ * nothing when clicked.
+ */
+function DropdownMenuSubTrigger({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.SubTrigger>) {
+  return (
+    <DropdownMenuPrimitive.SubTrigger
+      className={cn(
+        "focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent flex min-h-9 cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none select-none data-disabled:pointer-events-none data-disabled:opacity-50",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronRightIcon className="text-muted-foreground ms-auto size-3.5" />
+    </DropdownMenuPrimitive.SubTrigger>
+  );
+}
+
+/** The submenu panel. Same skin as ``DropdownMenuContent`` minus the side
+ *  offset, which Radix sets from the trigger for a submenu. */
+function DropdownMenuSubContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
+  return (
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.SubContent
+        className={cn(
+          "bg-popover text-popover-foreground data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 z-50 min-w-40 origin-(--radix-dropdown-menu-content-transform-origin) rounded-lg border p-1.5 shadow-md outline-none",
+          className,
+        )}
+        {...props}
+      />
+    </DropdownMenuPrimitive.Portal>
+  );
+}
+
 function DropdownMenuRadioItem({
   className,
   children,
@@ -100,5 +146,8 @@ export {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 };
