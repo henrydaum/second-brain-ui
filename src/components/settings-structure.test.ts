@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { FileCodeIcon } from "lucide-react";
 
 import {
+  commandPresentation,
   commandsForPage,
   pageForCommand,
 } from "@/components/settings-structure";
@@ -14,6 +16,7 @@ describe("commandsForPage", () => {
     const commands = named(
       "cancel",
       "new",
+      "mode",
       "clear",
       "compact",
       "conversations",
@@ -58,9 +61,19 @@ describe("pageForCommand", () => {
     expect(pageForCommand("config")).toBe("kernel");
     expect(pageForCommand("setup")).toBe("kernel");
     expect(pageForCommand("packages")).toBe("plugins");
+    expect(pageForCommand("scripts")).toBe("plugins");
     expect(pageForCommand("frontends")).toBe("plugins");
     // A capability like the rest of that page, and the kernel agrees — `/llm`
     // declares `category = "Capabilities"` alongside tools and services.
     expect(pageForCommand("llm")).toBe("plugins");
+  });
+});
+
+describe("commandPresentation", () => {
+  it("gives Scripts a dedicated code-file icon", () => {
+    expect(commandPresentation({ name: "scripts" })).toMatchObject({
+      title: "Scripts",
+      icon: FileCodeIcon,
+    });
   });
 });

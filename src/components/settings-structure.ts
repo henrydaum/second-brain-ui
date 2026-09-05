@@ -10,9 +10,9 @@ import {
   CommandIcon,
   CompassIcon,
   CpuIcon,
+  FileCodeIcon,
   FolderTreeIcon,
   ListTreeIcon,
-  LockKeyholeIcon,
   NetworkIcon,
   PackageIcon,
   PowerIcon,
@@ -86,7 +86,6 @@ const PAGE_COMMANDS: Record<SettingsPageId, readonly string[]> = {
   kernel: [
     "config",
     "agent",
-    "mode",
     "permissions",
     "schedule",
     "locations",
@@ -95,6 +94,7 @@ const PAGE_COMMANDS: Record<SettingsPageId, readonly string[]> = {
   ],
   plugins: [
     "packages",
+    "scripts",
     "llm",
     "commands",
     "tools",
@@ -165,6 +165,7 @@ export const SYSTEM_ACTION_NAMES: ReadonlySet<string> = new Set(
 const DEDICATED_UI_COMMAND_NAMES: ReadonlySet<string> = new Set([
   "cancel",
   "new",
+  "mode",
   "clear",
   "compact",
   "conversations",
@@ -304,11 +305,6 @@ const COMMAND_PRESENTATION: Record<
     detail: "Select the tools, model, and behavior used for a session.",
     icon: BotIcon,
   },
-  mode: {
-    title: "Security mode",
-    detail: "Choose how this conversation handles permission requests.",
-    icon: LockKeyholeIcon,
-  },
   permissions: {
     title: "Standing permissions",
     detail: "Review and withdraw permissions granted previously.",
@@ -348,6 +344,11 @@ const COMMAND_PRESENTATION: Record<
     title: "Manage packages",
     detail: "Browse, install, or uninstall store packages by category.",
     icon: PackageIcon,
+  },
+  scripts: {
+    title: "Scripts",
+    detail: "Browse and run scripts available in the workspace.",
+    icon: FileCodeIcon,
   },
   schedule: {
     title: "Scheduled jobs",
