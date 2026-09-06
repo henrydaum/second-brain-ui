@@ -1,0 +1,40 @@
+# Reply rendering
+
+Each assistant reply owns ordered text/tool parts, one combined file-outcome group,
+one activity line while running, and one final copy/time/file-count footer. Files
+are deduplicated by path within that reply; showing a file in a later reply still
+creates an outcome there. The drawer independently shows the conversation's latest
+known file state, with one row per current path.
+
+Live attachment frames establish reply ownership immediately. An attachment frame
+after `typing:false` attaches to the last assistant reply without opening another
+reply or restarting activity. Tool edits come from ledger polling: ownership is
+captured before the request, overlapping polls are serialized, and responses for
+an abandoned conversation are ignored. Unattributed ledger rows remain drawer-only.
+After reload, server timestamps recover a single outcome group per historical
+reply. The backend does not persist precise attachment-event positions or reliable
+turn IDs in the ledger, so ambiguous attribution cannot be made exact by this UI.
+
+Activity uses visible lifecycle signals:
+
+- **Writing:** an unfinished text stream.
+- **Working:** an active tool, with no open text stream.
+- **Thinking:** the running interval between those activities.
+- **Waiting for your response:** pending user input takes precedence.
+
+The protocol does not expose reasoning tokens or tool-argument generation as
+distinct streams. Thinking is therefore an inferred lifecycle label, not a claim
+that reasoning tokens are currently arriving. Elapsed intervals reset on activity
+changes; completed replies have no activity indicator.
+
+## Validation
+
+Run `npm test`, `npm run build`, and `npm run lint`.
+
+For browser checks, install Chromium with `npx playwright install chromium`, serve
+the built app with `npm run preview -- --port 5174`, then run
+`node scripts/check-chat.mjs`. This exercises the real application with mocked
+backend responses at desktop and mobile widths, including reduced motion, delayed
+images, late attachments, gallery expansion, viewer keyboard navigation, repeated
+drawer highlights, reload recovery, and reader-aware scrolling. Screenshots go to
+the ignored `test-results/chat` directory. No live backend is modified.

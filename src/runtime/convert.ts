@@ -126,7 +126,8 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
     );
     custom[PRESENTATION] = {
       source: turn.source ?? "history",
-      phase: activeStream ? "writing" : "working",
+      phase: activeStream ? "writing" : turn.parts.some((part) =>
+        part.kind === "tool" && part.status !== "finished") ? "working" : "thinking",
       since: turn.activity?.since ?? turn.createdAt,
     };
   }

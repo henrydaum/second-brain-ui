@@ -614,6 +614,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const conversationsRef = useRef<Conversation[]>([]);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const conversationIdRef = useRef<number | null>(null);
+  const renderRevision = useRef(0);
   conversationIdRef.current = conversationId;
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   /** Guards against two pages of the same cursor being in flight at once — an
@@ -741,6 +742,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    */
   useEffect(() => {
     const close = connect((frame) => {
+      renderRevision.current += 1;
       // **Fanned out here, not inside the reducer.** A question the kernel is
       // blocking on belongs to the session; routing it through the
       // conversation store is what let a history read discard one. Keeping the
@@ -1222,6 +1224,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    * rebuilds the turn array, and this runs on every reconnect.
    */
   const syncSession = useCallback(async () => {
+    const revision = renderRevision.current;
+    const conversation = conversationIdRef.current;
     setModelsLoading(true);
     const [sessionResult, modelsResult, defaultModelResult, profileConfigResult] =
       await Promise.allSettled([
@@ -1242,7 +1246,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       setSecurityModeState(session?.mode ?? "ask");
       setAgentProfile(session?.agent_profile || "default");
       const busy = Boolean(session?.busy);
-      if (busy !== typingRef.current) {
+      if (revision === renderRevision.current && conversation === conversationIdRef.current &&
+          busy !== typingRef.current) {
         dispatch({ type: "frame", frame: { kind: "typing", payload: busy } });
       }
     } else {

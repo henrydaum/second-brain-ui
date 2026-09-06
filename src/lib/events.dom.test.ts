@@ -108,6 +108,18 @@ afterEach(() => {
 });
 
 describe("returning to a foregrounded page", () => {
+  it("deduplicates replayed delivery IDs but permits a new sharing event", () => {
+    const receive = vi.fn();
+    const close = connect(receive, vi.fn());
+    latest().accept();
+    const frame = { kind: "attachments", payload: ["/image.png"] };
+    latest().deliver("1", frame);
+    latest().deliver("1", frame);
+    latest().deliver("2", frame);
+    expect(receive).toHaveBeenCalledTimes(2);
+    close();
+  });
+
   it("reopens a stream the browser has given up on, however brief the absence", () => {
     const close = connect(vi.fn(), vi.fn());
     latest().accept();

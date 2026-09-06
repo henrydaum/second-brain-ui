@@ -372,6 +372,7 @@ export function connect(
 ): () => void {
   /** The last `id:` seen, so a reopen can ask for what it missed. */
   let lastEventId = "";
+  const delivered = new Set<string>();
   /** The caller has torn this down; nothing may open another stream. */
   let abandoned = false;
   /** This stream has been accepted at least once. A connection still being
@@ -474,6 +475,8 @@ export function connect(
       // The outage is over, so the delay it accumulated describes nothing. A
       // later one starts quick again rather than inheriting this one's ceiling.
       retryDelay = FIRST_RETRY_MS;
+      // IDs restart when the backend restarts; deduplicate within a connection.
+      delivered.clear();
       cancelAttempt();
       onStatus("open");
     };
@@ -508,6 +511,12 @@ export function connect(
     };
 
     source.onmessage = (event) => {
+      if (source !== stream || abandoned) return;
+      if (event.lastEventId) {
+        if (delivered.has(event.lastEventId)) return;
+        delivered.add(event.lastEventId);
+        if (delivered.size > 500) delivered.delete(delivered.values().next().value!);
+      }
       // Kept even for a frame that will not parse: the id is the server's
       // sequence number and is what a later reopen resumes from, so skipping it
       // would ask for one frame that was already handled.

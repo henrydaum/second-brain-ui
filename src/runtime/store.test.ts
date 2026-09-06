@@ -32,6 +32,45 @@ const run = (...frames: Frame[]): State =>
 
 const typing = (on: boolean) => ({ kind: "typing", payload: on }) as Frame;
 
+describe("reply presentation ownership", () => {
+  it("does not leave an earlier segment writing when another stream completes", () => {
+    const state = run(typing(true),
+      { kind: "stream_delta", payload: { stream_id: "first", seq: 1, delta: "Earlier text", done: false } },
+      { kind: "stream_delta", payload: { stream_id: "second", seq: 1, delta: "Later text", done: false } },
+      { kind: "stream_delta", payload: { stream_id: "second", seq: 2, delta: "", done: true } });
+    expect(state.turns[0].activity?.phase).toBe("thinking");
+    expect(state.turns[0].parts.every((part) => part.kind !== "text" || part.done)).toBe(true);
+  });
+
+  it("keeps late attachments on the completed reply, without reopening it", () => {
+    const state = run(typing(true),
+      { kind: "messages", payload: ["Here are the results."] }, typing(false),
+      { kind: "attachments", payload: ["/one.png", "/note.md"] });
+    expect(state.turns).toHaveLength(1);
+    expect(state.turns[0].running).toBe(false);
+    expect(state.turns[0].parts.at(-1)).toMatchObject({ kind: "files", paths: ["/one.png", "/note.md"] });
+  });
+
+  it("reconciles a final stream across several file boundaries without duplicate text", () => {
+    const chunk = (seq: number, text: string, done = false): Frame => ({ kind: "stream_delta", payload: {
+      stream_id: "ordered", seq, delta: text, done, ...(done ? { final_text: "ABC" } : {}),
+    } });
+    const state = run(typing(true), chunk(1, "A"), chunk(1, "A"),
+      { kind: "attachments", payload: ["/a.png"] }, chunk(2, "B"),
+      { kind: "attachments", payload: ["/b.png"] }, chunk(3, "C", true), chunk(3, "C", true), typing(false));
+    expect(state.turns).toHaveLength(1);
+    expect(state.turns[0].parts.filter((part) => part.kind === "text").map((part) => part.text)).toEqual(["A", "B", "C"]);
+  });
+
+  it("does not end writing when an earlier tool completes", () => {
+    const state = run(typing(true),
+      { kind: "tool_status", payload: { call_id: "t1", tool_name: "search", status: "started" } },
+      { kind: "stream_delta", payload: { stream_id: "s", seq: 1, delta: "While that runs", done: false } },
+      { kind: "tool_status", payload: { call_id: "t1", status: "finished" } });
+    expect(state.turns[0].activity?.phase).toBe("writing");
+  });
+});
+
 const delta = (text: string, over: Record<string, unknown> = {}): Frame =>
   ({
     kind: "stream_delta",

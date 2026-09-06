@@ -132,7 +132,7 @@ export type Part = TextPart | ToolPart | FilesPart;
 export type Turn = {
   id: string;
   source?: "live" | "history";
-  activity?: { phase: "working" | "writing"; since: number; streamId?: string };
+  activity?: { phase: "thinking" | "working" | "writing"; since: number; streamId?: string };
   /**
    * Who this turn is from — and `system`, which is nobody.
    *
@@ -749,7 +749,8 @@ export function reduce(state: State, action: Action): State {
           const stream = turn.parts.findLast(
             (part): part is TextPart => part.kind === "text" && !part.done,
           );
-          const phase = stream ? "writing" : "working";
+          const phase = stream ? "writing" : turn.parts.some((part) =>
+            part.kind === "tool" && part.status !== "finished") ? "working" : "thinking";
           if (turn.activity?.phase === phase &&
               turn.activity.streamId === stream?.streamId) return turn;
           return {
@@ -811,7 +812,16 @@ function applyFrame(state: State, frame: Frame): State {
           [stream_id]: { seq: seq ?? (previous?.seq ?? 0) + 1, done },
         },
       };
-      const { turns, turn } = openTurn(state.turns);
+      const opened = openTurn(state.turns);
+      // A newly opened stream completes the preceding visible segment even if
+      // its final frame was lost. A delayed final frame must not stop the new one.
+      const boundary = !done && opened.turn.parts.some((part) =>
+        part.kind === "text" && !part.done && part.streamId !== stream_id)
+        ? sealText(opened.turn, state.carried)
+        : { turn: opened.turn, carried: state.carried };
+      const turns = opened.turns;
+      const turn = boundary.turn;
+      state = { ...state, carried: boundary.carried };
       const existing = turn.parts.find(
         (part): part is TextPart =>
           part.kind === "text" &&
@@ -1059,7 +1069,12 @@ function applyFrame(state: State, frame: Frame): State {
     /* Files the agent produced. Host paths, not URLs. */
     case "attachments": {
       if (!frame.payload.length) return state;
-      const { turns, turn } = openTurn(state.turns);
+      // Attachment delivery may follow typing:false. It still belongs to the
+      // last reply, not a new running message with a second footer.
+      const last = state.turns.at(-1);
+      const { turns, turn } = last?.role === "assistant"
+        ? { turns: state.turns, turn: last }
+        : openTurn(state.turns);
       const paths = [...new Set(frame.payload)];
       const callId = turn.parts.findLast((part) => part.kind === "tool")?.callId;
       const duplicate = turn.parts.some((part, index) =>

@@ -7,6 +7,7 @@ import { useReducer, type Dispatch } from "react";
 import { initialState, reduce, type Action } from "@/runtime/store";
 import { convertMessage } from "@/runtime/convert";
 import { type Frame } from "@/lib/events";
+import type { FileEvent } from "@/lib/ledger";
 
 const controls = vi.hoisted(() => ({ waiting: false, rows: [] as unknown[], listeners: new Set<() => void>() }));
 vi.mock("@/runtime/provider", async () => {
@@ -36,14 +37,14 @@ const { ToolInput } = await import("@/components/tool-input");
 let dispatch: Dispatch<Action>;
 const view = vi.fn();
 
-function Harness() {
+function Harness({ events = [] }: { events?: FileEvent[] }) {
   const [state, send] = useReducer(reduce, initialState);
   dispatch = send;
   const runtime = useExternalStoreRuntime({
     messages: state.turns, convertMessage, isRunning: state.typing, onNew: async () => {},
   });
-  const sections = toSections(withStoreAttachments(new Map(), state.turns), state.turns);
-  const files = currentFiles([], state.turns);
+  const sections = toSections(withStoreAttachments(new Map([[state.turns[0]?.id ?? "unattributed", events]]), state.turns), state.turns);
+  const files = currentFiles(events, state.turns);
   return <AssistantRuntimeProvider runtime={runtime}>
       <FileActivityContext value={{
         sections, sectionFor: (id) => sections.find((section) => section.turnId === id) ?? null,
@@ -72,7 +73,26 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe("assembled assistant-ui reply", () => {
-  it("keeps two file events inside the reply, between their text and above the footer", async () => {
+  it("combines late shares and edits under one footer, and replaces removed files in place", async () => {
+    const { container, rerender } = render(<Harness />);
+    await frame({ kind: "typing", payload: true });
+    await text("late", "The requested outcomes", 1, true);
+    await frame({ kind: "typing", payload: false });
+    await frame({ kind: "attachments", payload: ["/image.png"] });
+    const edited: FileEvent = { rowId: 1, ts: 1, path: "/note.md", effect: "wrote", viaShell: false };
+    rerender(<Harness events={[edited]} />);
+    expect(screen.getByRole("button", { name: "2 files" })).toBeInTheDocument();
+    expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-slot="attachment-group"]')).toHaveLength(1);
+    rerender(<Harness events={[edited, { ...edited, rowId: 2, path: "/image.png", effect: "deleted" }]} />);
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.getAllByText("File removed")).toHaveLength(1);
+    const footer = container.querySelector('[data-slot="assistant-message-footer"]')!;
+    expect(footer.parentElement?.lastElementChild).toBe(footer);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("combines file events inside the reply, after text and above the footer", async () => {
     const { container } = render(<Harness />);
     await frame({ kind: "typing", payload: true });
     await text("s1", "Before the first images");
@@ -90,33 +110,32 @@ describe("assembled assistant-ui reply", () => {
     expect(replies).toHaveLength(1);
     const reply = replies[0] as HTMLElement;
     const groups = reply.querySelectorAll('[data-slot="attachment-group"]');
-    expect(groups).toHaveLength(2);
+    expect(groups).toHaveLength(1);
     const footer = reply.querySelector('[data-slot="assistant-message-footer"]')!;
     expect(footer.parentElement?.lastElementChild).toBe(footer);
-    expect(groups[0].compareDocumentPosition(screen.getByText("Between the images")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText("Between the images").compareDocumentPosition(groups[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("After the images").compareDocumentPosition(groups[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(reply).getByRole("button", { name: "3 files" })).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open two.png" }));
-    expect(view).toHaveBeenCalledWith(["/one.png", "/two.png"], 1);
+    expect(view).toHaveBeenCalledWith(["/one.png", "/two.png", "/three.png"], 1);
   });
 
   it("switches one status line using stream completion, including waiting", async () => {
     render(<Harness />);
     await frame({ kind: "typing", payload: true });
-    expect(screen.getByRole("status")).toHaveTextContent("Working");
+    expect(screen.getByRole("status")).toHaveTextContent("Thinking");
     await text("s1", "A finished paragraph");
     expect(screen.getAllByRole("status")).toHaveLength(1);
     expect(screen.getByRole("status")).toHaveTextContent("Writing");
     await text("s1", "", 2, true);
-    expect(screen.getByRole("status")).toHaveTextContent("Working");
+    expect(screen.getByRole("status")).toHaveTextContent("Thinking");
     act(() => { controls.waiting = true; controls.listeners.forEach((listener) => listener()); });
     expect(screen.getByRole("status")).toHaveTextContent("Waiting for your response");
     await frame({ kind: "typing", payload: false });
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("expands large galleries and retains separate intentional shares", async () => {
+  it("expands large galleries and deduplicates paths within the reply outcome", async () => {
     render(<Harness />);
     await frame({ kind: "typing", payload: true });
     await frame({ kind: "attachments", payload: ["/1.png", "/2.png", "/3.png", "/4.png", "/5.png"] });
@@ -125,7 +144,7 @@ describe("assembled assistant-ui reply", () => {
     expect(screen.getAllByRole("img")).toHaveLength(5);
     await text("s1", "Here is an updated version", 1, true);
     await frame({ kind: "attachments", payload: ["/1.png"] });
-    expect(screen.getAllByRole("img")).toHaveLength(6);
+    expect(screen.getAllByRole("img")).toHaveLength(5);
     fireEvent.error(screen.getAllByRole("img")[0]);
     expect(screen.getByText("Preview unavailable · Open file")).toBeInTheDocument();
   });
@@ -145,12 +164,12 @@ it("restarts Working elapsed time after Writing and waiting", () => {
   expect(screen.queryByText("3s")).not.toBeInTheDocument();
 });
 
-it("shows literal structured inputs, with raw and copy controls", () => {
+it("shows literal structured inputs, with a raw toggle and no copy control", () => {
   const args = { paths: ["/a folder/image.png"], caption: "*Literal* caption", options: { count: 2 } };
   render(<ToolInput args={args} argsText={JSON.stringify(args)} />);
   expect(screen.getByText("/a folder/image.png")).toBeInTheDocument();
   expect(screen.getByText("*Literal* caption")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Raw JSON" }));
-  expect(screen.getByRole("button", { name: "Copy input" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Copy input" })).not.toBeInTheDocument();
   expect(document.querySelector("pre")?.textContent).toBe(JSON.stringify(args, null, 2));
 });

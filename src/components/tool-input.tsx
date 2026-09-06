@@ -27,7 +27,6 @@ function Fields({ value }: { value: Record<string, unknown> }) {
 
 export function ToolInput({ args, argsText }: { args: Record<string, unknown>; argsText: string }) {
   const [raw, setRaw] = useState(false);
-  const [copyState, setCopyState] = useState("");
   let parsed: unknown;
   try { parsed = JSON.parse(argsText || JSON.stringify(args)); } catch { parsed = undefined; }
   const structured = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed);
@@ -38,10 +37,6 @@ export function ToolInput({ args, argsText }: { args: Record<string, unknown>; a
         <p className="text-muted-foreground flex-1 text-xs font-medium">Input</p>
         {structured && <Button variant="ghost" size="xs" aria-pressed={raw}
           onClick={() => setRaw(!raw)}>{raw ? "Fields" : "Raw JSON"}</Button>}
-        <Button variant="ghost" size="xs" onClick={async () => {
-          try { await navigator.clipboard.writeText(json); setCopyState("Copied"); }
-          catch { setCopyState("Copy failed"); }
-        }}>{copyState || "Copy input"}</Button>
       </div>
       <div className="bg-muted/60 max-h-64 overflow-auto rounded-md p-2.5 text-xs">
         {structured && !raw ? <Fields value={parsed as Record<string, unknown>} /> :

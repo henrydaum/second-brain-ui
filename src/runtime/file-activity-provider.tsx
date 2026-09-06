@@ -72,11 +72,12 @@ export function currentFiles(events: FileEvent[], turns: Turn[]): Map<string, Fi
       viaShell: event.viaShell,
     });
   }
+  const recorded = new Set(latest.keys());
   for (const turn of turns) {
     for (const part of turn.parts) {
       if (part.kind !== "files" || part.sent) continue;
       for (const path of part.paths) {
-        if (!latest.has(path)) latest.set(path, {
+        if (!recorded.has(path)) latest.set(path, {
           path, effect: "shown", ts: part.receivedAt ?? turn.createdAt ?? 0,
           gone: false, edits: 1, viaShell: false,
         });
@@ -122,21 +123,21 @@ export function FileActivityProvider({ children }: PropsWithChildren) {
       try {
         const rows = await readLedger(conversationId, cursor);
         if (!valid()) return;
-        const fresh = rows.filter((row) => row.id > cursor);
+        const fresh = [...new Map(rows.filter((row) => row.id > cursor).map((row) => [row.id, row])).values()];
         cursor = fresh.reduce((max, row) => Math.max(max, row.id), cursor);
         const events = toFileEvents(fresh);
         for (const event of events) {
           forgetFile(event.path);
           forgetThumbnail(event.path);
         }
-        if (events.length) setLedger((previous) => {
+        setLedger((previous) => {
           if (previous.conversationId !== conversationId) return previous;
           const live = new Map(previous.live);
           for (const event of events) {
             const id = event.effect === "shown" ? UNATTRIBUTED : owner;
             live.set(id, [event, ...(live.get(id) ?? [])]);
           }
-          return { ...previous, live };
+          return { ...previous, live, failure: null };
         });
       } catch {
         // Retain known state and retry on the next activity poll.

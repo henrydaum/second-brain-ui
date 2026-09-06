@@ -111,10 +111,10 @@ export const FilesDrawer: FC = () => {
   // Jumping to a section, when the chip under a message asked for one. The
   // clear is on a timer rather than on the scroll finishing, because a smooth
   // scroll has no completion event worth waiting for.
-  const bodyRef = useRef<HTMLDivElement>(null);
+  // A Sheet mounts its portal after the parent effect. Observe node arrival too.
+  const [body, setBody] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!focusTurn || !visible) return;
-    const body = bodyRef.current;
     if (!body) return;
     const targets = [...body.querySelectorAll<HTMLElement>("[data-file-path]")]
       .filter((element) => focusedPaths.has(element.dataset.filePath ?? ""));
@@ -143,7 +143,7 @@ export const FilesDrawer: FC = () => {
       animations.forEach((animation) => animation?.cancel());
       layers.forEach((layer) => { layer.style.opacity = ""; });
     };
-  }, [focusTurn, focusRequest, visible, clearFocus, sections]);
+  }, [focusTurn, focusRequest, visible, clearFocus, sections, body]);
 
   /**
    * Opened from the header, with no particular turn in mind: show the end, the
@@ -169,9 +169,8 @@ export const FilesDrawer: FC = () => {
     if (landed.current || sections.length === 0) return;
     landed.current = true;
     if (focusTurn) return; // the jump above owns the scroll this time
-    const body = bodyRef.current;
     if (body) body.scrollTop = body.scrollHeight;
-  }, [visible, focusTurn, sections.length]);
+  }, [visible, focusTurn, sections.length, body]);
 
   /** The turn still being written, so its section can say so rather than
    *  wearing a clock time that is only seconds old. */
@@ -225,7 +224,7 @@ export const FilesDrawer: FC = () => {
       </header>
 
       <div
-        ref={bodyRef}
+        ref={setBody}
         className="min-h-0 w-full flex-1 overflow-y-auto xl:w-96"
       >
         {failure ? (

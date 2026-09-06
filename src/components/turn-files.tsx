@@ -1,7 +1,7 @@
-/** Ordered attachment groups, shared by live parts and recovered history. */
+/** One combined outcome group inside each reply, above its footer. */
 import { useState } from "react";
 import { FilesIcon, FileIcon, Maximize2Icon } from "lucide-react";
-import { useAuiState, type DataMessagePartProps } from "@assistant-ui/react";
+import { useAuiState } from "@assistant-ui/react";
 import { preloadFileViewer } from "@/components/lazy-file-viewer";
 import { Button } from "@/components/ui/button";
 import { fileUrl } from "@/lib/client";
@@ -9,24 +9,23 @@ import { guessKind, nameOf } from "@/lib/files";
 import { cn } from "@/lib/utils";
 import { countOf } from "@/runtime/file-activity";
 import { useFileActivity } from "@/runtime/file-activity-provider";
-import { AGENT_FILES, PRESENTATION } from "@/runtime/convert";
+import { AGENT_FILES } from "@/runtime/convert";
 
 type AgentFilesData = { paths?: unknown; id?: string };
-export function InlineAgentFiles({ data }: DataMessagePartProps<AgentFilesData>) {
-  const paths = Array.isArray(data.paths)
-    ? data.paths.filter((path: unknown): path is string => typeof path === "string") : [];
-  return <AttachmentGroup key={data.id} paths={paths} />;
-}
-
-/** Only history may recover a group. A live reply never guesses placement from polls. */
-export function RecoveredFiles() {
+/** Live frame ownership and attributed tool edits share the same reply and count. */
+export function TurnOutcomeFiles() {
   const id = useAuiState((s) => s.message.id);
-  const live = useAuiState((s) =>
-    (s.message.metadata.custom[PRESENTATION] as { source?: string } | undefined)?.source === "live" ||
-    s.message.parts.some((part) => part.type === "data" && part.name === AGENT_FILES),
-  );
-  const { recoveredFor } = useFileActivity();
-  return live ? null : <AttachmentGroup paths={recoveredFor(id)} />;
+  const parts = useAuiState((s) => s.message.parts);
+  const shared = parts.flatMap((part) =>
+    part.type === "data" && part.name === AGENT_FILES
+      ? ((part.data as AgentFilesData).paths as string[] ?? []) : []);
+  const { sectionFor, recoveredFor } = useFileActivity();
+  const section = sectionFor(id);
+  const paths = [...new Set([
+    ...shared, ...recoveredFor(id),
+    ...(section ? [...section.shown, ...section.touched].map((entry) => entry.path) : []),
+  ])];
+  return <AttachmentGroup paths={paths} />;
 }
 
 export function AttachmentGroup({ paths }: { paths: string[] }) {

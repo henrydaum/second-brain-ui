@@ -7,6 +7,7 @@ await mkdir('test-results/chat', { recursive: true });
 try {
   for (const mobile of [false, true]) {
     const page = await browser.newPage({ viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 }, reducedMotion: mobile ? 'reduce' : 'no-preference' });
+    let restored = false;
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addInitScript(() => {
@@ -19,8 +20,9 @@ try {
     await page.route('**/sdk/**', async (route) => {
       const type = new URL(route.request().url()).pathname.split('/').at(-1);
       const data = type === 'session.get' ? { conversation_id: 7, busy: false, mode: 'ask' }
-        : type === 'conv.read' ? { messages: [], conversation: { id: 7, title: 'Chat rendering check' } }
-        : type === 'frontend.pending' ? [] : type === 'llm.list' ? { profiles: [] }
+        : type === 'conv.read' ? { messages: restored ? [{ id: 1, role: 'assistant', content: 'Recovered reply', timestamp: 1, tool_call_id: null, tool_name: null }] : [], conversation: { id: 7, title: 'Chat rendering check' } }
+        : type === 'ledger.read' ? (restored && !route.request().postDataJSON().since_id ? [{ id: 1, ts: 2, origin: 'agent', action_type: 'call_tool', conversation_id: 7, ok: 1, error_code: null, args_json: '{}', data_json: JSON.stringify({ attachments: ['/one.png', '/two.png'] }) }] : [])
+        : type === 'frontend.pending' ? null : type === 'llm.list' ? { profiles: [] }
         : type === 'config.read' ? null : [];
       await route.fulfill({ json: { data } });
     });
@@ -44,25 +46,62 @@ try {
     await emit('tool_status', { call_id: 'c1', status: 'finished', ok: true });
     await emit('stream_delta', { stream_id: 's1', seq: 3, delta: '\n\nAll done.', done: true, final_text: 'First, the gallery.\n\nNow, a separate image.\n\nAll done.' });
     await emit('typing', false);
+    // The backend can publish attachment delivery after its completion signal.
+    await emit('attachments', ['/late.md']);
     const reply = page.locator('[data-role="assistant"]');
     await expect(reply).toHaveCount(1);
-    await expect(reply.locator('img')).toHaveCount(5);
+    await expect(reply.locator('img')).toHaveCount(4);
     await expect(page.locator('[data-slot="reply-activity"]')).toHaveCount(0);
-    await reply.getByRole('button', { name: 'Show 1 more' }).click();
+    await page.screenshot({ path: 'test-results/chat/before-expand.png', fullPage: true });
+    await reply.getByRole('button', { name: 'Show 3 more' }).click();
     await expect(reply.locator('img')).toHaveCount(6);
+    await expect(reply.getByRole('button', { name: 'Open late.md' })).toBeVisible();
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-role="assistant"] img')].every((img) => img.complete));
     const geometry = await reply.evaluate((node) => {
       const footer = node.querySelector('[data-slot="assistant-message-footer"]');
       const groups = [...node.querySelectorAll('[data-slot="attachment-group"]')];
       return { footerLast: footer.parentElement.lastElementChild === footer, above: groups.every((group) => group.getBoundingClientRect().bottom <= footer.getBoundingClientRect().top), overflow: document.documentElement.scrollWidth > innerWidth };
     });
     expect(geometry).toEqual({ footerLast: true, above: true, overflow: false });
+    await reply.locator('[data-slot="assistant-message-footer"]').scrollIntoViewIfNeeded();
     await page.screenshot({ path: `test-results/chat/${mobile ? 'mobile' : 'desktop'}.png`, fullPage: true });
-    await reply.getByRole('button', { name: '6 files', exact: true }).click();
-    await expect(page.locator('[data-file-path]')).toHaveCount(6);
+    await reply.getByRole('button', { name: '7 files', exact: true }).click();
+    await expect(page.locator('[data-file-path]')).toHaveCount(7);
     await page.waitForTimeout(300);
     const highlighted = await page.locator('[data-file-highlight]').evaluateAll((nodes) => nodes.some((node) => Number(getComputedStyle(node).opacity) > 0.8));
     expect(highlighted).toBe(true);
     await page.screenshot({ path: `test-results/chat/${mobile ? 'mobile' : 'desktop'}-drawer.png`, fullPage: true });
+    await page.waitForTimeout(1700);
+    expect(await page.locator('[data-file-highlight]').evaluateAll((nodes) => nodes.every((node) => Number(getComputedStyle(node).opacity) === 0))).toBe(true);
+    if (mobile) await page.keyboard.press('Escape');
+    await reply.getByRole('button', { name: '7 files', exact: true }).click();
+    await page.waitForTimeout(300);
+    expect(await page.locator('[data-file-highlight]').evaluateAll((nodes) => nodes.some((node) => Number(getComputedStyle(node).opacity) > 0.8))).toBe(true);
+    await page.keyboard.press('Escape');
+    await reply.getByRole('button', { name: 'Open two.png' }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'two.png', exact: true })).toBeVisible();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('heading', { name: 'three.png', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    const viewport = page.locator('[data-slot="chat-viewport"]');
+    await viewport.evaluate((node) => { node.style.scrollBehavior = 'auto'; node.scrollTop = 0; });
+    await page.waitForTimeout(150);
+    await emit('typing', true);
+    await emit('stream_delta', { stream_id: 's2', seq: 1, delta: 'New content while you read earlier messages. '.repeat(30), done: false });
+    expect(await viewport.evaluate((node) => node.scrollTop)).toBeLessThan(10);
+    await viewport.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+    await page.waitForTimeout(200);
+    await emit('stream_delta', { stream_id: 's2', seq: 2, delta: '\\n\\nFollowing new content. '.repeat(40), done: false });
+    await expect.poll(() => viewport.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)).toBeLessThan(60);
+    await emit('typing', false);
+    restored = true;
+    await page.reload();
+    await expect(page.getByText('Recovered reply', { exact: true })).toBeVisible();
+    await expect(page.locator('[data-role="assistant"]')).toHaveCount(1);
+    await expect(page.locator('[data-slot="attachment-group"]')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: '2 files', exact: true })).toBeVisible();
+    expect(await page.locator('[data-slot="assistant-message-footer"]').evaluate((node) => node.parentElement.lastElementChild === node)).toBe(true);
     expect(errors).toEqual([]);
     await page.close();
     console.log(`${mobile ? 'Mobile/reduced motion' : 'Desktop'}: ordered gallery, footer geometry, drawer highlight passed`);

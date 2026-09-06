@@ -63,9 +63,8 @@ import { ErrorBanner } from "@/components/session-bar";
 import { ModelSelector } from "@/components/model-selector";
 import { SecurityModePicker } from "@/components/security-mode-picker";
 import {
-  InlineAgentFiles,
   TurnFilesButton,
-  RecoveredFiles,
+  TurnOutcomeFiles,
 } from "@/components/turn-files";
 import { VoiceNoteButton } from "@/components/voice-note";
 import { fullTimestamp, shortTimestamp } from "@/lib/time";
@@ -241,7 +240,9 @@ export const Thread: FC = () => {
       }}
     >
       <ThreadPrimitive.Viewport
-        turnAnchor="top"
+        data-slot="chat-viewport"
+        turnAnchor="bottom"
+        scrollToBottomOnRunStart={false}
         className={cn(
           "relative flex flex-1 flex-col overflow-y-scroll motion-safe:scroll-smooth px-4 pt-4",
           centerComposer && "justify-center",
@@ -478,11 +479,7 @@ export const AssistantMessage: FC = () => {
               case "tool-call":
                 return part.toolUI ?? <ToolFallback {...part} />;
               case "data":
-                return part.name === AGENT_FILES ? (
-                  <InlineAgentFiles {...part} />
-                ) : (
-                  part.dataRendererUI
-                );
+                return part.name === AGENT_FILES ? null : part.dataRendererUI;
               default:
                 return null;
             }
@@ -491,7 +488,7 @@ export const AssistantMessage: FC = () => {
         {/* After the parts rather than among them: the ledger records that a turn
             showed you a file, not where in the turn it did. See
             `components/turn-files.tsx`. */}
-        <RecoveredFiles />
+        <TurnOutcomeFiles />
         <MessagePrimitive.Error>
           <ErrorPrimitive.Root className="border-destructive bg-destructive/10 text-destructive mt-2 rounded-md border p-3 text-sm">
             <ErrorPrimitive.Message />
