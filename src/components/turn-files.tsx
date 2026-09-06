@@ -1,16 +1,15 @@
 /**
  * A reply's files, where the reply is.
  *
- * Two pieces, and the split between them is the design:
+ * Two paths share one renderer:
  *
  * **One shown file previews inline.** The agent handing you a chart and the
  * chart itself belong together, and putting it behind a click would be a
  * regression on what this app already did.
  *
- * **Two or more do not.** A grid of thumbnails inside a message is a second,
- * worse files panel competing with the real one, and it pushes the reply you
- * were reading off the screen. The footer chip says how many and opens the
- * drawer at this turn's section.
+ * **A live attachment renders at its event boundary.** If one event carries
+ * several paths, the first path represents the set and the footer reports the
+ * full count. Separate events may each render once in chronological order.
  *
  * Files the agent *edited* never appear inline at either count. That is
  * activity, not presentation — the agent did not choose to show it to you, and
@@ -18,43 +17,75 @@
  *
  * ## Why this is not a message part
  *
- * The obvious home for the preview is the `attachments` frame, which already
- * travels into the store as a `FilesPart`. It cannot be, because `conv.read`
- * has no metadata column: a reloaded conversation has no frames and therefore
- * no parts, and every image the agent ever produced would vanish on refresh.
- * The ledger is the only record that survives, and it records *that* a turn
- * showed you a file, not *where* in the turn.
+ * Live frames become data parts and therefore preserve their position between
+ * text segments. `conv.read` cannot restore that exact position, so after a
+ * reload the ledger supplies one end-of-message fallback instead.
  *
- * So the preview lands at the end of the reply rather than at the point in the
- * stream where the frame arrived. That is the price, it is paid once, and at a
- * cap of one file it reads fine.
+ * Both paths use the current conversation-wide file projection, so deleting a
+ * file removes its preview rather than replacing it with a stale error card.
  */
 
 import { Suspense, type FC } from "react";
 import { FilesIcon, Maximize2Icon } from "lucide-react";
-import { useAuiState } from "@assistant-ui/react";
+import { useAuiState, type DataMessagePartProps } from "@assistant-ui/react";
 
 import { LazyFileView, preloadFileView } from "@/components/lazy-file-view";
 import { preloadFileViewer } from "@/components/lazy-file-viewer";
 import { Button } from "@/components/ui/button";
 import { nameOf } from "@/lib/files";
-import { countOf } from "@/runtime/file-activity";
+import { conversationEntries, countOf } from "@/runtime/file-activity";
 import { useFileActivity } from "@/runtime/file-activity-provider";
+import { AGENT_FILES } from "@/runtime/convert";
+
+type AgentFilesData = { paths?: unknown };
+
+function pathsFrom(data: AgentFilesData): string[] {
+  return Array.isArray(data.paths)
+    ? data.paths.filter((path): path is string => typeof path === "string")
+    : [];
+}
+
+export const InlineAgentFiles: FC<DataMessagePartProps<AgentFilesData>> = ({
+  data,
+}) => {
+  const { sections } = useFileActivity();
+  const current = new Set(
+    conversationEntries(sections).map((entry) => entry.path),
+  );
+  return (
+    <InlinePreview
+      paths={pathsFrom(data).filter((path) => current.has(path))}
+    />
+  );
+};
 
 /** The one file this turn showed you, or null — the shape the rules above
  *  reduce to. A file that has since been deleted is not offered. */
 function useShown(): string[] {
   const id = useAuiState((s) => s.message.id);
-  const { sectionFor } = useFileActivity();
+  const hasInlinePart = useAuiState((s) =>
+    s.message.parts.some(
+      (part) => part.type === "data" && part.name === AGENT_FILES,
+    ),
+  );
+  const { sectionFor, sections } = useFileActivity();
+  if (hasInlinePart) return [];
+  const current = new Set(
+    conversationEntries(sections).map((entry) => entry.path),
+  );
   return (sectionFor(id)?.shown ?? [])
-    .filter((entry) => !entry.gone)
+    .filter((entry) => !entry.gone && current.has(entry.path))
     .map((entry) => entry.path)
     .sort((a, b) => a.localeCompare(b));
 }
 
 export const TurnShownFile: FC = () => {
-  const { view } = useFileActivity();
   const paths = useShown();
+  return <InlinePreview paths={paths} />;
+};
+
+const InlinePreview: FC<{ paths: string[] }> = ({ paths }) => {
+  const { view } = useFileActivity();
   const path = paths[0];
   if (!path) return null;
 

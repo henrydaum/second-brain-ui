@@ -60,6 +60,34 @@ const said = (state: State) =>
       .join(""),
   );
 
+describe("agent attachment placement", () => {
+  const files = (...paths: string[]): Frame =>
+    ({ kind: "attachments", payload: paths }) as Frame;
+
+  it("splits a stream so later text stays below the shown file", () => {
+    let state = run(typing(true), delta("Before"), files("/chart.png"));
+    state = reduce(state, { type: "frame", frame: delta("After") });
+
+    expect(state.turns[0]?.parts).toEqual([
+      expect.objectContaining({ kind: "text", text: "Before", done: true }),
+      { kind: "files", paths: ["/chart.png"] },
+      expect.objectContaining({ kind: "text", text: "After", done: false }),
+    ]);
+  });
+
+  it("does not append the same shown path twice in one turn", () => {
+    const state = run(
+      typing(true),
+      files("/chart.png"),
+      files("/chart.png"),
+    );
+
+    expect(state.turns[0]?.parts).toEqual([
+      { kind: "files", paths: ["/chart.png"] },
+    ]);
+  });
+});
+
 describe("a message sent while the agent is still talking", () => {
   it("lands under what was already said, not under the whole turn", () => {
     let state = run(typing(true), delta("Half a "));

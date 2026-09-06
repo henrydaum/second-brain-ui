@@ -207,7 +207,22 @@ export function withStoreAttachments(
   bound: Map<string, FileEvent[]>,
   turns: Turn[],
 ): Map<string, FileEvent[]> {
-  const merged = new Map(bound);
+  const livePaths = new Set<string>();
+  for (const turn of turns) {
+    for (const part of turn.parts) {
+      if (part.kind === "files" && part.sent !== true) {
+        for (const path of part.paths) livePaths.add(path);
+      }
+    }
+  }
+
+  const merged = new Map<string, FileEvent[]>();
+  for (const [turnId, events] of bound) {
+    const kept = events.filter(
+      (event) => event.effect !== "shown" || !livePaths.has(event.path),
+    );
+    if (kept.length) merged.set(turnId, kept);
+  }
   for (const turn of turns) {
     if (turn.role !== "assistant") continue;
     const paths = turn.parts

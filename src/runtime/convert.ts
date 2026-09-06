@@ -17,6 +17,7 @@ import type { MessageAttachment, Turn } from "@/runtime/store";
 /** The `name` on the data part carrying the *person's* attachments. `thread.tsx`
  *  maps this name to the component that names them. */
 export const SENT_ATTACHMENTS = "sentAttachments";
+export const AGENT_FILES = "agentFiles";
 
 /** Key under `metadata.custom` holding the turn's time in epoch milliseconds.
  *  Only present when the time is actually known — see `timing` below. */
@@ -77,17 +78,20 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
 
       case "files":
         /**
-         * **Only the person's attachments become a part.**
+         * The person's attachments live in metadata and render above their
+         * prose. Agent attachments become named data parts so their exact
+         * position among live text and tool parts survives conversion.
          *
-         * Theirs live in `metadata.custom`, where `UserMessageAttachments`
-         * draws them above the prose. Agent files stay out of message content;
-         * `components/turn-files.tsx` gets those from the ledger instead.
-         *
-         * The agent's `FilesPart` stays in the store regardless. It is the
-         * fast half of that lookup: the frame arrives the moment the file is
-         * produced, while the ledger row is not read until the next poll.
+         * The ledger remains the reload fallback because conversation history
+         * does not persist attachment frames or their intra-message offsets.
          */
-        return [];
+        return part.sent
+          ? []
+          : [{
+              type: "data" as const,
+              name: AGENT_FILES,
+              data: { paths: part.paths },
+            }];
     }
   });
 

@@ -63,14 +63,18 @@ import { UserMessageAttachments } from "@/components/host-file";
 import { ErrorBanner } from "@/components/session-bar";
 import { ModelSelector } from "@/components/model-selector";
 import { SecurityModePicker } from "@/components/security-mode-picker";
-import { TurnFilesButton, TurnShownFile } from "@/components/turn-files";
+import {
+  InlineAgentFiles,
+  TurnFilesButton,
+  TurnShownFile,
+} from "@/components/turn-files";
 import { VoiceNoteButton } from "@/components/voice-note";
 import { activityFor, type Activity } from "@/lib/activity";
 import { elapsedLabel, fullTimestamp, shortTimestamp } from "@/lib/time";
 import { FINE_POINTER_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { useConversations } from "@/runtime/provider";
-import { SENT_AT } from "@/runtime/convert";
+import { AGENT_FILES, SENT_AT } from "@/runtime/convert";
 
 /**
  * How long before the turn starts saying how long it has been.
@@ -583,7 +587,11 @@ const AssistantMessage: FC = () => {
               case "tool-call":
                 return part.toolUI ?? <ToolFallback {...part} />;
               case "data":
-                return part.dataRendererUI;
+                return part.name === AGENT_FILES ? (
+                  <InlineAgentFiles {...part} />
+                ) : (
+                  part.dataRendererUI
+                );
               default:
                 return null;
             }

@@ -257,7 +257,7 @@ describe("withStoreAttachments", () => {
     expect(merged.get("a2")).toEqual([
       expect.objectContaining({ path: "/chart.png", effect: "shown" }),
     ]);
-    expect(merged.get("a1")).toHaveLength(1);
+    expect(merged.get("a1")).toBeUndefined();
   });
 
   it("leaves the person's own attachments alone", () => {

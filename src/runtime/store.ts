@@ -764,14 +764,21 @@ function applyFrame(state: State, frame: Frame): State {
       const { turns, turn } = openTurn(state.turns);
       const existing = turn.parts.find(
         (part): part is TextPart =>
-          part.kind === "text" && part.streamId === stream_id,
+          part.kind === "text" &&
+          part.streamId === stream_id &&
+          !part.done,
       );
 
       // **An aborted stream has no `final_text`.** Discard the partial rather
       // than leaving half a sentence on screen.
       if (done && aborted) {
         const parts = turn.parts.filter(
-          (part) => !(part.kind === "text" && part.streamId === stream_id),
+          (part) =>
+            !(
+              part.kind === "text" &&
+              part.streamId === stream_id &&
+              !part.done
+            ),
         );
         return {
           ...state,
@@ -797,8 +804,8 @@ function applyFrame(state: State, frame: Frame): State {
 
       const part: TextPart = { kind: "text", streamId: stream_id, text, done };
       const parts = existing
-        ? turn.parts.map((p) =>
-            p.kind === "text" && p.streamId === stream_id ? part : p,
+        ? turn.parts.map((candidate) =>
+            candidate === existing ? part : candidate,
           )
         : [...turn.parts, part];
 
@@ -996,11 +1003,29 @@ function applyFrame(state: State, frame: Frame): State {
     case "attachments": {
       if (!frame.payload.length) return state;
       const { turns, turn } = openTurn(state.turns);
+      const alreadyShown = new Set(
+        turn.parts.flatMap((part) =>
+          part.kind === "files" && part.sent !== true ? part.paths : [],
+        ),
+      );
+      const paths = frame.payload.filter((path) => !alreadyShown.has(path));
+      if (!paths.length) return state;
+      const carried = { ...state.carried };
+      const closed = turn.parts.map((part) => {
+        if (part.kind !== "text" || part.done) return part;
+        carried[part.streamId] =
+          (carried[part.streamId] ?? "") + part.text;
+        return { ...part, done: true };
+      });
       const parts: Part[] = [
-        ...turn.parts,
-        { kind: "files", paths: frame.payload },
+        ...closed,
+        { kind: "files", paths },
       ];
-      return { ...state, turns: replace(turns, turn.id, { ...turn, parts }) };
+      return {
+        ...state,
+        carried,
+        turns: replace(turns, turn.id, { ...turn, parts }),
+      };
     }
 
     /* ── Handled elsewhere, on purpose ──────────────────────────────────

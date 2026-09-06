@@ -48,6 +48,32 @@ describe("user attachment conversion", () => {
   });
 });
 
+describe("agent attachment conversion", () => {
+  it("keeps a shown file between the text parts surrounding its frame", () => {
+    const turn: Turn = {
+      id: "a1",
+      role: "assistant",
+      parts: [
+        { kind: "text", streamId: "s1", text: "Before", done: true },
+        { kind: "files", paths: ["/workspace/chart.png"] },
+        { kind: "text", streamId: "s2", text: "After", done: true },
+      ],
+      running: false,
+      aborted: false,
+    };
+
+    expect(convertMessage(turn).content).toEqual([
+      { type: "text", text: "Before" },
+      {
+        type: "data",
+        name: "agentFiles",
+        data: { paths: ["/workspace/chart.png"] },
+      },
+      { type: "text", text: "After" },
+    ]);
+  });
+});
+
 describe("compaction marker conversion", () => {
   const turn: Turn = {
     id: "stored-7",

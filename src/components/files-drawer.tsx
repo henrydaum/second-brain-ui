@@ -26,6 +26,11 @@ import { useMediaQuery, XL_QUERY } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   conversationEntries,
   type FileEntry,
 } from "@/runtime/file-activity";
@@ -48,6 +53,16 @@ export const FilesDrawer: FC = () => {
   } = useFileActivity();
   const isInline = useMediaQuery(XL_QUERY);
   const entries = conversationEntries(sections);
+  const focusedPaths = new Set(
+    focusTurn
+      ? sections
+          .filter((section) => section.turnId === focusTurn)
+          .flatMap((section) => [
+            ...section.shown.map((entry) => entry.path),
+            ...section.touched.map((entry) => entry.path),
+          ])
+      : [],
+  );
 
   /**
    * The drawer is lazy-loaded and is not mounted until its first opening. If it
@@ -99,8 +114,12 @@ export const FilesDrawer: FC = () => {
   const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusTurn || !visible) return;
-    const body = bodyRef.current;
-    if (body) body.scrollTo({ top: body.scrollHeight, behavior: "smooth" });
+    const targets = [...(bodyRef.current?.querySelectorAll<HTMLElement>(
+      "[data-file-path]",
+    ) ?? [])].filter((element) =>
+      focusedPaths.has(element.dataset.filePath ?? ""),
+    );
+    targets.at(-1)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     const timer = setTimeout(clearFocus, FLASH_MS);
     return () => clearTimeout(timer);
   }, [focusTurn, visible, clearFocus, sections]);
@@ -196,7 +215,11 @@ export const FilesDrawer: FC = () => {
             appear here as it works.
           </p>
         ) : (
-          <FileList entries={entries} onOpen={view} />
+          <FileList
+            entries={entries}
+            focusedPaths={focusedPaths}
+            onOpen={view}
+          />
         )}
       </div>
     </aside>
@@ -215,8 +238,9 @@ export const FilesDrawer: FC = () => {
 
 const FileList: FC<{
   entries: FileEntry[];
+  focusedPaths: Set<string>;
   onOpen: (paths: string[], index: number) => void;
-}> = ({ entries, onOpen }) => {
+}> = ({ entries, focusedPaths, onOpen }) => {
   // One list for the arrows to walk, in the order the section draws them, so
   // "next" in the viewer means what it looks like it means.
   const openable = entries
@@ -236,7 +260,12 @@ const FileList: FC<{
           agent showed you. */}
       <ul className="flex flex-col">
         {entries.map((entry) => (
-          <Row key={entry.path} entry={entry} onOpen={open} />
+          <Row
+            key={entry.path}
+            entry={entry}
+            flashing={focusedPaths.has(entry.path)}
+            onOpen={open}
+          />
         ))}
       </ul>
     </section>
@@ -255,8 +284,9 @@ const FileList: FC<{
  */
 const Row: FC<{
   entry: FileEntry;
+  flashing: boolean;
   onOpen: (entry: FileEntry) => void;
-}> = ({ entry, onOpen }) => {
+}> = ({ entry, flashing, onOpen }) => {
   const inside = (
     <>
       {/* Any image still on disk gets its own picture, whether the agent showed
@@ -301,16 +331,27 @@ const Row: FC<{
       {entry.gone ? (
         <div className={className}>{inside}</div>
       ) : (
-        <button
-          type="button"
-          onClick={() => onOpen(entry)}
-          onPointerEnter={preloadFileViewer}
-          onFocus={preloadFileViewer}
-          title={fullTimestamp(new Date(entry.ts))}
-          className={cn(className, "hover:bg-accent focus-visible:bg-accent")}
-        >
-          {inside}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              data-file-path={entry.path}
+              type="button"
+              onClick={() => onOpen(entry)}
+              onPointerEnter={preloadFileViewer}
+              onFocus={preloadFileViewer}
+              className={cn(
+                className,
+                "hover:bg-accent focus-visible:bg-accent",
+                flashing && "bg-accent ring-ring/40 ring-1",
+              )}
+            >
+              {inside}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="left" variant="subtle">
+            {fullTimestamp(new Date(entry.ts))}
+          </TooltipContent>
+        </Tooltip>
       )}
     </li>
   );
