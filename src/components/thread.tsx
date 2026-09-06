@@ -241,7 +241,8 @@ export const Thread: FC = () => {
     >
       <ThreadPrimitive.Viewport
         data-slot="chat-viewport"
-        turnAnchor="bottom"
+        turnAnchor="top"
+        autoScroll={false}
         scrollToBottomOnRunStart={false}
         className={cn(
           "relative flex flex-1 flex-col overflow-y-scroll motion-safe:scroll-smooth px-4 pt-4",

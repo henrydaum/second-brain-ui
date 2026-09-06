@@ -15,6 +15,7 @@ type AgentFilesData = { paths?: unknown; id?: string };
 /** Live frame ownership and attributed tool edits share the same reply and count. */
 export function TurnOutcomeFiles() {
   const id = useAuiState((s) => s.message.id);
+  const running = useAuiState((s) => s.message.status?.type === "running");
   const parts = useAuiState((s) => s.message.parts);
   const shared = parts.flatMap((part) =>
     part.type === "data" && part.name === AGENT_FILES
@@ -25,7 +26,8 @@ export function TurnOutcomeFiles() {
     ...shared, ...recoveredFor(id),
     ...(section ? [...section.shown, ...section.touched].map((entry) => entry.path) : []),
   ])];
-  return <AttachmentGroup paths={paths} />;
+  // Both sources remain drawer-only until this reply is complete.
+  return running ? null : <AttachmentGroup paths={paths} />;
 }
 
 export function AttachmentGroup({ paths }: { paths: string[] }) {

@@ -37,7 +37,14 @@ try {
       await page.evaluate(({ kind, payload }) => window.chatEvents.onmessage({ data: JSON.stringify({ kind, payload }) }), { kind, payload });
       await page.waitForTimeout(70);
     };
+    await page.getByPlaceholder('Message Second Brain').fill('Please show some files.');
+    await page.getByPlaceholder('Message Second Brain').press('Enter');
     await emit('typing', true);
+    const userMessage = page.locator('[data-role="user"]').last();
+    await expect.poll(async () => userMessage.evaluate((node) => {
+      const viewport = node.closest('[data-slot="chat-viewport"]');
+      return Math.abs(node.getBoundingClientRect().top - viewport.getBoundingClientRect().top);
+    })).toBeLessThan(18);
     await emit('stream_delta', { stream_id: 's1', seq: 1, delta: 'First, the gallery.', done: false });
     await emit('attachments', ['/one.png', '/two.png', '/three.png', '/four.png', '/five.png']);
     await emit('stream_delta', { stream_id: 's1', seq: 2, delta: '\n\nNow, a separate image.', done: false });
@@ -45,6 +52,7 @@ try {
     await emit('attachments', ['/last.png']);
     await emit('tool_status', { call_id: 'c1', status: 'finished', ok: true });
     await emit('stream_delta', { stream_id: 's1', seq: 3, delta: '\n\nAll done.', done: true, final_text: 'First, the gallery.\n\nNow, a separate image.\n\nAll done.' });
+    await expect(page.locator('[data-slot="attachment-group"]')).toHaveCount(0);
     await emit('typing', false);
     // The backend can publish attachment delivery after its completion signal.
     await emit('attachments', ['/late.md']);
@@ -93,8 +101,37 @@ try {
     await viewport.evaluate((node) => { node.scrollTop = node.scrollHeight; });
     await page.waitForTimeout(200);
     await emit('stream_delta', { stream_id: 's2', seq: 2, delta: '\\n\\nFollowing new content. '.repeat(40), done: false });
-    await expect.poll(() => viewport.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop)).toBeLessThan(60);
+    // Top anchoring leaves the reader in place as the reply grows.
+    await expect(page.getByText('New content while you read earlier messages.', { exact: false })).toBeAttached();
     await emit('typing', false);
+    // Expanding both the group and its nested details must keep the trigger fixed.
+    const trigger = page.locator('[data-slot="tool-group-trigger"]').first();
+    await trigger.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(250);
+    for (let pass = 0; pass < 2; pass++) {
+      const before = await trigger.boundingBox();
+      await trigger.click();
+      await page.waitForTimeout(300);
+      const after = await trigger.boundingBox();
+      expect(Math.abs(after.y - before.y)).toBeLessThan(6);
+      if (pass === 0) {
+        const summary = page.locator('details.group\\/tool > summary').first();
+        const detailBefore = await summary.boundingBox();
+        await summary.click();
+        await page.waitForTimeout(100);
+        expect(Math.abs((await summary.boundingBox()).y - detailBefore.y)).toBeLessThan(6);
+      }
+    }
+    await page.getByPlaceholder('Message Second Brain').fill('One more question after a long reply.');
+    await page.getByPlaceholder('Message Second Brain').press('Enter');
+    await emit('typing', true);
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: `test-results/chat/${mobile ? 'mobile' : 'desktop'}-send-debug.png` });
+    await expect.poll(async () => page.locator('[data-role="user"]').last().evaluate((node) => {
+      const viewport = node.closest('[data-slot="chat-viewport"]');
+      return Math.abs(node.getBoundingClientRect().top - viewport.getBoundingClientRect().top);
+    })).toBeLessThan(18);
+    await page.screenshot({ path: `test-results/chat/${mobile ? 'mobile' : 'desktop'}-send-anchor.png` });
     restored = true;
     await page.reload();
     await expect(page.getByText('Recovered reply', { exact: true })).toBeVisible();
@@ -104,6 +141,6 @@ try {
     expect(await page.locator('[data-slot="assistant-message-footer"]').evaluate((node) => node.parentElement.lastElementChild === node)).toBe(true);
     expect(errors).toEqual([]);
     await page.close();
-    console.log(`${mobile ? 'Mobile/reduced motion' : 'Desktop'}: ordered gallery, footer geometry, drawer highlight passed`);
+    console.log(`${mobile ? 'Mobile/reduced motion' : 'Desktop'}: send-to-top, stable tool expansion, completed recap, gallery and drawer checks passed`);
   }
 } finally { await browser.close(); }

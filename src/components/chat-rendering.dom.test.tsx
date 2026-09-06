@@ -73,6 +73,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe("assembled assistant-ui reply", () => {
+  it.each(["share-first", "edit-first"])("defers both file sources until completion (%s)", async (order) => {
+    const { container, rerender } = render(<Harness />);
+    await frame({ kind: "typing", payload: true });
+    const events: FileEvent[] = [{ rowId: 1, ts: 1, path: "/test.txt", effect: "wrote", viaShell: false }];
+    if (order === "edit-first") rerender(<Harness events={events} />);
+    await frame({ kind: "attachments", payload: ["/image.png"] });
+    expect(container.querySelector('[data-slot="attachment-group"]')).toBeNull();
+    if (order === "share-first") rerender(<Harness events={events} />);
+    await text("recap", "The text stream is finished, but the turn is still working.", 1, true);
+    expect(container.querySelector('[data-slot="attachment-group"]')).toBeNull();
+    await frame({ kind: "typing", payload: false });
+    expect(container.querySelectorAll('[data-slot="attachment-group"]')).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Open test.txt" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open image.png" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2 files" })).toBeInTheDocument();
+  });
+
   it("combines late shares and edits under one footer, and replaces removed files in place", async () => {
     const { container, rerender } = render(<Harness />);
     await frame({ kind: "typing", payload: true });
@@ -139,10 +156,11 @@ describe("assembled assistant-ui reply", () => {
     render(<Harness />);
     await frame({ kind: "typing", payload: true });
     await frame({ kind: "attachments", payload: ["/1.png", "/2.png", "/3.png", "/4.png", "/5.png"] });
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    await frame({ kind: "typing", payload: false });
     expect(await screen.findAllByRole("img")).toHaveLength(4);
     fireEvent.click(screen.getByRole("button", { name: "Show 1 more" }));
     expect(screen.getAllByRole("img")).toHaveLength(5);
-    await text("s1", "Here is an updated version", 1, true);
     await frame({ kind: "attachments", payload: ["/1.png"] });
     expect(screen.getAllByRole("img")).toHaveLength(5);
     fireEvent.error(screen.getAllByRole("img")[0]);

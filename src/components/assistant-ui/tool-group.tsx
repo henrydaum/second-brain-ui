@@ -1,6 +1,5 @@
 ﻿import { useCallback, useRef, useState } from "react";
 import { ChevronDownIcon, LoaderIcon } from "lucide-react";
-import { useScrollLock } from "@assistant-ui/react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -29,20 +28,20 @@ function ToolGroupRoot({
 }: ToolGroupRootProps) {
   const collapsibleRef = useRef<HTMLDivElement>(null);
   const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
-  const lockScroll = useScrollLock(collapsibleRef, ANIMATION_DURATION);
 
   const isControlled = controlledOpen !== undefined;
   const isOpen = isControlled ? controlledOpen : uncontrolledOpen;
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
-      lockScroll();
+      // Let native anchoring preserve the reader's position. A scroll-event
+      // lock fights smooth scrolling and hides/reinserts the scrollbar gutter.
       if (!isControlled) {
         setUncontrolledOpen(open);
       }
       controlledOnOpenChange?.(open);
     },
-    [lockScroll, isControlled, controlledOnOpenChange],
+    [isControlled, controlledOnOpenChange],
   );
 
   return (
@@ -128,7 +127,7 @@ function ToolGroupContent({
       data-slot="tool-group-content"
       className={cn(
         "aui-tool-group-content relative overflow-hidden text-sm outline-none",
-        "ease-out",
+        "ease-out motion-reduce:animate-none",
         "data-[state=closed]:animate-collapsible-up",
         "data-[state=open]:animate-collapsible-down",
         "data-[state=closed]:fill-mode-forwards",

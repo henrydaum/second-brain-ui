@@ -1,10 +1,16 @@
 # Reply rendering
 
-Each assistant reply owns ordered text/tool parts, one combined file-outcome group,
+Each assistant reply owns ordered text/tool parts, one completed-turn file-outcome group,
 one activity line while running, and one final copy/time/file-count footer. Files
 are deduplicated by path within that reply; showing a file in a later reply still
 creates an outcome there. The drawer independently shows the conversation's latest
 known file state, with one row per current path.
+
+Both shared attachments and ledger edits stay drawer-only while the reply is
+running. They appear together as a recap after completion, before the footer.
+The viewport uses assistant-ui's top anchoring: sending places the newest user
+message at the top, and the reply grows below without chasing its bottom.
+Tool expansion uses native scroll anchoring rather than a competing scroll lock.
 
 Live attachment frames establish reply ownership immediately. An attachment frame
 after `typing:false` attaches to the last assistant reply without opening another
