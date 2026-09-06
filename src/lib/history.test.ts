@@ -15,6 +15,20 @@ const user = (over: Partial<StoredMessage> = {}): StoredMessage => ({
 });
 
 describe("stored user attachments", () => {
+  it("also preserves explicit assistant output attachments without prose", () => {
+    const stored = [user({ role: "assistant", content: "", attachments: [{ path: "/output.png" }] })];
+    expect(toTurns(stored)[0].parts).toEqual([expect.objectContaining({ kind: "files", paths: ["/output.png"] })]);
+    expect(toTurns(stored)).toEqual(toTurns(stored));
+  });
+
+  it("preserves returned attachments on stored tool results", () => {
+    const stored = [
+      user({ role: "assistant", content: JSON.stringify({ tool_calls: [{ id: "search", function: { name: "hybrid_search", arguments: "{}" } }] }) }),
+      user({ id: 2, role: "tool", tool_call_id: "search", content: "Results found", attachments: [{ path: "/result.png" }, { path: "/result.pdf" }] }),
+    ];
+    expect(toTurns(stored)[0].parts.at(-1)).toMatchObject({ kind: "files", paths: ["/result.png", "/result.pdf"] });
+  });
+
   it("keeps prose clean and turns attachment records into their own part", () => {
     const [turn] = toTurns([
       user({

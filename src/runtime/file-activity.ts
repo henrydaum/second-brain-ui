@@ -30,7 +30,26 @@
  */
 
 import type { FileEffect, FileEvent } from "@/lib/ledger";
-import type { Turn } from "@/runtime/store";
+import type { FilesPart, Turn } from "@/runtime/store";
+
+/** The same projection for streamed turns and database-reconstructed turns.
+ * Only successful, answered show_files calls promise that their inputs were
+ * actually shared. Never infer outputs from arbitrary tools' input paths. */
+function outcomeParts(turn: Turn): FilesPart[] {
+  return turn.parts.flatMap((part): FilesPart[] => {
+    if (part.kind === "files") return part.sent ? [] : [part];
+    if (part.kind !== "tool" || part.status !== "finished" || part.ok !== true ||
+        part.error || !part.summary.trim() ||
+        !["show_files", "tool_show_files"].includes(part.name)) return [];
+    const requested = part.args?.paths;
+    if (!Array.isArray(requested)) return [];
+    // Relative inputs require kernel resolution; don't pretend they're host paths.
+    const paths = [...new Set(requested.filter((path): path is string =>
+      typeof path === "string" && /^(\/|[a-z]:[\\/]|\\\\)/i.test(path)))];
+    return paths.length ? [{ kind: "files", id: `tool-files:${part.callId}`,
+      callId: part.callId, paths, receivedAt: turn.createdAt }] : [];
+  });
+}
 
 /**
  * The bucket for events belonging to no assistant turn.
@@ -103,9 +122,7 @@ export function fileTurns(turns: Turn[]): Turn[] {
     if (turn.role !== "assistant") continue;
     projected.push({
       ...turn,
-      parts: turn.parts.filter(
-        (part) => part.kind === "files" && part.sent !== true,
-      ),
+      parts: outcomeParts(turn),
     });
   }
   return projected;
@@ -115,8 +132,8 @@ export function fileTurns(turns: Turn[]): Turn[] {
  * Whether a new conversation state would project to the same thing.
  *
  * Walks the raw turns against an existing projection so that the common
- * answer — "yes, that was just another token" — costs one pass and allocates
- * nothing. Only a `false` is worth building a new array for.
+ * answer — "yes, that was just another token" — checks only file-relevant data. Tool results participate because stored
+ * show_files calls are also durable output records.
  */
 export function sameFileTurns(previous: Turn[], turns: Turn[]): boolean {
   let at = 0;
@@ -129,8 +146,7 @@ export function sameFileTurns(previous: Turn[], turns: Turn[]): boolean {
     }
 
     let part = 0;
-    for (const candidate of turn.parts) {
-      if (candidate.kind !== "files" || candidate.sent === true) continue;
+    for (const candidate of outcomeParts(turn)) {
       const held = before.parts[part++];
       if (!held || held.kind !== "files") return false;
       if (held.id !== candidate.id || held.receivedAt !== candidate.receivedAt) return false;

@@ -20,8 +20,8 @@ try {
     await page.route('**/sdk/**', async (route) => {
       const type = new URL(route.request().url()).pathname.split('/').at(-1);
       const data = type === 'session.get' ? { conversation_id: 7, busy: false, mode: 'ask' }
-        : type === 'conv.read' ? { messages: restored ? [{ id: 1, role: 'assistant', content: 'Recovered reply', timestamp: 1, tool_call_id: null, tool_name: null }] : [], conversation: { id: 7, title: 'Chat rendering check' } }
-        : type === 'ledger.read' ? (restored && !route.request().postDataJSON().since_id ? [{ id: 1, ts: 2, origin: 'agent', action_type: 'call_tool', conversation_id: 7, ok: 1, error_code: null, args_json: '{}', data_json: JSON.stringify({ attachments: ['/one.png', '/two.png'] }) }] : [])
+        : type === 'conv.read' ? { messages: restored ? [{ id: 1, role: 'assistant', content: JSON.stringify({ content: 'Recovered reply', tool_calls: [{ id: 'stored-show', function: { name: 'show_files', arguments: JSON.stringify({ paths: ['/a.png', '/b.png', '/c.png'] }) } }] }), timestamp: 1, tool_call_id: null, tool_name: null }, { id: 2, role: 'tool', content: 'Showed 3 files.', timestamp: 2, tool_call_id: 'stored-show', tool_name: 'show_files' }] : [], conversation: { id: 7, title: 'Chat rendering check' } }
+        : type === 'ledger.read' ? (restored && !route.request().postDataJSON().since_id ? [{ id: 1, ts: 2, origin: 'agent', action_type: 'fs.write', conversation_id: 7, ok: 1, error_code: null, args_json: '{}', data_json: JSON.stringify({ paths: ['/test.txt'] }) }] : [])
         : type === 'frontend.pending' ? null : type === 'llm.list' ? { profiles: [] }
         : type === 'config.read' ? null : [];
       await route.fulfill({ json: { data } });
@@ -58,7 +58,7 @@ try {
     await emit('attachments', ['/late.md']);
     const reply = page.locator('[data-role="assistant"]');
     await expect(reply).toHaveCount(1);
-    await expect(reply.locator('img')).toHaveCount(4);
+    await expect(reply.locator('[data-slot="attachment-tile"]')).toHaveCount(4);
     await expect(page.locator('[data-slot="reply-activity"]')).toHaveCount(0);
     await page.screenshot({ path: 'test-results/chat/before-expand.png', fullPage: true });
     await reply.getByRole('button', { name: 'Show 3 more' }).click();
@@ -90,7 +90,7 @@ try {
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'two.png', exact: true })).toBeVisible();
     await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('heading', { name: 'three.png', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'five.png', exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
     const viewport = page.locator('[data-slot="chat-viewport"]');
     await viewport.evaluate((node) => { node.style.scrollBehavior = 'auto'; node.scrollTop = 0; });
@@ -137,7 +137,10 @@ try {
     await expect(page.getByText('Recovered reply', { exact: true })).toBeVisible();
     await expect(page.locator('[data-role="assistant"]')).toHaveCount(1);
     await expect(page.locator('[data-slot="attachment-group"]')).toHaveCount(1);
-    await expect(page.getByRole('button', { name: '2 files', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '4 files', exact: true })).toBeVisible();
+    await expect(page.locator('[data-role="assistant"] img')).toHaveCount(3);
+    await expect(page.getByRole('button', { name: 'Open test.txt' })).toBeVisible();
+    await expect(page.getByText('4 files', { exact: true })).toHaveCount(1);
     expect(await page.locator('[data-slot="assistant-message-footer"]').evaluate((node) => node.parentElement.lastElementChild === node)).toBe(true);
     expect(errors).toEqual([]);
     await page.close();

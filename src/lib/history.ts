@@ -248,6 +248,14 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
         ? pending.get(message.tool_call_id)
         : undefined;
       if (part) answer(part, message.content);
+      // Newer kernels may persist returned attachments on the tool row itself.
+      // These are output records, not guesses from tool arguments or prose.
+      const attachments = messageAttachments(message.attachments);
+      if (open && attachments.length && !part?.error) open.parts.push({
+        kind: "files", id: `stored-files-${message.id}`,
+        paths: attachments.map((file) => file.path!),
+        receivedAt: momentOf(message),
+      });
       continue;
     }
 
@@ -334,7 +342,8 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
 
     const calls = toolParts(message.content);
     const text = prose(message.content);
-    if (text === null && calls.length === 0) continue;
+    const attachments = messageAttachments(message.attachments);
+    if (text === null && calls.length === 0 && !attachments.length) continue;
 
     if (open === null) {
       open = {
@@ -364,6 +373,11 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
       open.parts.push(part);
       pending.set(part.callId, part);
     }
+    if (attachments.length) open.parts.push({
+      kind: "files", id: `stored-files-${message.id}`,
+      paths: attachments.map((file) => file.path!),
+      receivedAt: momentOf(message),
+    });
   }
   return turns;
 }

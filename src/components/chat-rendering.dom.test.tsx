@@ -31,9 +31,10 @@ vi.mock("@/lib/ledger", async (original) => ({
 
 const { AssistantMessage } = await import("@/components/thread");
 const { FileActivityContext, currentFiles } = await import("@/runtime/file-activity-provider");
-const { toSections, withStoreAttachments } = await import("@/runtime/file-activity");
+const { toSections, withStoreAttachments, fileTurns } = await import("@/runtime/file-activity");
 const { ActivityLine } = await import("@/components/reply-activity");
 const { ToolInput } = await import("@/components/tool-input");
+const { toTurns } = await import("@/lib/history");
 let dispatch: Dispatch<Action>;
 const view = vi.fn();
 
@@ -43,8 +44,8 @@ function Harness({ events = [] }: { events?: FileEvent[] }) {
   const runtime = useExternalStoreRuntime({
     messages: state.turns, convertMessage, isRunning: state.typing, onNew: async () => {},
   });
-  const sections = toSections(withStoreAttachments(new Map([[state.turns[0]?.id ?? "unattributed", events]]), state.turns), state.turns);
-  const files = currentFiles(events, state.turns);
+  const sections = toSections(withStoreAttachments(new Map([[state.turns[0]?.id ?? "unattributed", events]]), fileTurns(state.turns)), state.turns);
+  const files = currentFiles(events, fileTurns(state.turns));
   return <AssistantRuntimeProvider runtime={runtime}>
       <FileActivityContext value={{
         sections, sectionFor: (id) => sections.find((section) => section.turnId === id) ?? null,
@@ -73,6 +74,32 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe("assembled assistant-ui reply", () => {
+  it("rebuilds all four recap files from database rows without live attachment frames", async () => {
+    const events: FileEvent[] = [{ rowId: 1, ts: 3000, path: "/test.txt", effect: "wrote", viaShell: false }];
+    const { container } = render(<Harness events={events} />);
+    const paths = ["/a.png", "/b.png", "/c.png"];
+    await frame({ kind: "typing", payload: true });
+    await text("live", "Images first, then edit.", 1, true);
+    await frame({ kind: "tool_status", payload: { call_id: "show", tool_name: "show_files", args: { paths }, status: "finished", ok: true, summary: "Showed 3 files." } });
+    await frame({ kind: "attachments", payload: paths });
+    await frame({ kind: "typing", payload: false });
+    const snapshot = () => [...container.querySelectorAll('[data-slot="attachment-tile"]')].map((node) => node.getAttribute("data-path"));
+    expect(snapshot()).toEqual([...paths, "/test.txt"]);
+    for (let reload = 0; reload < 2; reload++) {
+      // Only persisted tool-call input/result and the edit ledger row remain.
+      const turns = toTurns([
+        { id: 1, role: "assistant", content: JSON.stringify({ content: "Images first, then edit.", tool_calls: [{ id: "show", function: { name: "show_files", arguments: JSON.stringify({ paths }) } }] }), tool_call_id: null, tool_name: null, timestamp: 1 },
+        { id: 2, role: "tool", content: "Showed 3 files.", tool_call_id: "show", tool_name: "show_files", timestamp: 2 },
+      ]);
+      await act(async () => dispatch({ type: "history", turns, hasMore: false, oldestId: 1 }));
+      expect(snapshot()).toEqual([...paths, "/test.txt"]);
+      expect(screen.getAllByRole("img")).toHaveLength(3);
+      expect(screen.getByRole("button", { name: "4 files" })).toBeInTheDocument();
+      expect(screen.getAllByText("4 files")).toHaveLength(1);
+      expect(container.querySelectorAll('[data-slot="attachment-group"]')).toHaveLength(1);
+    }
+  });
+
   it.each(["share-first", "edit-first"])("defers both file sources until completion (%s)", async (order) => {
     const { container, rerender } = render(<Harness />);
     await frame({ kind: "typing", payload: true });
@@ -134,7 +161,7 @@ describe("assembled assistant-ui reply", () => {
     expect(within(reply).getByRole("button", { name: "3 files" })).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open two.png" }));
-    expect(view).toHaveBeenCalledWith(["/one.png", "/two.png", "/three.png"], 1);
+    expect(view).toHaveBeenCalledWith(["/one.png", "/three.png", "/two.png"], 2);
   });
 
   it("switches one status line using stream completion, including waiting", async () => {

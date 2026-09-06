@@ -25,7 +25,7 @@ export function TurnOutcomeFiles() {
   const paths = [...new Set([
     ...shared, ...recoveredFor(id),
     ...(section ? [...section.shown, ...section.touched].map((entry) => entry.path) : []),
-  ])];
+  ])].sort((a, b) => a.localeCompare(b));
   // Both sources remain drawer-only until this reply is complete.
   return running ? null : <AttachmentGroup paths={paths} />;
 }
@@ -39,7 +39,6 @@ export function AttachmentGroup({ paths }: { paths: string[] }) {
   const multiple = unique.length > 1;
   return (
     <div data-slot="attachment-group" className="my-3 min-w-0">
-      {multiple && <p className="text-muted-foreground mb-2 text-xs">{unique.length} files</p>}
       <div className={cn("grid min-w-0 gap-3", multiple && "sm:grid-cols-2")}>
         {visible.map((path) => {
           const entry = fileFor(path);

@@ -17,6 +17,23 @@ import {
 
 let nextRow = 0;
 
+describe("durable shared-file projection", () => {
+  it("recovers only confirmed show_files output and notices completion", () => {
+    const base: Turn = { id: "reply", role: "assistant", running: false, aborted: false, createdAt: 1000,
+      parts: [{ kind: "tool", callId: "show", name: "show_files", status: "started", isCommand: false, summary: "", args: { paths: ["/a.png", "/a.png", "relative.png"] } }] };
+    const before = fileTurns([base]);
+    expect(before[0].parts).toEqual([]);
+    const success: Turn = { ...base, parts: [{ ...base.parts[0], kind: "tool", callId: "show", name: "show_files", status: "finished", isCommand: false, ok: true, summary: "Showed 1 file." }] };
+    expect(sameFileTurns(before, [success])).toBe(false);
+    expect(fileTurns([success])[0].parts[0]).toMatchObject({ kind: "files", paths: ["/a.png"] });
+    expect(sameFileTurns(fileTurns([success]), [success])).toBe(true);
+    for (const override of [{ ok: false }, { name: "read_file" }, { summary: "" }]) {
+      const failed = { ...success, parts: success.parts.map((part) => ({ ...part, ...override })) } as Turn;
+      expect(fileTurns([failed])[0].parts).toEqual([]);
+    }
+  });
+});
+
 function event(
   path: string,
   effect: FileEffect,

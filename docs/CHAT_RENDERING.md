@@ -12,6 +12,18 @@ The viewport uses assistant-ui's top anchoring: sending places the newest user
 message at the top, and the reply grows below without chasing its bottom.
 Tool expansion uses native scroll anchoring rather than a competing scroll lock.
 
+File reconstruction is shared by live and stored turns (`fileTurns`): successful,
+answered `show_files` calls contribute their absolute path list from their stored
+arguments, in addition to explicit output-attachment records and ledger edits.
+Failed/unanswered calls and arbitrary tools' inputs are not outputs. This keeps a
+missing attachment ledger row from erasing a confirmed show_files result on reload.
+The recap is sorted by path, independent of event arrival order, and only the
+footer displays the total. No browser-persisted cache is used to recover recaps.
+
+For other tools or relative show_files inputs, the kernel must persist resolved
+output paths (message attachments or ledger attachments). Outputs absent from all
+durable records cannot be reconstructed reliably by a frontend.
+
 Live attachment frames establish reply ownership immediately. An attachment frame
 after `typing:false` attaches to the last assistant reply without opening another
 reply or restarting activity. Tool edits come from ledger polling: ownership is

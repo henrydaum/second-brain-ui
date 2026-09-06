@@ -15,6 +15,7 @@ vi.mock("@/lib/ledger", async (original) => ({
 vi.mock("@/lib/files", () => ({ forgetFile: vi.fn() }));
 vi.mock("@/lib/thumbnails", () => ({ forgetThumbnail: vi.fn() }));
 const { readLedger } = await import("@/lib/ledger");
+const { toTurns } = await import("@/lib/history");
 const { FileActivityProvider, useFileActivity, currentFiles } = await import("./file-activity-provider");
 let activity: ReturnType<typeof useFileActivity>;
 function Probe() { activity = useFileActivity(); return null; }
@@ -80,4 +81,17 @@ it("uses ledger order for deletion and recreation even with skewed timestamps", 
   ];
   expect(currentFiles(events, []).get("/a.png")?.gone).toBe(true);
   expect(currentFiles([{ ...events[0], rowId: 3, effect: "wrote" }, ...events], []).get("/a.png")?.gone).toBe(false);
+});
+
+it("cold-loads successful show_files outputs alongside ledger edits", async () => {
+  controls.state.turns = toTurns([
+    { id: 1, role: "assistant", content: JSON.stringify({ content: "Four outcomes", tool_calls: [{ id: "show", function: { name: "show_files", arguments: JSON.stringify({ paths: ["/a.png", "/b.png", "/c.png"] }) } }] }), tool_call_id: null, tool_name: null, timestamp: 1 },
+    { id: 2, role: "tool", content: "Showed 3 files.", tool_call_id: "show", tool_name: "show_files", timestamp: 2 },
+  ]);
+  vi.mocked(readLedger).mockResolvedValueOnce([row(1, "/test.txt")]).mockResolvedValue([]);
+  render(app());
+  await waitFor(() => expect(activity.entries).toHaveLength(4));
+  expect(activity.sections).toHaveLength(1);
+  const section = activity.sectionFor("stored-1")!;
+  expect([...section.shown, ...section.touched].map((file) => file.path).sort()).toEqual(["/a.png", "/b.png", "/c.png", "/test.txt"]);
 });
