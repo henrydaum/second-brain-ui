@@ -7,9 +7,7 @@
  * un-animated — the classes were there, the definitions were not. */
 @import "tw-animate-css";
 
-/* The blinking cursor at the end of a message that is still streaming. Ships
- * with the markdown package and does nothing until it is imported. */
-@import "@assistant-ui/react-markdown/styles/dot.css";
+/* ReplyActivity owns the single conversation-level activity animation. */
 
 @custom-variant dark (&:is(.dark *));
 

@@ -358,6 +358,7 @@ describe("Settings lands where it was asked to", () => {
         shownText: [],
       scrollback: { hasMore: false, oldestId: null },
         carried: {},
+        streams: {},
         form: {
           name: "agent",
           field: { name: "profile" },

@@ -18,6 +18,7 @@ import type { MessageAttachment, Turn } from "@/runtime/store";
  *  maps this name to the component that names them. */
 export const SENT_ATTACHMENTS = "sentAttachments";
 export const AGENT_FILES = "agentFiles";
+export const PRESENTATION = "presentation";
 
 /** Key under `metadata.custom` holding the turn's time in epoch milliseconds.
  *  Only present when the time is actually known — see `timing` below. */
@@ -41,10 +42,17 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
   );
   // `flatMap` rather than `map`, because one kind of part deliberately produces
   // nothing to render — see the `files` case.
-  const content = turn.parts.flatMap((part): Part[] => {
+  const content = turn.parts.flatMap((part, index): Part[] => {
     switch (part.kind) {
       case "text":
-        return [{ type: "text" as const, text: part.text }];
+        return [{
+          type: "text" as const,
+          text: part.text,
+          ...(turn.role === "assistant" ? {
+            status: { type: part.done || !turn.running ? "complete" as const : "running" as const },
+            providerMetadata: { secondBrain: { segmentId: part.id ?? `${turn.id}:text:${index}` } },
+          } : {}),
+        }];
 
       case "tool":
         return [{
@@ -90,7 +98,7 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
           : [{
               type: "data" as const,
               name: AGENT_FILES,
-              data: { paths: part.paths },
+              data: { paths: part.paths, id: part.id ?? `${turn.id}:files:${index}`, receivedAt: part.receivedAt },
             }];
     }
   });
@@ -112,6 +120,16 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
    * so the library's own view of the message is correct.
    */
   const custom: Record<string, unknown> = {};
+  if (turn.role === "assistant") {
+    const activeStream = turn.parts.findLast(
+      (part) => part.kind === "text" && !part.done,
+    );
+    custom[PRESENTATION] = {
+      source: turn.source ?? "history",
+      phase: activeStream ? "writing" : "working",
+      since: turn.activity?.since ?? turn.createdAt,
+    };
+  }
   if (turn.createdAt !== undefined) custom[SENT_AT] = turn.createdAt;
   if (sentAttachments.length) custom[SENT_ATTACHMENTS] = sentAttachments;
   if (turn.role === "system") custom[COMPACTED] = true;

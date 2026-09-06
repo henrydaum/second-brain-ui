@@ -31,28 +31,28 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  conversationEntries,
   type FileEntry,
 } from "@/runtime/file-activity";
 import { useFileActivity } from "@/runtime/file-activity-provider";
 
 /** How long a section stays ringed after being jumped to. Long enough to
  *  notice, short enough not to become part of the design. */
-const FLASH_MS = 1400;
+const FLASH_MS = 1600;
 
 export const FilesDrawer: FC = () => {
   const {
     sections,
+    entries,
     total,
     failure,
     filesOpen,
     setFilesOpen,
     focusTurn,
+    focusRequest,
     clearFocus,
     view,
   } = useFileActivity();
   const isInline = useMediaQuery(XL_QUERY);
-  const entries = conversationEntries(sections);
   const focusedPaths = new Set(
     focusTurn
       ? sections
@@ -114,15 +114,36 @@ export const FilesDrawer: FC = () => {
   const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusTurn || !visible) return;
-    const targets = [...(bodyRef.current?.querySelectorAll<HTMLElement>(
-      "[data-file-path]",
-    ) ?? [])].filter((element) =>
-      focusedPaths.has(element.dataset.filePath ?? ""),
-    );
-    targets.at(-1)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const body = bodyRef.current;
+    if (!body) return;
+    const targets = [...body.querySelectorAll<HTMLElement>("[data-file-path]")]
+      .filter((element) => focusedPaths.has(element.dataset.filePath ?? ""));
+    if (!targets.length) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const target = targets.at(-1)!;
+    const bodyRect = body.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
+    const delta = rect.top < bodyRect.top ? rect.top - bodyRect.top - 8
+      : rect.bottom > bodyRect.bottom ? rect.bottom - bodyRect.bottom + 8 : 0;
+    if (delta) body.scrollTo({ top: body.scrollTop + delta, behavior: reduced ? "instant" : "smooth" });
+    const layers = targets.map((element) =>
+      element.querySelector<HTMLElement>("[data-file-highlight]")!);
+    const animations = layers.map((layer) => {
+      if (reduced) { layer.style.opacity = "1"; return null; }
+      return layer.animate([
+        { opacity: 0, offset: 0, easing: "ease-in-out" },
+        { opacity: 1, offset: 0.125 },
+        { opacity: 1, offset: 0.6875, easing: "ease-in-out" },
+        { opacity: 0, offset: 1 },
+      ], { duration: FLASH_MS, easing: "linear" });
+    });
     const timer = setTimeout(clearFocus, FLASH_MS);
-    return () => clearTimeout(timer);
-  }, [focusTurn, visible, clearFocus, sections]);
+    return () => {
+      clearTimeout(timer);
+      animations.forEach((animation) => animation?.cancel());
+      layers.forEach((layer) => { layer.style.opacity = ""; });
+    };
+  }, [focusTurn, focusRequest, visible, clearFocus, sections]);
 
   /**
    * Opened from the header, with no particular turn in mind: show the end, the
@@ -217,7 +238,6 @@ export const FilesDrawer: FC = () => {
         ) : (
           <FileList
             entries={entries}
-            focusedPaths={focusedPaths}
             onOpen={view}
           />
         )}
@@ -238,9 +258,8 @@ export const FilesDrawer: FC = () => {
 
 const FileList: FC<{
   entries: FileEntry[];
-  focusedPaths: Set<string>;
   onOpen: (paths: string[], index: number) => void;
-}> = ({ entries, focusedPaths, onOpen }) => {
+}> = ({ entries, onOpen }) => {
   // One list for the arrows to walk, in the order the section draws them, so
   // "next" in the viewer means what it looks like it means.
   const openable = entries
@@ -263,7 +282,6 @@ const FileList: FC<{
           <Row
             key={entry.path}
             entry={entry}
-            flashing={focusedPaths.has(entry.path)}
             onOpen={open}
           />
         ))}
@@ -284,9 +302,8 @@ const FileList: FC<{
  */
 const Row: FC<{
   entry: FileEntry;
-  flashing: boolean;
   onOpen: (entry: FileEntry) => void;
-}> = ({ entry, flashing, onOpen }) => {
+}> = ({ entry, onOpen }) => {
   const inside = (
     <>
       {/* Any image still on disk gets its own picture, whether the agent showed
@@ -320,7 +337,7 @@ const Row: FC<{
   );
 
   const className =
-    "flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-start";
+    "relative isolate flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-start";
 
   // Where the file lives is not in this list at all — not as a line, and not
   // as a tooltip either. The full host path is three times the width of the
@@ -342,9 +359,9 @@ const Row: FC<{
               className={cn(
                 className,
                 "hover:bg-accent focus-visible:bg-accent",
-                flashing && "bg-accent ring-ring/40 ring-1",
               )}
             >
+              <span data-file-highlight aria-hidden className="pointer-events-none absolute inset-0 -z-10 rounded-md bg-accent opacity-0" />
               {inside}
             </button>
           </TooltipTrigger>

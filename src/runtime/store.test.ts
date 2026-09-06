@@ -70,7 +70,7 @@ describe("agent attachment placement", () => {
 
     expect(state.turns[0]?.parts).toEqual([
       expect.objectContaining({ kind: "text", text: "Before", done: true }),
-      { kind: "files", paths: ["/chart.png"] },
+      expect.objectContaining({ kind: "files", paths: ["/chart.png"] }),
       expect.objectContaining({ kind: "text", text: "After", done: false }),
     ]);
   });
@@ -83,7 +83,7 @@ describe("agent attachment placement", () => {
     );
 
     expect(state.turns[0]?.parts).toEqual([
-      { kind: "files", paths: ["/chart.png"] },
+      expect.objectContaining({ kind: "files", paths: ["/chart.png"] }),
     ]);
   });
 });

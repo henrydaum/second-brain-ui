@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+test-results
 *.local
 
 # The bearer token lives in .env.local, which *.local above already covers.

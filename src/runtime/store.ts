@@ -38,6 +38,7 @@ import type {
 
 export type TextPart = {
   kind: "text";
+  id?: string;
   /** The `stream_id` that produced it, or a synthetic id for `messages` text
    *  that never streamed. */
   streamId: string;
@@ -87,6 +88,9 @@ export type MessageAttachment = {
 
 export type FilesPart = {
   kind: "files";
+  id?: string;
+  callId?: string;
+  receivedAt?: number;
   paths: string[];
   sent?: boolean;
   /** Structured only for files a user message carried. Agent files continue
@@ -127,6 +131,8 @@ export type Part = TextPart | ToolPart | FilesPart;
 
 export type Turn = {
   id: string;
+  source?: "live" | "history";
+  activity?: { phase: "working" | "writing"; since: number; streamId?: string };
   /**
    * Who this turn is from — and `system`, which is nobody.
    *
@@ -212,6 +218,7 @@ export type State = {
    * `splitOpenTurn`, and `tailOf` for what reads it.
    */
   carried: Record<string, string>;
+  streams: Record<string, { seq: number; done: boolean }>;
 };
 
 export const initialState: State = {
@@ -226,6 +233,7 @@ export const initialState: State = {
   scrollback: { hasMore: false, oldestId: null },
   shownText: [],
   carried: {},
+  streams: {},
 };
 
 export type Action =
@@ -320,6 +328,7 @@ function openTurn(turns: Turn[]): { turns: Turn[]; turn: Turn } {
   const turn: Turn = {
     id: nextId(),
     role: "assistant",
+    source: "live",
     parts: [],
     running: true,
     aborted: false,
@@ -404,6 +413,7 @@ function splitOpenTurn(
   const continued: Turn = {
     id: nextId(),
     role: "assistant",
+    source: "live",
     parts: moved,
     running: true,
     aborted: false,
@@ -460,6 +470,17 @@ function stopCarrying(
   const next = { ...carried };
   delete next[streamId];
   return next;
+}
+
+/** End visible text at a presentation boundary while retaining final-text carry. */
+function sealText(turn: Turn, carried: Record<string, string>) {
+  const next = { ...carried };
+  const parts = turn.parts.map((part) => {
+    if (part.kind !== "text" || part.done) return part;
+    next[part.streamId] = (next[part.streamId] ?? "") + part.text;
+    return { ...part, done: true };
+  });
+  return { turn: { ...turn, parts }, carried: next };
 }
 
 /** Replace one turn in the list, leaving a new array behind.
@@ -718,8 +739,26 @@ export function reduce(state: State, action: Action): State {
     case "clearError":
       return { ...state, error: null };
 
-    case "frame":
-      return applyFrame(state, action.frame);
+    case "frame": {
+      const next = applyFrame(state, action.frame);
+      if (next === state) return state;
+      return {
+        ...next,
+        turns: next.turns.map((turn) => {
+          if (turn.role !== "assistant" || !turn.running) return turn;
+          const stream = turn.parts.findLast(
+            (part): part is TextPart => part.kind === "text" && !part.done,
+          );
+          const phase = stream ? "writing" : "working";
+          if (turn.activity?.phase === phase &&
+              turn.activity.streamId === stream?.streamId) return turn;
+          return {
+            ...turn,
+            activity: { phase, since: Date.now(), streamId: stream?.streamId },
+          };
+        }),
+      };
+    }
   }
 }
 
@@ -760,7 +799,18 @@ function applyFrame(state: State, frame: Frame): State {
 
     /* The reply, token by token. */
     case "stream_delta": {
-      const { stream_id, delta, done, aborted, final_text } = frame.payload;
+      const { stream_id, seq, delta, done, aborted, final_text } = frame.payload;
+      const previous = state.streams[stream_id];
+      if (previous?.done || (seq !== undefined && previous && seq <= previous.seq)) {
+        return state;
+      }
+      state = {
+        ...state,
+        streams: {
+          ...state.streams,
+          [stream_id]: { seq: seq ?? (previous?.seq ?? 0) + 1, done },
+        },
+      };
       const { turns, turn } = openTurn(state.turns);
       const existing = turn.parts.find(
         (part): part is TextPart =>
@@ -802,7 +852,7 @@ function applyFrame(state: State, frame: Frame): State {
           ? tailOf(final_text, shown, accumulated)
           : accumulated;
 
-      const part: TextPart = { kind: "text", streamId: stream_id, text, done };
+      const part: TextPart = { kind: "text", id: existing?.id ?? nextId(), streamId: stream_id, text, done };
       const parts = existing
         ? turn.parts.map((candidate) =>
             candidate === existing ? part : candidate,
@@ -858,7 +908,7 @@ function applyFrame(state: State, frame: Frame): State {
         turn = opened.turn;
         const parts: Part[] = [
           ...turn.parts,
-          { kind: "text", streamId: nextId(), text, done: true },
+          { kind: "text", id: nextId(), streamId: nextId(), text, done: true },
         ];
         turn = { ...turn, parts };
         turns = replace(turns, turn.id, turn);
@@ -970,7 +1020,14 @@ function applyFrame(state: State, frame: Frame): State {
         };
       }
 
-      const { turns, turn } = openTurn(state.turns);
+      const opened = openTurn(state.turns);
+      const knownCall = opened.turn.parts.some((part) => part.kind === "tool" && part.callId === p.call_id);
+      const sealed = knownCall
+        ? { turn: opened.turn, carried: state.carried }
+        : sealText(opened.turn, state.carried);
+      const { turn } = sealed;
+      const turns = opened.turns;
+      state = { ...state, carried: sealed.carried };
       const existing = turn.parts.find(
         (part): part is ToolPart =>
           part.kind === "tool" && part.callId === p.call_id,
@@ -1003,13 +1060,15 @@ function applyFrame(state: State, frame: Frame): State {
     case "attachments": {
       if (!frame.payload.length) return state;
       const { turns, turn } = openTurn(state.turns);
-      const alreadyShown = new Set(
-        turn.parts.flatMap((part) =>
-          part.kind === "files" && part.sent !== true ? part.paths : [],
-        ),
+      const paths = [...new Set(frame.payload)];
+      const callId = turn.parts.findLast((part) => part.kind === "tool")?.callId;
+      const duplicate = turn.parts.some((part, index) =>
+        part.kind === "files" && !part.sent &&
+        (callId ? part.callId === callId : index === turn.parts.length - 1) &&
+        part.paths.length === paths.length &&
+        part.paths.every((path, at) => path === paths[at]),
       );
-      const paths = frame.payload.filter((path) => !alreadyShown.has(path));
-      if (!paths.length) return state;
+      if (duplicate) return state;
       const carried = { ...state.carried };
       const closed = turn.parts.map((part) => {
         if (part.kind !== "text" || part.done) return part;
@@ -1019,7 +1078,7 @@ function applyFrame(state: State, frame: Frame): State {
       });
       const parts: Part[] = [
         ...closed,
-        { kind: "files", paths },
+        { kind: "files", id: nextId(), paths, callId, receivedAt: Date.now() },
       ];
       return {
         ...state,

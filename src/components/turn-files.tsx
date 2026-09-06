@@ -1,151 +1,109 @@
-/**
- * A reply's files, where the reply is.
- *
- * Two paths share one renderer:
- *
- * **One shown file previews inline.** The agent handing you a chart and the
- * chart itself belong together, and putting it behind a click would be a
- * regression on what this app already did.
- *
- * **A live attachment renders at its event boundary.** If one event carries
- * several paths, the first path represents the set and the footer reports the
- * full count. Separate events may each render once in chronological order.
- *
- * Files the agent *edited* never appear inline at either count. That is
- * activity, not presentation — the agent did not choose to show it to you, and
- * a reply that quietly grew a list of everything it wrote reads as noise.
- *
- * ## Why this is not a message part
- *
- * Live frames become data parts and therefore preserve their position between
- * text segments. `conv.read` cannot restore that exact position, so after a
- * reload the ledger supplies one end-of-message fallback instead.
- *
- * Both paths use the current conversation-wide file projection, so deleting a
- * file removes its preview rather than replacing it with a stale error card.
- */
-
-import { Suspense, type FC } from "react";
-import { FilesIcon, Maximize2Icon } from "lucide-react";
+/** Ordered attachment groups, shared by live parts and recovered history. */
+import { useState } from "react";
+import { FilesIcon, FileIcon, Maximize2Icon } from "lucide-react";
 import { useAuiState, type DataMessagePartProps } from "@assistant-ui/react";
-
-import { LazyFileView, preloadFileView } from "@/components/lazy-file-view";
 import { preloadFileViewer } from "@/components/lazy-file-viewer";
 import { Button } from "@/components/ui/button";
-import { nameOf } from "@/lib/files";
-import { conversationEntries, countOf } from "@/runtime/file-activity";
+import { fileUrl } from "@/lib/client";
+import { guessKind, nameOf } from "@/lib/files";
+import { cn } from "@/lib/utils";
+import { countOf } from "@/runtime/file-activity";
 import { useFileActivity } from "@/runtime/file-activity-provider";
-import { AGENT_FILES } from "@/runtime/convert";
+import { AGENT_FILES, PRESENTATION } from "@/runtime/convert";
 
-type AgentFilesData = { paths?: unknown };
-
-function pathsFrom(data: AgentFilesData): string[] {
-  return Array.isArray(data.paths)
-    ? data.paths.filter((path): path is string => typeof path === "string")
-    : [];
+type AgentFilesData = { paths?: unknown; id?: string };
+export function InlineAgentFiles({ data }: DataMessagePartProps<AgentFilesData>) {
+  const paths = Array.isArray(data.paths)
+    ? data.paths.filter((path: unknown): path is string => typeof path === "string") : [];
+  return <AttachmentGroup key={data.id} paths={paths} />;
 }
 
-export const InlineAgentFiles: FC<DataMessagePartProps<AgentFilesData>> = ({
-  data,
-}) => {
-  const { sections } = useFileActivity();
-  const current = new Set(
-    conversationEntries(sections).map((entry) => entry.path),
-  );
-  return (
-    <InlinePreview
-      paths={pathsFrom(data).filter((path) => current.has(path))}
-    />
-  );
-};
-
-/** The one file this turn showed you, or null — the shape the rules above
- *  reduce to. A file that has since been deleted is not offered. */
-function useShown(): string[] {
+/** Only history may recover a group. A live reply never guesses placement from polls. */
+export function RecoveredFiles() {
   const id = useAuiState((s) => s.message.id);
-  const hasInlinePart = useAuiState((s) =>
-    s.message.parts.some(
-      (part) => part.type === "data" && part.name === AGENT_FILES,
-    ),
+  const live = useAuiState((s) =>
+    (s.message.metadata.custom[PRESENTATION] as { source?: string } | undefined)?.source === "live" ||
+    s.message.parts.some((part) => part.type === "data" && part.name === AGENT_FILES),
   );
-  const { sectionFor, sections } = useFileActivity();
-  if (hasInlinePart) return [];
-  const current = new Set(
-    conversationEntries(sections).map((entry) => entry.path),
-  );
-  return (sectionFor(id)?.shown ?? [])
-    .filter((entry) => !entry.gone && current.has(entry.path))
-    .map((entry) => entry.path)
-    .sort((a, b) => a.localeCompare(b));
+  const { recoveredFor } = useFileActivity();
+  return live ? null : <AttachmentGroup paths={recoveredFor(id)} />;
 }
 
-export const TurnShownFile: FC = () => {
-  const paths = useShown();
-  return <InlinePreview paths={paths} />;
-};
-
-const InlinePreview: FC<{ paths: string[] }> = ({ paths }) => {
-  const { view } = useFileActivity();
-  const path = paths[0];
-  if (!path) return null;
-
+export function AttachmentGroup({ paths }: { paths: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const { fileFor, view } = useFileActivity();
+  const unique = [...new Set(paths)];
+  if (!unique.length) return null;
+  const visible = expanded ? unique : unique.slice(0, 4);
+  const multiple = unique.length > 1;
   return (
-    <div className="my-2 flex flex-col items-start gap-1">
-      {/* Not wrapped in a button. A `<video>` and an `<audio>` carry their own
-          controls, and a click target over them would swallow every press of
-          play; a download falls back to an `<a>`, which may not be nested in a
-          button at all. The line underneath is the click target for all of
-          them, which also means it behaves the same whatever the file is. */}
-      <Suspense
-        fallback={
-          <div className="bg-muted/30 h-40 w-full animate-pulse rounded-lg border" />
-        }
-      >
-        <LazyFileView path={path} size="inline" />
-      </Suspense>
-      <button
-        type="button"
-        onClick={() => view(paths, 0)}
-        onPointerEnter={() => {
-          preloadFileView();
-          preloadFileViewer();
-        }}
-        onFocus={() => {
-          preloadFileView();
-          preloadFileViewer();
-        }}
-        title={path}
-        className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex max-w-full items-center gap-1.5 rounded px-1 text-xs outline-none focus-visible:ring-2"
-      >
-        <Maximize2Icon className="size-3 shrink-0" aria-hidden />
-        <span className="truncate">{nameOf(path)}</span>
-      </button>
+    <div data-slot="attachment-group" className="my-3 min-w-0">
+      {multiple && <p className="text-muted-foreground mb-2 text-xs">{unique.length} files</p>}
+      <div className={cn("grid min-w-0 gap-3", multiple && "sm:grid-cols-2")}>
+        {visible.map((path) => {
+          const entry = fileFor(path);
+          return <AttachmentTile key={path} path={path} removed={entry?.gone ?? false}
+            version={entry?.ts} compact={multiple}
+            onOpen={() => view(unique, unique.indexOf(path))} />;
+        })}
+      </div>
+      {unique.length > 4 && (
+        <Button variant="ghost" size="sm" className="mt-2 text-muted-foreground"
+          aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+          {expanded ? "Show fewer" : `Show ${unique.length - 4} more`}
+        </Button>
+      )}
     </div>
   );
-};
+}
 
-/**
- * The chip under a reply: how many files this turn touched.
- *
- * Sized to the footer strip it lives in — see `FOOTER_HEIGHT` in `thread.tsx`,
- * which must stay no taller than the gap between messages.
- */
-export const TurnFilesButton: FC = () => {
+function AttachmentTile({ path, removed, version, compact, onOpen }: {
+  path: string; removed: boolean; version?: number; compact: boolean; onOpen: () => void;
+}) {
+  const image = guessKind(path) === "image";
+  const [failed, setFailed] = useState<string | null>(null);
+  const src = fileUrl(path) + (version === undefined ? "" : `&v=${encodeURIComponent(version)}`);
+  const unavailable = failed === src;
+  if (removed) return (
+    <div data-slot="removed-file" className="text-muted-foreground flex items-center gap-2 rounded-lg border px-3 py-2 text-xs">
+      <FileIcon className="size-4 shrink-0" aria-hidden />
+      <span className="min-w-0 break-all">{nameOf(path)}<span className="block">File removed</span></span>
+    </div>
+  );
+  return (
+    <button type="button" data-slot="attachment-tile" data-path={path}
+      onClick={onOpen} onPointerEnter={preloadFileViewer} onFocus={preloadFileViewer}
+      aria-label={`Open ${nameOf(path)}`}
+      className={cn("group min-w-0 rounded-lg text-start outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        image ? "w-full" : "hover:bg-accent flex items-center gap-3 border p-3")}>
+      {image && !unavailable ? (
+        <img key={src} src={src} alt={nameOf(path)} onError={() => setFailed(src)}
+          className={cn("bg-muted/20 block rounded-lg border object-contain",
+            compact ? "h-52 w-full" : "max-h-96 max-w-full")} />
+      ) : <FileIcon className="text-muted-foreground size-5 shrink-0" aria-hidden />}
+      <span className={cn("text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs",
+        image && "mt-1.5 px-1")}>
+        {image && <Maximize2Icon className="size-3 shrink-0" aria-hidden />}
+        <span className="min-w-0 break-all">{nameOf(path)}
+          {(unavailable || !image) && <span className="block text-[11px]">
+            {unavailable ? "Preview unavailable · Open file" : guessKind(path)}
+          </span>}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+export function TurnFilesButton() {
   const id = useAuiState((s) => s.message.id);
   const { sectionFor, openFilesAt } = useFileActivity();
   const section = sectionFor(id);
-  if (!section) return null;
-
-  const count = countOf(section);
+  const count = section ? countOf(section) : 0;
+  if (!count) return null;
   return (
-    <Button
-      variant="ghost"
-      size="xs"
-      onClick={() => openFilesAt(id)}
-      className="text-muted-foreground gap-1.5"
-    >
-      <FilesIcon aria-hidden />
-      {count} {count === 1 ? "file" : "files"}
+    <Button variant="ghost" size="xs" onClick={() => openFilesAt(id)}
+      className="text-muted-foreground gap-1.5">
+      <FilesIcon aria-hidden />{count} {count === 1 ? "file" : "files"}
     </Button>
   );
-};
+}

@@ -7,6 +7,8 @@ import {
   WrenchIcon,
 } from "lucide-react";
 
+import { ToolInput } from "@/components/tool-input";
+
 import { cn, titleCase } from "@/lib/utils";
 
 function printable(value: unknown) {
@@ -96,16 +98,7 @@ export const ToolFallback: ToolCallMessagePartComponent = ({
       </summary>
       {hasDetails && (
         <div className="space-y-3 border-t px-3 py-3">
-          {argsText && (
-            <div>
-              <p className="text-muted-foreground mb-1.5 text-xs font-medium">
-                Input
-              </p>
-              <pre className="bg-muted/60 max-h-48 overflow-auto rounded-md p-2.5 text-xs whitespace-pre-wrap">
-                {argsText}
-              </pre>
-            </div>
-          )}
+          {argsText && <ToolInput args={args} argsText={argsText} />}
           {outcome !== "" && (
             <div>
               {/* One or the other, never both: the kernel leaves the summary

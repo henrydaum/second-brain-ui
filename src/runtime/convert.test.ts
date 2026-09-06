@@ -62,7 +62,7 @@ describe("agent attachment conversion", () => {
       aborted: false,
     };
 
-    expect(convertMessage(turn).content).toEqual([
+    expect(convertMessage(turn).content).toMatchObject([
       { type: "text", text: "Before" },
       {
         type: "data",

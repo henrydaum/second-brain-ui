@@ -18,7 +18,6 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
-  useState,
   type FC,
 } from "react";
 import {
@@ -43,7 +42,7 @@ import {
   ComposerAddAttachment,
   ComposerAttachments,
 } from "@/components/assistant-ui/attachment";
-import { DotMatrix } from "@/components/assistant-ui/dot-matrix";
+import { ReplyActivity } from "@/components/reply-activity";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import {
@@ -66,100 +65,14 @@ import { SecurityModePicker } from "@/components/security-mode-picker";
 import {
   InlineAgentFiles,
   TurnFilesButton,
-  TurnShownFile,
+  RecoveredFiles,
 } from "@/components/turn-files";
 import { VoiceNoteButton } from "@/components/voice-note";
-import { activityFor, type Activity } from "@/lib/activity";
-import { elapsedLabel, fullTimestamp, shortTimestamp } from "@/lib/time";
+import { fullTimestamp, shortTimestamp } from "@/lib/time";
 import { FINE_POINTER_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { useConversations } from "@/runtime/provider";
 import { AGENT_FILES, SENT_AT } from "@/runtime/convert";
-
-/**
- * How long before the turn starts saying how long it has been.
- *
- * The first couple of seconds of a reply are not a wait, they are the normal
- * cost of asking — putting a clock on them makes an app that is working
- * properly look like one that is struggling. Past this the silence is long
- * enough that the question changes from "is it thinking" to "is it stuck", and
- * a number is the answer to the second one.
- */
-const SHOW_ELAPSED_AFTER_S = 3;
-
-/** Seconds since this particular Working block became active. */
-function useElapsedSeconds(active: boolean) {
-  const [startedAt, setStartedAt] = useState(() => Date.now());
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!active) return;
-    const started = Date.now();
-    setStartedAt(started);
-    setNow(started);
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [active]);
-
-  if (!active) return null;
-  return Math.max(0, Math.floor((now - startedAt) / 1000));
-}
-
-/**
- * Shown while the agent has the turn but has nothing on screen to show for it.
- *
- * Without it, sending a message looks like nothing happened until the first
- * token arrives. **With it unguarded, it lies.** assistant-ui offers this slot
- * whenever a message has nothing to show *or*, by default, whenever the last
- * part is not text — and a command turn ends on a tool-call part, so "Working"
- * would appear next to a finished command and stay there. `isRunning` follows
- * the `typing` frame, which is the server's own statement about whether it
- * still has the turn, so it is the only honest thing to key the clock on.
- *
- * **Whether this is drawn at all is not its own decision.** `useActivity` makes
- * that call for the whole message, so that this and the markdown cursor cannot
- * both answer yes — see `@/lib/activity`.
- */
-const WorkingIndicator: FC = () => {
-  const running = useAuiState((s) => s.thread.isRunning);
-  const seconds = useElapsedSeconds(running);
-
-  if (!running) return null;
-
-  return (
-    <span
-      className="text-muted-foreground inline-flex items-center gap-2"
-      role="status"
-      aria-live="polite"
-      aria-label="Second Brain is working"
-    >
-      <DotMatrix state="connecting" aria-hidden />
-      <span className="text-sm">Working</span>
-      {/* `aria-hidden`, deliberately: the wrapper is a polite live region, and
-          without this every tick would re-announce the whole thing once a
-          second. The label above already says what is happening. */}
-      {seconds !== null && seconds >= SHOW_ELAPSED_AFTER_S && (
-        <span aria-hidden className="text-xs tabular-nums opacity-70">
-          {elapsedLabel(seconds)}
-        </span>
-      )}
-    </span>
-  );
-};
-
-/** The one indicator this message may draw, if any. The rule and the reason
- *  for it are in `@/lib/activity`; this is only the wiring to the store. */
-function useActivity(): Activity {
-  return useAuiState((s) => {
-    const parts = s.message.parts;
-    return activityFor({
-      threadRunning: s.thread.isRunning,
-      isLast: s.message.isLast,
-      messageStatus: s.message.status?.type,
-      lastPart: parts[parts.length - 1],
-    });
-  });
-}
 
 /**
  * How a user message's parts are drawn.
@@ -330,7 +243,7 @@ export const Thread: FC = () => {
       <ThreadPrimitive.Viewport
         turnAnchor="top"
         className={cn(
-          "relative flex flex-1 flex-col overflow-y-scroll scroll-smooth px-4 pt-4",
+          "relative flex flex-1 flex-col overflow-y-scroll motion-safe:scroll-smooth px-4 pt-4",
           centerComposer && "justify-center",
         )}
       >
@@ -351,18 +264,13 @@ export const Thread: FC = () => {
           </div>
         )}
 
-        {/* `gap-y-8` rather than `6` because the assistant's footer strip lives
-            *inside* this gap rather than below the message — see
-            `AssistantMessageFooter`. The gap therefore has to be at least as
-            tall as the strip, or a copy button would sit on top of the next
-            message. Everything else about the rhythm is unchanged: one spacing
-            between every pair of messages, whoever they are from. */}
+        {/* Footer height is reserved in each reply; this gap separates replies. */}
         {/* Outside the `empty:hidden` list below, and above it: this is the
             top of the conversation, and it must not be part of the run of
             messages whose spacing that container owns. */}
         <LoadOlder />
 
-        <div className="mb-14 flex flex-col gap-y-8 empty:hidden">
+        <div className="mb-8 flex flex-col gap-y-5 empty:hidden">
           <ThreadPrimitive.Messages>
             {({ message }) => {
               // The third role is nobody: a compaction marker, which is in the
@@ -536,36 +444,19 @@ const ComposerAction: FC = () => {
   );
 };
 
-const AssistantMessage: FC = () => {
-  const activity = useActivity();
+export const AssistantMessage: FC = () => {
 
   return (
     <MessagePrimitive.Root
       data-role="assistant"
-      data-activity={activity}
-      className="fade-in animate-in relative mx-auto w-full max-w-(--thread-max-width) duration-150"
+      className="relative mx-auto w-full max-w-(--thread-max-width)"
     >
-      {/* `relative` so the footer below can be positioned against the *content*,
-          putting its top edge exactly at the last line of the reply. */}
+
       <div
         className="text-foreground relative px-2 leading-relaxed wrap-break-word"
-        /* Turning off the markdown package's streaming dot for this message.
-           `styles/dot.css` draws it as `content: var(--aui-content)`, and going
-           through a custom property is the seam it leaves for exactly this. Set
-           on the message rather than per part because the property inherits: one
-           declaration covers every `.aui-md` here, so no earlier paragraph can
-           keep pulsing behind the "Working" line below. */
-        style={
-          activity === "streaming"
-            ? undefined
-            : { ["--aui-content" as string]: "none" }
-        }
+
       >
-        {/* `indicator="never"`, and the slot is filled below instead. Every mode
-            assistant-ui offers decides from the *shape* of the last part — and
-            `no-text`, the default, would put "Working" beside a finished command
-            because a command turn ends on its tool-call part. What the last part
-            contains is the question, and `useActivity` is where it is asked. */}
+        {/* Activity has one explicit owner below the ordered parts. */}
         <MessagePrimitive.GroupedParts
           indicator="never"
           groupBy={groupPartByType({ "tool-call": ["group-tool"] })}
@@ -597,64 +488,26 @@ const AssistantMessage: FC = () => {
             }
           }}
         </MessagePrimitive.GroupedParts>
-        {activity === "working" && <WorkingIndicator />}
         {/* After the parts rather than among them: the ledger records that a turn
             showed you a file, not where in the turn it did. See
             `components/turn-files.tsx`. */}
-        <TurnShownFile />
+        <RecoveredFiles />
         <MessagePrimitive.Error>
           <ErrorPrimitive.Root className="border-destructive bg-destructive/10 text-destructive mt-2 rounded-md border p-3 text-sm">
             <ErrorPrimitive.Message />
           </ErrorPrimitive.Root>
         </MessagePrimitive.Error>
+        <ReplyActivity />
         <AssistantMessageFooter />
       </div>
     </MessagePrimitive.Root>
   );
 };
 
-/**
- * Height of the footer strip under an assistant message.
- *
- * Must stay **no taller than the `gap-y` between messages**, which is where it
- * sits. At `h-7` (28px) inside a `gap-y-8` (32px) it clears the next message by
- * four pixels.
- */
+/** Reserved in normal flow even when the controls are hidden. */
 const FOOTER_HEIGHT = "h-7";
 
-/**
- * The strip under an assistant message: actions on the left, the time beside
- * them.
- *
- * **It never occupies layout, and it never moves anything.** Two separate
- * problems, with one shape that solves both.
- *
- * The first: `ActionBarPrimitive.Root` does not hide when its own `autohide`
- * decides to, it returns `null` — so keying visibility on that made the row
- * enter and leave the flow, and every message below jumped as the pointer
- * crossed. Hovering a transcript should not move the transcript. So the
- * primitive is told `autohide="never"` and this component decides visibility
- * itself, with opacity.
- *
- * The second: reserving that space in the flow *also* pushed the following
- * message down, so the gap under a reply was the strip plus the gap — more
- * than twice the gap above it, and the transcript read as lopsided. Hence
- * `absolute`: the strip is parented to the message but takes no height, and
- * lands in the gap that was already there. The spacing above and below a reply
- * is then the same single `gap-y`, whether or not any of this is on screen.
- *
- * The constraint that buys is that the strip must not be taller than that gap,
- * or a copy button would sit on top of the next message. See `FOOTER_HEIGHT`.
- *
- * Being its own component is also the point: this is where anything else
- * per-message goes later — a retry, a token count, feedback — and none of it
- * will shift the layout either.
- *
- * Visibility follows the rule people expect from a chat app: the latest reply
- * keeps its actions on show, older ones reveal them on hover. Nothing shows
- * while a reply is still being written, where copying would take half a
- * sentence.
- */
+/** Final row of the reply. Opacity preserves geometry on hover and focus. */
 const AssistantMessageFooter: FC = () => {
   const visible = useAuiState(
     (s) =>
@@ -669,7 +522,7 @@ const AssistantMessageFooter: FC = () => {
         // `top-full` is the bottom of the reply; `start-2` matches the padding
         // the text itself sits behind, so the button lines up with the prose
         // rather than with the column edge.
-        "absolute start-2 top-full flex items-center gap-2",
+        "mt-1 flex items-center gap-2",
         FOOTER_HEIGHT,
       )}
     >

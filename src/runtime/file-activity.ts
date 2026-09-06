@@ -124,7 +124,7 @@ export function sameFileTurns(previous: Turn[], turns: Turn[]): boolean {
     if (turn.role !== "assistant") continue;
 
     const before = previous[at++];
-    if (!before || before.id !== turn.id || before.createdAt !== turn.createdAt) {
+    if (!before || before.id !== turn.id || before.createdAt !== turn.createdAt || before.source !== turn.source) {
       return false;
     }
 
@@ -133,6 +133,7 @@ export function sameFileTurns(previous: Turn[], turns: Turn[]): boolean {
       if (candidate.kind !== "files" || candidate.sent === true) continue;
       const held = before.parts[part++];
       if (!held || held.kind !== "files") return false;
+      if (held.id !== candidate.id || held.receivedAt !== candidate.receivedAt) return false;
       if (held.paths.length !== candidate.paths.length) return false;
       for (let path = 0; path < candidate.paths.length; path++) {
         if (held.paths[path] !== candidate.paths[path]) return false;
