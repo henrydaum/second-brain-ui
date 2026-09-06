@@ -43,17 +43,20 @@ import { useFileActivity } from "@/runtime/file-activity-provider";
 
 /** The one file this turn showed you, or null — the shape the rules above
  *  reduce to. A file that has since been deleted is not offered. */
-function useOnlyShown(): string | null {
+function useShown(): string[] {
   const id = useAuiState((s) => s.message.id);
   const { sectionFor } = useFileActivity();
-  const shown = sectionFor(id)?.shown.filter((entry) => !entry.gone) ?? [];
-  return shown.length === 1 ? shown[0].path : null;
+  return (sectionFor(id)?.shown ?? [])
+    .filter((entry) => !entry.gone)
+    .map((entry) => entry.path)
+    .sort((a, b) => a.localeCompare(b));
 }
 
 export const TurnShownFile: FC = () => {
   const { view } = useFileActivity();
-  const path = useOnlyShown();
-  if (path === null) return null;
+  const paths = useShown();
+  const path = paths[0];
+  if (!path) return null;
 
   return (
     <div className="my-2 flex flex-col items-start gap-1">
@@ -71,7 +74,7 @@ export const TurnShownFile: FC = () => {
       </Suspense>
       <button
         type="button"
-        onClick={() => view([path], 0)}
+        onClick={() => view(paths, 0)}
         onPointerEnter={() => {
           preloadFileView();
           preloadFileViewer();

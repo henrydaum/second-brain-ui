@@ -254,7 +254,9 @@ describe("withStoreAttachments", () => {
     ];
     const bound = new Map([["a1", [event("/chart.png", "shown", 1500)]]]);
     const merged = withStoreAttachments(bound, turns);
-    expect(merged.get("a2")).toBeUndefined();
+    expect(merged.get("a2")).toEqual([
+      expect.objectContaining({ path: "/chart.png", effect: "shown" }),
+    ]);
     expect(merged.get("a1")).toHaveLength(1);
   });
 

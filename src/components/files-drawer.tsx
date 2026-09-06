@@ -21,18 +21,15 @@ import { FileThumbnail } from "@/components/file-kind-icon";
 import { preloadFileViewer } from "@/components/lazy-file-viewer";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { nameOf } from "@/lib/files";
-import { shortTimestamp } from "@/lib/time";
+import { fullTimestamp } from "@/lib/time";
 import { useMediaQuery, XL_QUERY } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
-  entriesOf,
-  UNATTRIBUTED,
+  conversationEntries,
   type FileEntry,
-  type FileSection,
 } from "@/runtime/file-activity";
 import { useFileActivity } from "@/runtime/file-activity-provider";
-import { useSession } from "@/runtime/provider";
 
 /** How long a section stays ringed after being jumped to. Long enough to
  *  notice, short enough not to become part of the design. */
@@ -49,8 +46,8 @@ export const FilesDrawer: FC = () => {
     clearFocus,
     view,
   } = useFileActivity();
-  const { state } = useSession();
   const isInline = useMediaQuery(XL_QUERY);
+  const entries = conversationEntries(sections);
 
   /**
    * The drawer is lazy-loaded and is not mounted until its first opening. If it
@@ -102,10 +99,8 @@ export const FilesDrawer: FC = () => {
   const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusTurn || !visible) return;
-    const target = bodyRef.current?.querySelector(
-      `[data-turn="${CSS.escape(focusTurn)}"]`,
-    );
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const body = bodyRef.current;
+    if (body) body.scrollTo({ top: body.scrollHeight, behavior: "smooth" });
     const timer = setTimeout(clearFocus, FLASH_MS);
     return () => clearTimeout(timer);
   }, [focusTurn, visible, clearFocus, sections]);
@@ -140,9 +135,6 @@ export const FilesDrawer: FC = () => {
 
   /** The turn still being written, so its section can say so rather than
    *  wearing a clock time that is only seconds old. */
-  const last = state.turns.at(-1);
-  const running = last?.running ? last.id : undefined;
-
   /**
    * The panel itself, positioned by whoever is showing it.
    *
@@ -198,21 +190,13 @@ export const FilesDrawer: FC = () => {
       >
         {failure ? (
           <p className="text-muted-foreground p-4 text-xs">{failure}</p>
-        ) : sections.length === 0 ? (
+        ) : entries.length === 0 ? (
           <p className="text-muted-foreground p-4 text-xs">
             Nothing yet. Files the agent shows you, and files it writes,
             appear here as it works.
           </p>
         ) : (
-          sections.map((section) => (
-            <Section
-              key={section.turnId}
-              section={section}
-              running={section.turnId === running}
-              flashing={section.turnId === focusTurn}
-              onOpen={view}
-            />
-          ))
+          <FileList entries={entries} onOpen={view} />
         )}
       </div>
     </aside>
@@ -229,13 +213,10 @@ export const FilesDrawer: FC = () => {
   );
 };
 
-const Section: FC<{
-  section: FileSection;
-  running: boolean;
-  flashing: boolean;
+const FileList: FC<{
+  entries: FileEntry[];
   onOpen: (paths: string[], index: number) => void;
-}> = ({ section, running, flashing, onOpen }) => {
-  const entries = entriesOf(section);
+}> = ({ entries, onOpen }) => {
   // One list for the arrows to walk, in the order the section draws them, so
   // "next" in the viewer means what it looks like it means.
   const openable = entries
@@ -248,21 +229,11 @@ const Section: FC<{
   };
 
   return (
-    <section
-      data-turn={section.turnId}
-      className={cn(
-        "border-b px-2 py-2 transition-colors duration-300 last:border-b-0",
-        flashing && "bg-accent/60",
-      )}
-    >
+    <section className="px-2 py-2">
       {/* The turn, and nothing else. No count beside it: the rows underneath
           are the count, and no "shown"/"changed" headings either — a row that
           was changed says so on itself, and one that was not is a row the
           agent showed you. */}
-      <h3 className="text-muted-foreground truncate px-1 py-1 text-[11px] font-medium tracking-wide uppercase">
-        {heading(section, running)}
-      </h3>
-
       <ul className="flex flex-col">
         {entries.map((entry) => (
           <Row key={entry.path} entry={entry} onOpen={open} />
@@ -274,14 +245,6 @@ const Section: FC<{
 
 /** What a section is called. `UNATTRIBUTED` gets a name that says what it is
  *  rather than a time it does not have — see the constant's own note. */
-function heading(section: FileSection, running: boolean): string {
-  if (section.turnId === UNATTRIBUTED) return "Not tied to a reply";
-  if (running) return "This turn";
-  return section.at === undefined
-    ? "Earlier"
-    : shortTimestamp(new Date(section.at));
-}
-
 /**
  * One file.
  *
@@ -343,6 +306,7 @@ const Row: FC<{
           onClick={() => onOpen(entry)}
           onPointerEnter={preloadFileViewer}
           onFocus={preloadFileViewer}
+          title={fullTimestamp(new Date(entry.ts))}
           className={cn(className, "hover:bg-accent focus-visible:bg-accent")}
         >
           {inside}

@@ -83,21 +83,22 @@ import { SENT_AT } from "@/runtime/convert";
  */
 const SHOW_ELAPSED_AFTER_S = 3;
 
-/** Seconds since `since`, recomputed once a second while `active`. */
-function useElapsedSeconds(since: number | undefined, active: boolean) {
+/** Seconds since this particular Working block became active. */
+function useElapsedSeconds(active: boolean) {
+  const [startedAt, setStartedAt] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    if (!active || since === undefined) return;
-    // Re-read on the way in as well as on the tick: a turn that was already
-    // running when this mounted must not count from the mount.
-    setNow(Date.now());
+    if (!active) return;
+    const started = Date.now();
+    setStartedAt(started);
+    setNow(started);
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [active, since]);
+  }, [active]);
 
-  if (!active || since === undefined) return null;
-  return Math.max(0, Math.floor((now - since) / 1000));
+  if (!active) return null;
+  return Math.max(0, Math.floor((now - startedAt) / 1000));
 }
 
 /**
@@ -117,13 +118,7 @@ function useElapsedSeconds(since: number | undefined, active: boolean) {
  */
 const WorkingIndicator: FC = () => {
   const running = useAuiState((s) => s.thread.isRunning);
-  // The turn's own start, from `metadata.custom` rather than assistant-ui's
-  // `createdAt` — see `MessageTime` for why that one cannot be trusted.
-  const startedAt = useAuiState((s) => {
-    const value = s.message.metadata?.custom?.[SENT_AT];
-    return typeof value === "number" ? value : undefined;
-  });
-  const seconds = useElapsedSeconds(startedAt, running);
+  const seconds = useElapsedSeconds(running);
 
   if (!running) return null;
 

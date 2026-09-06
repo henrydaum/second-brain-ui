@@ -207,21 +207,13 @@ export function withStoreAttachments(
   bound: Map<string, FileEvent[]>,
   turns: Turn[],
 ): Map<string, FileEvent[]> {
-  const recorded = new Set<string>();
-  for (const events of bound.values()) {
-    for (const event of events) {
-      if (event.effect === "shown") recorded.add(event.path);
-    }
-  }
-
   const merged = new Map(bound);
   for (const turn of turns) {
     if (turn.role !== "assistant") continue;
     const paths = turn.parts
       .flatMap((part) =>
         part.kind === "files" && part.sent !== true ? part.paths : [],
-      )
-      .filter((path) => !recorded.has(path));
+      );
     if (!paths.length) continue;
 
     merged.set(turn.id, [
@@ -366,4 +358,40 @@ export function entriesOf(section: FileSection): FileEntry[] {
  *  files, so a file that was written and then shown counts once. */
 export function countOf(section: FileSection): number {
   return entriesOf(section).length;
+}
+
+/** One current, openable drawer row per path, ordered oldest to newest. */
+export function conversationEntries(sections: FileSection[]): FileEntry[] {
+  const byPath = new Map<string, { latest: FileEntry; touched?: FileEntry }>();
+
+  for (const section of sections) {
+    for (const entry of [...section.shown, ...section.touched]) {
+      const held = byPath.get(entry.path);
+      if (!held) {
+        byPath.set(entry.path, {
+          latest: entry,
+          ...(entry.effect === "shown" ? {} : { touched: entry }),
+        });
+        continue;
+      }
+      if (entry.ts > held.latest.ts) held.latest = entry;
+      if (
+        entry.effect !== "shown" &&
+        (!held.touched || entry.ts > held.touched.ts)
+      ) {
+        held.touched = entry;
+      }
+    }
+  }
+
+  return [...byPath.values()]
+    .filter(({ latest }) => !latest.gone)
+    // Keep the useful fact that a shown file was also edited, but position it
+    // by the latest event of either kind.
+    .map(({ latest, touched }) =>
+      touched && !touched.gone
+        ? { ...touched, ts: latest.ts, gone: false }
+        : latest,
+    )
+    .sort((a, b) => a.ts - b.ts || a.path.localeCompare(b.path));
 }

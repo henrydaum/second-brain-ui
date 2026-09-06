@@ -42,7 +42,7 @@ import { readLedger, toFileEvents, type FileEvent } from "@/lib/ledger";
 import { forgetThumbnail } from "@/lib/thumbnails";
 import {
   bindByTime,
-  countOf,
+  conversationEntries,
   fileTurns,
   sameFileTurns,
   toSections,
@@ -275,10 +275,7 @@ export function FileActivityProvider({ children }: PropsWithChildren) {
   /** Distinct files across the whole conversation — the header button's dot.
    *  Behind the same memo as everything else, because `countOf` rebuilds a map
    *  and sorts it once per section and used to do so on every render. */
-  const total = useMemo(
-    () => sections.reduce((sum, section) => sum + countOf(section), 0),
-    [sections],
-  );
+  const total = useMemo(() => conversationEntries(sections).length, [sections]);
 
   const value = useMemo<FileActivity>(
     () => ({
