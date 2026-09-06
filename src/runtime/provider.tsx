@@ -784,6 +784,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
           conversation_id?: number | null;
           mode?: "lockdown" | "ask" | "yolo" | null;
           busy?: boolean | null;
+          turn_id?: string | null;
         } | null>(
           "session.get",
           { details: true },
@@ -826,8 +827,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         // dispatch**, which resets everything transient and would otherwise wipe
         // it; and dispatched as the frame it stands in for, so the store opens a
         // turn for whatever arrives next exactly as the real frame would have.
-        if (!cancelled && session?.busy) {
-          dispatch({ type: "frame", frame: { kind: "typing", payload: true } });
+        if (!cancelled && (session?.busy || session?.turn_id)) {
+          dispatch(session.turn_id
+            ? { type: "resumeTurn", turnId: session.turn_id }
+            : { type: "frame", frame: { kind: "typing", payload: true } });
         }
 
         // After the conversation, not before: neither Settings nor the sidebar
@@ -1232,6 +1235,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         sdk<{
           mode?: "lockdown" | "ask" | "yolo" | null;
           busy?: boolean | null;
+          turn_id?: string | null;
           agent_profile?: string | null;
         } | null>("session.get", { details: true }),
         sdk<{ profiles?: LlmProfile[] } | null>("llm.list"),
@@ -1245,10 +1249,12 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       const session = sessionResult.value;
       setSecurityModeState(session?.mode ?? "ask");
       setAgentProfile(session?.agent_profile || "default");
-      const busy = Boolean(session?.busy);
+      const busy = Boolean(session?.busy || session?.turn_id);
       if (revision === renderRevision.current && conversation === conversationIdRef.current &&
           busy !== typingRef.current) {
-        dispatch({ type: "frame", frame: { kind: "typing", payload: busy } });
+        dispatch(busy && session?.turn_id
+          ? { type: "resumeTurn", turnId: session.turn_id }
+          : { type: "frame", frame: { kind: "typing", payload: busy } });
       }
     } else {
       report(sessionResult.reason);

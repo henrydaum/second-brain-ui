@@ -184,6 +184,17 @@ export function FileActivityProvider({ children }: PropsWithChildren) {
     const recoveredBound = bindByTime(held.historical, historicalTurns);
     const bound = new Map(recoveredBound);
     for (const [id, events] of held.live) bound.set(id, [...events, ...(bound.get(id) ?? [])]);
+    // Durable identity overrides both legacy clock buckets and poll ownership.
+    const owners = new Map(turns.filter((turn) => turn.turnId).map((turn) => [turn.turnId!, turn.id]));
+    const tagged: FileEvent[] = [];
+    for (const [id, events] of bound) {
+      tagged.push(...events.filter((event) => event.turnId));
+      bound.set(id, events.filter((event) => !event.turnId));
+    }
+    for (const event of tagged) {
+      const owner = owners.get(event.turnId!) ?? UNATTRIBUTED;
+      bound.set(owner, [...(bound.get(owner) ?? []), event]);
+    }
     // Retain explicit frame ownership for message counts independently of disk state.
     for (const turn of turns) {
       const shown = turn.parts.flatMap((part) => part.kind === "files" && !part.sent

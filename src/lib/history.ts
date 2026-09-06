@@ -45,6 +45,7 @@ type StoredAttachment = {
 /** One row of the `messages` table, as `conv.read` hands it over. */
 export type StoredMessage = {
   id: number;
+  turn_id?: string | null;
   role: string;
   content: string;
   tool_call_id: string | null;
@@ -251,7 +252,10 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
       // Newer kernels may persist returned attachments on the tool row itself.
       // These are output records, not guesses from tool arguments or prose.
       const attachments = messageAttachments(message.attachments);
-      if (open && attachments.length && !part?.error) open.parts.push({
+      const owner = open ?? (message.turn_id
+        ? turns.findLast((turn) => turn.role === "assistant" && turn.turnId === message.turn_id)
+        : undefined);
+      if (owner && attachments.length && !part?.error) owner.parts.push({
         kind: "files", id: `stored-files-${message.id}`,
         paths: attachments.map((file) => file.path!),
         receivedAt: momentOf(message),
@@ -265,7 +269,7 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
       // these as something the person said would misrepresent the transcript.
       if (message.author) continue;
       open = null;
-      pending = new Map();
+      if (!message.turn_id) pending = new Map();
       const text = prose(message.content);
       const attachments = messageAttachments(message.attachments);
       if (text === null && attachments.length === 0) continue;
@@ -345,8 +349,10 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
     const attachments = messageAttachments(message.attachments);
     if (text === null && calls.length === 0 && !attachments.length) continue;
 
+    if (open && message.turn_id && open.turnId !== message.turn_id) open = null;
     if (open === null) {
       open = {
+        turnId: message.turn_id ?? undefined,
         id: `stored-${message.id}`,
         role: "assistant",
         parts: [],
@@ -378,6 +384,14 @@ export function toTurns(stored: StoredMessage[]): Turn[] {
       paths: attachments.map((file) => file.path!),
       receivedAt: momentOf(message),
     });
+  }
+  // User interruptions split visual segments, never the durable logical turn.
+  const last = new Map<string, Turn>();
+  for (const turn of turns) {
+    if (turn.role !== "assistant" || !turn.turnId) continue;
+    const previous = last.get(turn.turnId);
+    if (previous) previous.continues = true;
+    last.set(turn.turnId, turn);
   }
   return turns;
 }

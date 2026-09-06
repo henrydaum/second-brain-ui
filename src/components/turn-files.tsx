@@ -9,13 +9,15 @@ import { guessKind, nameOf } from "@/lib/files";
 import { cn } from "@/lib/utils";
 import { countOf } from "@/runtime/file-activity";
 import { useFileActivity } from "@/runtime/file-activity-provider";
-import { AGENT_FILES } from "@/runtime/convert";
+import { AGENT_FILES, PRESENTATION } from "@/runtime/convert";
 
 type AgentFilesData = { paths?: unknown; id?: string };
 /** Live frame ownership and attributed tool edits share the same reply and count. */
 export function TurnOutcomeFiles() {
   const id = useAuiState((s) => s.message.id);
   const running = useAuiState((s) => s.message.status?.type === "running");
+  const continues = useAuiState((s) =>
+    (s.message.metadata.custom[PRESENTATION] as { continues?: boolean } | undefined)?.continues);
   const parts = useAuiState((s) => s.message.parts);
   const shared = parts.flatMap((part) =>
     part.type === "data" && part.name === AGENT_FILES
@@ -27,7 +29,7 @@ export function TurnOutcomeFiles() {
     ...(section ? [...section.shown, ...section.touched].map((entry) => entry.path) : []),
   ])].sort((a, b) => a.localeCompare(b));
   // Both sources remain drawer-only until this reply is complete.
-  return running ? null : <AttachmentGroup paths={paths} />;
+  return running || continues ? null : <AttachmentGroup paths={paths} />;
 }
 
 export function AttachmentGroup({ paths }: { paths: string[] }) {
@@ -75,7 +77,7 @@ function AttachmentTile({ path, removed, version, compact, onOpen }: {
       onClick={onOpen} onPointerEnter={preloadFileViewer} onFocus={preloadFileViewer}
       aria-label={`Open ${nameOf(path)}`}
       className={cn("group min-w-0 rounded-lg text-start outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        image ? "w-full" : "hover:bg-accent flex items-center gap-3 border p-3")}>
+        image ? "w-full" : "hover:bg-accent flex items-center gap-3 border p-3 self-start")}>
       {image && !unavailable ? (
         <img key={src} src={src} alt={nameOf(path)} onError={() => setFailed(src)}
           className={cn("bg-muted/20 block rounded-lg border object-contain",
@@ -85,9 +87,7 @@ function AttachmentTile({ path, removed, version, compact, onOpen }: {
         image && "mt-1.5 px-1")}>
         {image && <Maximize2Icon className="size-3 shrink-0" aria-hidden />}
         <span className="min-w-0 break-all">{nameOf(path)}
-          {(unavailable || !image) && <span className="block text-[11px]">
-            {unavailable ? "Preview unavailable · Open file" : guessKind(path)}
-          </span>}
+          {unavailable && <span className="block text-[11px]">Preview unavailable · Open file</span>}
         </span>
       </span>
     </button>

@@ -131,6 +131,9 @@ export type Part = TextPart | ToolPart | FilesPart;
 
 export type Turn = {
   id: string;
+  /** Several visual messages may belong to one logical agent turn. */
+  turnId?: string;
+  continues?: boolean;
   source?: "live" | "history";
   activity?: { phase: "thinking" | "working" | "writing"; since: number; streamId?: string };
   /**
@@ -239,6 +242,7 @@ export const initialState: State = {
 export type Action =
   /** One frame off the event stream. */
   | { type: "frame"; frame: Frame }
+  | { type: "resumeTurn"; turnId: string }
   /** The person sent something. Echoed locally because `frontend.submit` does
    *  not send the user's own line back down the stream.
    *
@@ -412,6 +416,7 @@ function splitOpenTurn(
 
   const continued: Turn = {
     id: nextId(),
+    turnId: open.turnId ?? open.id,
     role: "assistant",
     source: "live",
     parts: moved,
@@ -431,6 +436,8 @@ function splitOpenTurn(
   return {
     turns: replace(turns, open.id, {
       ...open,
+      turnId: open.turnId ?? open.id,
+      continues: true,
       running: false,
       parts: kept.map((part) =>
         part.kind === "text" ? { ...part, done: true } : part,
@@ -583,7 +590,12 @@ export function reduce(state: State, action: Action): State {
         scrollback.hasMore === state.scrollback.hasMore &&
         scrollback.oldestId === state.scrollback.oldestId;
       if (fresh.length === 0 && settled) return state;
-      return { ...state, turns: [...fresh, ...state.turns], scrollback };
+      const joined = [...fresh, ...state.turns];
+      const lastByTurn = new Map(joined.filter((turn) => turn.role === "assistant" && turn.turnId)
+        .map((turn) => [turn.turnId, turn.id]));
+      return { ...state, turns: joined.map((turn) =>
+        turn.role === "assistant" && turn.turnId && lastByTurn.get(turn.turnId) !== turn.id
+          ? { ...turn, continues: true } : turn), scrollback };
     }
 
     case "said": {
@@ -739,7 +751,19 @@ export function reduce(state: State, action: Action): State {
     case "clearError":
       return { ...state, error: null };
 
+    case "resumeTurn":
+      return identifyTurn(state, action.turnId, true);
+
     case "frame": {
+      const identity = frameTurnId(action.frame);
+      if (identity) {
+        const held = state.turns.filter((turn) => turn.role === "assistant" && turn.turnId === identity);
+        // Identified completed history is authoritative over replayed frames.
+        if (held.length && !held.some((turn) => turn.running)) return state;
+        const active = state.turns.findLast((turn) => turn.running && turn.role === "assistant");
+        if (active?.turnId && active.turnId !== identity && !active.turnId.startsWith("turn-")) return state;
+        state = identifyTurn(state, identity);
+      }
       const next = applyFrame(state, action.frame);
       if (next === state) return state;
       return {
@@ -761,6 +785,38 @@ export function reduce(state: State, action: Action): State {
       };
     }
   }
+}
+
+function frameTurnId(frame: Frame): string | undefined {
+  if (frame.kind === "stream_delta" ||
+      (frame.kind === "tool_status" && frame.payload.kind !== "command")) {
+    return frame.payload.turn_id || undefined;
+  }
+}
+
+/** Bind a provisional live group, or resume its durable final segment on reload. */
+function identifyTurn(state: State, turnId: string, resume = false): State {
+  const last = state.turns.at(-1);
+  const existing = state.turns.findLast((turn) => turn.role === "assistant" && turn.turnId === turnId);
+  // A delayed frame must never rename a different, already identified turn.
+  if (existing && existing !== last && !last?.running) {
+    if (!resume) return state;
+    const opened = openTurn(state.turns);
+    return { ...state, typing: true, turns: opened.turns.map((turn) =>
+      turn === opened.turn ? { ...turn, turnId } :
+      turn.turnId === turnId ? { ...turn, continues: true } : turn) };
+  }
+  if (last?.role === "assistant" && last.turnId === turnId) {
+    if (last.running) return state;
+    return { ...state, typing: true, turns: state.turns.map((turn) =>
+      turn === last ? { ...turn, running: true, continues: false } : turn) };
+  }
+  const opened = openTurn(state.turns);
+  const provisional = opened.turn.turnId ?? opened.turn.id;
+  // Only local provisional identities can be adopted by a new server ID.
+  if (opened.turn.turnId && !opened.turn.turnId.startsWith("turn-")) return state;
+  return { ...state, typing: true, turns: opened.turns.map((turn) =>
+    (turn.turnId ?? turn.id) === provisional ? { ...turn, turnId } : turn) };
 }
 
 function applyFrame(state: State, frame: Frame): State {
@@ -791,7 +847,9 @@ function applyFrame(state: State, frame: Frame): State {
         // ends without speaking — or one whose only output was a command's,
         // which belongs to the panel — would otherwise sit in the transcript as
         // a blank message.
-        .filter((turn) => turn.parts.length > 0 || turn.running);
+        .filter((turn) => turn.parts.length > 0 || turn.running ||
+          (turn.turnId && !turn.continues && state.turns.some((other) =>
+            (other.turnId ?? other.id) === turn.turnId && other.parts.length > 0)));
       // Nothing is being written any more, so nothing can be continued into a
       // later turn. A backstop rather than the main path — a stream normally
       // retires its own entry on `done`.

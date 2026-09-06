@@ -95,3 +95,36 @@ it("cold-loads successful show_files outputs alongside ledger edits", async () =
   const section = activity.sectionFor("stored-1")!;
   expect([...section.shown, ...section.touched].map((file) => file.path).sort()).toEqual(["/a.png", "/b.png", "/c.png", "/test.txt"]);
 });
+
+it("uses durable turn IDs over timestamps and captured poll ownership", async () => {
+  const pending = deferred();
+  vi.mocked(readLedger).mockResolvedValueOnce([]).mockReturnValueOnce(pending.promise).mockResolvedValue([]);
+  controls.state.turns = [{ ...turn("before"), turnId: "a", continues: true },
+    { ...turn("after"), turnId: "a" }, { ...turn("newer"), turnId: "b" }];
+  render(app());
+  await waitFor(() => expect(readLedger).toHaveBeenCalledTimes(2));
+  await act(async () => pending.resolve([{ ...row(1, "/one.md"), ts: 999999,
+    data_json: JSON.stringify({ paths: ["/one.md"], turn_id: "a" }) }]));
+  expect(activity.sectionFor("after")?.touched.map((entry) => entry.path)).toEqual(["/one.md"]);
+  expect(activity.sectionFor("before")).toBeNull();
+  expect(activity.sectionFor("newer")).toBeNull();
+  // The same durable records must give the same assignment at reload.
+  cleanup();
+  vi.mocked(readLedger).mockResolvedValueOnce([{ ...row(1, "/one.md"), ts: 999999,
+    data_json: JSON.stringify({ paths: ["/one.md"], turn_id: "a" }) }]).mockResolvedValue([]);
+  controls.state.turns = controls.state.turns.map((turn) => ({ ...turn, source: "history" }));
+  render(app());
+  await waitFor(() => expect(activity.sectionFor("after")?.touched).toHaveLength(1));
+  expect(activity.sectionFor("newer")).toBeNull();
+});
+
+it("keeps unknown durable ownership drawer-only until its message arrives", async () => {
+  vi.mocked(readLedger).mockResolvedValueOnce([{ ...row(1, "/one.md"),
+    data_json: JSON.stringify({ paths: ["/one.md"], turn_id: "later" }) }]).mockResolvedValue([]);
+  const { rerender } = render(app());
+  await waitFor(() => expect(activity.entries).toHaveLength(1));
+  expect(activity.sectionFor("first")).toBeNull();
+  controls.state.turns = [...controls.state.turns, { ...turn("later-segment"), turnId: "later" }];
+  rerender(app());
+  expect(activity.sectionFor("later-segment")?.touched).toHaveLength(1);
+});

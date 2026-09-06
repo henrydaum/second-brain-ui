@@ -74,6 +74,35 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe("assembled assistant-ui reply", () => {
+  it("waits through user interruptions and model end tokens, then renders one recap and footer", async () => {
+    const { container } = render(<Harness />);
+    await frame({ kind: "typing", payload: true });
+    await text("parent", "Before interruption", 1, true);
+    await frame({ kind: "attachments", payload: ["/before.png"] });
+    await act(async () => dispatch({ type: "said", text: "Also do this" }));
+    expect(container.querySelector('[data-slot="assistant-message-footer"]')).toBeNull();
+    expect(container.querySelector('[data-slot="attachment-group"]')).toBeNull();
+    await text("after", "After interruption", 1, true);
+    await frame({ kind: "attachments", payload: ["/after.md"] });
+    // A completed model stream is not the end of the logical turn.
+    expect(container.querySelector('[data-slot="attachment-group"]')).toBeNull();
+    await frame({ kind: "typing", payload: false });
+    expect(container.querySelectorAll('[data-slot="assistant-message-footer"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-slot="attachment-group"]')).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "2 files" })).toBeInTheDocument();
+    const last = container.querySelectorAll('[data-role="assistant"]');
+    const final = last[last.length - 1];
+    expect(final.querySelectorAll('[data-slot="attachment-tile"]')).toHaveLength(2);
+    expect(final.querySelector('[data-slot="assistant-message-footer"]')?.parentElement?.lastElementChild)
+      .toBe(final.querySelector('[data-slot="assistant-message-footer"]'));
+    expect(screen.queryByText("download")).toBeNull();
+    expect(screen.queryByText("embed")).toBeNull();
+    const copy = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: copy } });
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    await waitFor(() => expect(copy).toHaveBeenCalledWith("Before interruption\n\nAfter interruption"));
+  });
+
   it("rebuilds all four recap files from database rows without live attachment frames", async () => {
     const events: FileEvent[] = [{ rowId: 1, ts: 3000, path: "/test.txt", effect: "wrote", viaShell: false }];
     const { container } = render(<Harness events={events} />);

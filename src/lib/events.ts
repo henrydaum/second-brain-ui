@@ -37,6 +37,7 @@ type CallableOutputPayload = string[];
 
 /** The reply arriving token by token. */
 type StreamDeltaPayload = {
+  turn_id?: string | null;
   /** Groups the fragments. This is the message key. */
   stream_id: string;
   /** 1-based, increments per fragment. */
@@ -56,6 +57,7 @@ type StreamDeltaPayload = {
 
 /** Fires for tool calls and slash commands alike. */
 export type ToolStatusPayload = {
+  turn_id?: string | null;
   /** Stable across started/finished — update in place, do not append. */
   call_id: string;
   status: "started" | "progressed" | "finished";

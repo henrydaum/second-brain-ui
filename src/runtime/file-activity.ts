@@ -1,11 +1,10 @@
 /**
  * Which turn each file belongs to, and one row per file rather than per event.
  *
- * ## Attribution has two paths, and mixing them is the bug
+ * ## Durable attribution, with two legacy fallbacks
  *
- * A ledger row does not say which turn it came from — there is no turn id in
- * the ledger and no message id on the wire — so the join has to be made here,
- * and the right way to make it depends on where the rows came from.
+ * The provider joins new ledger records by durable turn_id. The time and poll
+ * ownership paths below are fallbacks only for old records without that ID.
  *
  * **Reading a conversation back**: bucket by time. Every timestamp in play is
  * the server's own — `conversation_messages.timestamp` and the ledger's `ts`
@@ -141,7 +140,8 @@ export function sameFileTurns(previous: Turn[], turns: Turn[]): boolean {
     if (turn.role !== "assistant") continue;
 
     const before = previous[at++];
-    if (!before || before.id !== turn.id || before.createdAt !== turn.createdAt || before.source !== turn.source) {
+    if (!before || before.id !== turn.id || before.createdAt !== turn.createdAt || before.source !== turn.source ||
+        before.turnId !== turn.turnId || before.continues !== turn.continues) {
       return false;
     }
 
@@ -345,9 +345,18 @@ export function toSections(
   turns: Turn[],
 ): FileSection[] {
   const sections: FileSection[] = [];
+  const lastByRun = new Map<string, string>();
+  const eventsByRun = new Map<string, FileEvent[]>();
+  for (const turn of turns) {
+    const run = turn.turnId ?? turn.id;
+    lastByRun.set(run, turn.id);
+    eventsByRun.set(run, [...(eventsByRun.get(run) ?? []), ...(bound.get(turn.id) ?? [])]);
+  }
 
   for (const turn of turns) {
-    const events = bound.get(turn.id);
+    const run = turn.turnId ?? turn.id;
+    if (turn.continues || lastByRun.get(run) !== turn.id) continue;
+    const events = eventsByRun.get(run);
     if (!events?.length) continue;
     sections.push({
       turnId: turn.id,

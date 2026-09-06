@@ -71,6 +71,51 @@ describe("reply presentation ownership", () => {
   });
 });
 
+describe("durable logical turn identity", () => {
+  const delta = (id: string, stream: string, done = false): Frame => ({
+    kind: "stream_delta", payload: { turn_id: id, stream_id: stream, seq: 1, delta: "text", done },
+  });
+  it("adopts the server identity across provisional interrupted segments", () => {
+    let state = run(typing(true), { kind: "messages", payload: ["Before"] });
+    state = reduce(state, { type: "said", text: "Interrupt" });
+    state = reduce(state, { type: "frame", frame: delta("kernel-a", "a", true) });
+    const replies = state.turns.filter((turn) => turn.role === "assistant");
+    expect(replies.map((turn) => turn.turnId)).toEqual(["kernel-a", "kernel-a"]);
+    expect(replies[0].continues).toBe(true);
+    expect(replies[1].running).toBe(true);
+    state = reduce(state, { type: "frame", frame: typing(false) });
+    const settled = state;
+    state = reduce(state, { type: "frame", frame: delta("kernel-a", "a", true) });
+    expect(state).toBe(settled);
+  });
+  it("resumes the last persisted segment without appending a second reply", () => {
+    let state = run(delta("kernel-a", "a", true), typing(false));
+    state = reduce(state, { type: "resumeTurn", turnId: "kernel-a" });
+    expect(state.turns).toHaveLength(1);
+    expect(state.turns[0].running).toBe(true);
+    expect(state.typing).toBe(true);
+  });
+  it("resumes after a persisted mid-turn user row with one final owner", () => {
+    const state = reduce({ ...initialState, turns: [
+      { id: "before", role: "assistant", turnId: "a", parts: [{ kind: "text", streamId: "s", text: "Before", done: true }], running: false, aborted: false },
+      { id: "user", role: "user", parts: [], running: false, aborted: false },
+    ] }, { type: "resumeTurn", turnId: "a" });
+    expect(state.turns).toHaveLength(3);
+    expect(state.turns[0].continues).toBe(true);
+    expect(state.turns[2]).toMatchObject({ turnId: "a", running: true });
+  });
+  it("keeps a recap owner even when interrupted without further prose", () => {
+    let state = run(typing(true), { kind: "messages", payload: ["Before"] },
+      { kind: "attachments", payload: ["/a.png"] });
+    state = reduce(state, { type: "said", text: "Interrupt" });
+    state = reduce(state, { type: "frame", frame: typing(false) });
+    expect(state.turns).toHaveLength(3);
+    expect(state.turns[0].continues).toBe(true);
+    expect(state.turns[2].turnId).toBe(state.turns[0].turnId);
+    expect(state.turns[2].running).toBe(false);
+  });
+});
+
 const delta = (text: string, over: Record<string, unknown> = {}): Frame =>
   ({
     kind: "stream_delta",

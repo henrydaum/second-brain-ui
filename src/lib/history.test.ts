@@ -112,6 +112,22 @@ describe("stored user attachments", () => {
   });
 });
 
+it("reconstructs interrupted logical turns by turn_id, not by user row boundaries", () => {
+  const rows = [
+    user({ id: 1, role: "assistant", turn_id: "a", content: "Before" }),
+    user({ id: 2, turn_id: "a", content: "Interrupt" }),
+    user({ id: 3, role: "assistant", turn_id: "a", content: "After" }),
+    user({ id: 4, role: "assistant", turn_id: "b", content: "Next logical turn" }),
+  ];
+  const turns = toTurns(rows);
+  expect(turns).toHaveLength(4);
+  expect(turns[0]).toMatchObject({ turnId: "a", continues: true });
+  expect(turns[2]).toMatchObject({ turnId: "a" });
+  expect(turns[2].continues).toBeUndefined();
+  expect(turns[3].turnId).toBe("b");
+  expect(toTurns(rows)).toEqual(turns);
+});
+
 describe("stored message authorship", () => {
   it("does not render kernel-authored user-role rows as the person's words", () => {
     const turns = toTurns([

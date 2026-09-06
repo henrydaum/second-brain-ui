@@ -29,9 +29,17 @@ after `typing:false` attaches to the last assistant reply without opening anothe
 reply or restarting activity. Tool edits come from ledger polling: ownership is
 captured before the request, overlapping polls are serialized, and responses for
 an abandoned conversation are ignored. Unattributed ledger rows remain drawer-only.
-After reload, server timestamps recover a single outcome group per historical
-reply. The backend does not persist precise attachment-event positions or reliable
-turn IDs in the ledger, so ambiguous attribution cannot be made exact by this UI.
+New kernels persist a nullable `conversation_messages.turn_id`, expose the active
+ID through `session.get`, and carry it on stream/tool events and ledger metadata.
+The same ID survives queued user messages and subagent barriers/re-drives until
+the actual completion, cancellation, or failure. Child agents have their own IDs.
+The UI keeps interrupted text in chronological visual segments, but joins their
+files and copy text under one final recap/footer. No recap appears merely because
+a model text stream ended. Reload and live ledger attribution prefer the durable
+ID over timestamps or poll ownership; unknown IDs stay drawer-only until their
+messages arrive. Old rows remain nullable with the legacy attribution fallback:
+historical turn boundaries are not guessed or backfilled. No new table or browser
+persistence is needed. Exact mid-stream text positions are not persisted.
 
 Activity uses visible lifecycle signals:
 

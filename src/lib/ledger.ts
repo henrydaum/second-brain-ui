@@ -1,10 +1,9 @@
 /**
  * Which files the agent touched, out of the kernel's ledger.
  *
- * **This is the only place either fact is kept.** `conversation_messages` has
- * seven columns and no metadata blob, so `conv.read` cannot tell you that a
- * turn showed you a chart, and nothing in it records a write at all. Renders
- * are events and events do not survive a reload; the ledger is state, and does.
+ * The ledger durably records file effects and tool-returned attachments.
+ * New records carry turn_id in their metadata so live and reloaded recaps can
+ * join them to conversation messages without relying on browser receipt times.
  * A files drawer sourced from anything else is a files drawer that empties when
  * the page refreshes.
  *
@@ -62,6 +61,7 @@ export const FILE_ACTIONS = [
  */
 export type FileEvent = {
   rowId: number;
+  turnId?: string;
   /** Epoch **milliseconds**, converted here so nothing downstream has to
    *  remember that the ledger speaks seconds. */
   ts: number;
@@ -92,6 +92,7 @@ export type FileEffect =
  *  discriminator: an `attachments` row is a file the agent showed you, a
  *  `paths` row is one it changed. */
 type LedgerData = {
+  turn_id?: unknown;
   /** Always present. `"http:web -> edit_file"` — where the call came from, and
    *  at the far end whatever actually made it. */
   chain?: unknown;
@@ -169,13 +170,14 @@ export function toFileEvents(rows: LedgerRow[]): FileEvent[] {
     if (!data) continue;
 
     const ts = row.ts * 1000;
+    const identity = typeof data.turn_id === "string" && data.turn_id ? { turnId: data.turn_id } : {};
     const shown = paths(data.attachments);
 
     // A file the agent chose to show you. `call_tool` from `agent_enact`, which
     // is `ToolResult.attachment_paths` — whatever a tool returned from
     // `sdk.ok(attachments=[...])`.
     for (const path of shown) {
-      events.push({ rowId: row.id, ts, path, effect: "shown", viaShell: false });
+      events.push({ ...identity, rowId: row.id, ts, path, effect: "shown", viaShell: false });
     }
     if (shown.length) continue;
 
@@ -190,6 +192,7 @@ export function toFileEvents(rows: LedgerRow[]): FileEvent[] {
 
     for (const [index, path] of changed.entries()) {
       events.push({
+        ...identity,
         rowId: row.id,
         ts,
         path,

@@ -18,6 +18,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   type FC,
 } from "react";
 import {
@@ -71,7 +72,7 @@ import { fullTimestamp, shortTimestamp } from "@/lib/time";
 import { FINE_POINTER_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
 import { useConversations } from "@/runtime/provider";
-import { AGENT_FILES, SENT_AT } from "@/runtime/convert";
+import { AGENT_FILES, PRESENTATION, SENT_AT } from "@/runtime/convert";
 
 /**
  * How a user message's parts are drawn.
@@ -505,14 +506,43 @@ export const AssistantMessage: FC = () => {
 /** Reserved in normal flow even when the controls are hidden. */
 const FOOTER_HEIGHT = "h-7";
 
+/** The single action copies the full logical reply, not only its final segment. */
+function TurnCopyButton() {
+  const messages = useAuiState((s) => s.thread.messages);
+  const turnId = useAuiState((s) =>
+    (s.message.metadata.custom[PRESENTATION] as { turnId?: string } | undefined)?.turnId ?? s.message.id);
+  const [feedback, setFeedback] = useState<"idle" | "copied" | "failed">("idle");
+  useEffect(() => {
+    if (feedback === "idle") return;
+    const timer = window.setTimeout(() => setFeedback("idle"), 3000);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
+  const text = messages.filter((message) => message.role === "assistant" &&
+    ((message.metadata.custom[PRESENTATION] as { turnId?: string } | undefined)?.turnId ?? message.id) === turnId)
+    .flatMap((message) => message.parts.flatMap((part) => part.type === "text" ? [part.text] : []))
+    .join("\n\n");
+  return <TooltipIconButton tooltip={feedback === "failed" ? "Could not copy" : "Copy"}
+    side="bottom" className="size-7" disabled={!text} onClick={async () => {
+      try { await navigator.clipboard.writeText(text); setFeedback("copied"); }
+      catch { setFeedback("failed"); }
+    }}>
+    {feedback === "copied" ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+  </TooltipIconButton>;
+}
+
 /** Final row of the reply. Opacity preserves geometry on hover and focus. */
 const AssistantMessageFooter: FC = () => {
+  const continues = useAuiState((s) =>
+    (s.message.metadata.custom[PRESENTATION] as { continues?: boolean } | undefined)?.continues);
+  const running = useAuiState((s) => s.message.status?.type === "running");
   const visible = useAuiState(
     (s) =>
       s.message.status?.type !== "running" &&
       (s.message.isLast || s.message.isHovering),
   );
 
+  if (continues) return null;
+  if (running) return <div className={FOOTER_HEIGHT} aria-hidden />;
   return (
     <div
       data-slot="assistant-message-footer"
@@ -537,23 +567,7 @@ const AssistantMessageFooter: FC = () => {
           autohide="never"
           className="text-muted-foreground flex items-center gap-1"
         >
-          <ActionBarPrimitive.Copy asChild>
-            <TooltipIconButton
-              tooltip="Copy"
-              side="bottom"
-              // `group/copy` names *this* element: assistant-ui puts
-              // `data-copied` on the button itself, so the icons below can only
-              // see it as a group.
-              className="group/copy size-7"
-            >
-              {/* assistant-ui flips `data-copied` on for a few seconds after a
-                  successful copy; these two siblings are what turn that into
-                  the tick-then-back feedback every one of these buttons
-                  gives. */}
-              <CopyIcon className="size-3.5 group-data-[copied]/copy:hidden" />
-              <CheckIcon className="hidden size-3.5 group-data-[copied]/copy:block" />
-            </TooltipIconButton>
-          </ActionBarPrimitive.Copy>
+          <TurnCopyButton />
         </ActionBarPrimitive.Root>
 
         <MessageTime />
