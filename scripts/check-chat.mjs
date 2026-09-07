@@ -40,6 +40,10 @@ try {
     await page.getByPlaceholder('Message Second Brain').fill('Please show some files.');
     await page.getByPlaceholder('Message Second Brain').press('Enter');
     await emit('typing', true);
+    await emit('turn_activity', { turn_id: 'browser-turn', phase: 'waiting' });
+    await expect(page.getByRole('status', { name: 'Waiting', exact: true })).toBeVisible();
+    await emit('turn_activity', { turn_id: 'browser-turn', phase: 'thinking' });
+    await expect(page.getByRole('status', { name: 'Thinking', exact: true })).toBeVisible();
     const userMessage = page.locator('[data-role="user"]').last();
     await expect.poll(async () => userMessage.evaluate((node) => {
       const viewport = node.closest('[data-slot="chat-viewport"]');

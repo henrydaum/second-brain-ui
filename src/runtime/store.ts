@@ -135,7 +135,7 @@ export type Turn = {
   turnId?: string;
   continues?: boolean;
   source?: "live" | "history";
-  activity?: { phase: "thinking" | "working" | "writing"; since: number; streamId?: string };
+  activity?: { phase: "waiting" | "thinking" | "working" | "writing"; since: number; streamId?: string };
   /**
    * Who this turn is from — and `system`, which is nobody.
    *
@@ -773,7 +773,7 @@ export function reduce(state: State, action: Action): State {
           const stream = turn.parts.findLast(
             (part): part is TextPart => part.kind === "text" && !part.done,
           );
-          const phase = stream ? "writing" : turn.parts.some((part) =>
+          const phase = turn.activity?.phase === "waiting" ? "waiting" : stream ? "writing" : turn.parts.some((part) =>
             part.kind === "tool" && part.status !== "finished") ? "working" : "thinking";
           if (turn.activity?.phase === phase &&
               turn.activity.streamId === stream?.streamId) return turn;
@@ -788,7 +788,7 @@ export function reduce(state: State, action: Action): State {
 }
 
 function frameTurnId(frame: Frame): string | undefined {
-  if (frame.kind === "stream_delta" ||
+  if (frame.kind === "turn_activity" || frame.kind === "stream_delta" ||
       (frame.kind === "tool_status" && frame.payload.kind !== "command")) {
     return frame.payload.turn_id || undefined;
   }
@@ -821,6 +821,15 @@ function identifyTurn(state: State, turnId: string, resume = false): State {
 
 function applyFrame(state: State, frame: Frame): State {
   switch (frame.kind) {
+    case "turn_activity": {
+      const turn = state.turns.findLast((item) => item.role === "assistant" &&
+        item.running && (!frame.payload.turn_id || item.turnId === frame.payload.turn_id));
+      if (!turn || turn.activity?.phase === frame.payload.phase) return state;
+      return { ...state, turns: replace(state.turns, turn.id, {
+        ...turn, activity: { phase: frame.payload.phase, since: Date.now() },
+      }) };
+    }
+
     /* The agent takes or hands back the turn. */
     case "typing": {
       if (frame.payload) {

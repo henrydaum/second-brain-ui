@@ -33,6 +33,16 @@ const run = (...frames: Frame[]): State =>
 const typing = (on: boolean) => ({ kind: "typing", payload: on }) as Frame;
 
 describe("reply presentation ownership", () => {
+  it("distinguishes a subagent barrier wait from ordinary thinking", () => {
+    const state = run(typing(true),
+      { kind: "turn_activity", payload: { phase: "waiting" } });
+    expect(state.turns[0].activity?.phase).toBe("waiting");
+    const resumed = reduce(state, { type: "frame", frame: {
+      kind: "turn_activity", payload: { phase: "thinking" },
+    } });
+    expect(resumed.turns[0].activity?.phase).toBe("thinking");
+  });
+
   it("does not leave an earlier segment writing when another stream completes", () => {
     const state = run(typing(true),
       { kind: "stream_delta", payload: { stream_id: "first", seq: 1, delta: "Earlier text", done: false } },

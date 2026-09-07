@@ -46,6 +46,7 @@ Activity uses visible lifecycle signals:
 - **Writing:** an unfinished text stream.
 - **Working:** an active tool, with no open text stream.
 - **Thinking:** the running interval between those activities.
+- **Waiting:** the kernel is blocked at the subagent barrier for child reports.
 - **Waiting for your response:** pending user input takes precedence.
 
 The protocol does not expose reasoning tokens or tool-argument generation as

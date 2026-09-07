@@ -74,6 +74,16 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe("assembled assistant-ui reply", () => {
+  it("labels a child-agent barrier as Waiting without ending the reply", async () => {
+    render(<Harness />);
+    await frame({ kind: "typing", payload: true });
+    await frame({ kind: "turn_activity", payload: { phase: "waiting" } });
+    expect(screen.getByRole("status", { name: "Waiting" })).toHaveTextContent("Waiting");
+    expect(screen.queryByText("Waiting for your response")).toBeNull();
+    await frame({ kind: "turn_activity", payload: { phase: "thinking" } });
+    expect(screen.getByRole("status", { name: "Thinking" })).toHaveTextContent("Thinking");
+  });
+
   it("waits through user interruptions and model end tokens, then renders one recap and footer", async () => {
     const { container } = render(<Harness />);
     await frame({ kind: "typing", payload: true });

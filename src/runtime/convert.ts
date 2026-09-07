@@ -128,8 +128,9 @@ export function convertMessage(turn: Turn): ThreadMessageLike {
       source: turn.source ?? "history",
       turnId: turn.turnId ?? turn.id,
       continues: turn.continues === true,
-      phase: activeStream ? "writing" : turn.parts.some((part) =>
-        part.kind === "tool" && part.status !== "finished") ? "working" : "thinking",
+      phase: turn.activity?.phase === "waiting" ? "waiting" : activeStream ? "writing" :
+        turn.parts.some((part) => part.kind === "tool" && part.status !== "finished")
+          ? "working" : "thinking",
       since: turn.activity?.since ?? turn.createdAt,
     };
   }

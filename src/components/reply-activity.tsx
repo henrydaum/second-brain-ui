@@ -14,14 +14,15 @@ export function ReplyActivity() {
     s.message.metadata.custom[PRESENTATION] as
       { phase?: string; since?: number } | undefined,
   );
-  const phase = !active ? "none" : inputRequests.length ? "waiting"
+  const phase = !active ? "none" : inputRequests.length ? "awaiting_input"
     : presentation?.phase === "writing" ? "writing"
-      : presentation?.phase === "working" ? "working" : "thinking";
+      : presentation?.phase === "working" ? "working"
+        : presentation?.phase === "waiting" ? "waiting" : "thinking";
   return <ActivityLine phase={phase} since={presentation?.since} />;
 }
 
 export function ActivityLine({ phase, since }: {
-  phase: "none" | "waiting" | "writing" | "working" | "thinking";
+  phase: "none" | "awaiting_input" | "waiting" | "writing" | "working" | "thinking";
   since?: number;
 }) {
   const [intervalStart, setIntervalStart] = useState(() => Date.now());
@@ -30,22 +31,24 @@ export function ActivityLine({ phase, since }: {
     const start = Date.now();
     setIntervalStart(start);
     setNow(start);
-    if (phase !== "working" && phase !== "thinking") return;
+    if (!["waiting", "working", "thinking"].includes(phase)) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [phase, since]);
   if (phase === "none") return null;
   const seconds = Math.max(0, Math.floor((now - intervalStart) / 1000));
+  const showsElapsed = phase === "waiting" || phase === "working" || phase === "thinking";
   const label = phase === "writing" ? "Writing" :
-    phase === "waiting" ? "Waiting for your response" : phase === "thinking" ? "Thinking" : "Working";
+    phase === "awaiting_input" ? "Waiting for your response" :
+      phase === "waiting" ? "Waiting" : phase === "thinking" ? "Thinking" : "Working";
   return (
     <div data-slot="reply-activity" data-phase={phase}
       className="text-muted-foreground my-2 flex min-h-6 items-center gap-2 text-sm"
       role="status" aria-live="polite" aria-label={label}>
       <span aria-hidden className={cn("size-1.5 rounded-full bg-current",
-        phase !== "waiting" && "motion-safe:animate-pulse")} />
+        phase !== "awaiting_input" && "motion-safe:animate-pulse")} />
       <span>{label}</span>
-      {(phase === "working" || phase === "thinking") && seconds >= 3 && (
+      {showsElapsed && seconds >= 3 && (
         <span aria-hidden className="text-xs tabular-nums opacity-70">{elapsedLabel(seconds)}</span>
       )}
     </div>

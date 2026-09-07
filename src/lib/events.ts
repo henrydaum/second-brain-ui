@@ -55,6 +55,11 @@ type StreamDeltaPayload = {
   kind?: string;
 };
 
+type TurnActivityPayload = {
+  turn_id?: string | null;
+  phase: "waiting" | "thinking";
+};
+
 /** Fires for tool calls and slash commands alike. */
 export type ToolStatusPayload = {
   turn_id?: string | null;
@@ -253,6 +258,7 @@ export type Frame =
   | { kind: "callable_output"; payload: CallableOutputPayload }
   | { kind: "stream_delta"; payload: StreamDeltaPayload }
   | { kind: "typing"; payload: boolean }
+  | { kind: "turn_activity"; payload: TurnActivityPayload }
   | { kind: "tool_status"; payload: ToolStatusPayload }
   | { kind: "approval"; payload: ApprovalPayload }
   | { kind: "approval_settled"; payload: ApprovalSettledPayload }
