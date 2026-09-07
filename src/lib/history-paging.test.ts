@@ -104,3 +104,15 @@ describe("readConversation", () => {
     expect(read.oldestId).toBe(3);
   });
 });
+
+it("scans file history across a tool call/result page boundary", async () => {
+  const { readConversationFileTurns } = await import("./history");
+  sdk.mockResolvedValueOnce({ messages: [{ ...row(2), role: "tool", tool_call_id: "show",
+    content: "Shown", attachments: [{ path: "/old.png" }] }], has_more: true, oldest_id: 2 });
+  sdk.mockResolvedValueOnce({ messages: [{ ...row(1), role: "assistant",
+    content: JSON.stringify({ tool_calls: [{ id: "show", function: { name: "show_files", arguments: "{}" } }] }) }], has_more: false });
+  const turns = await readConversationFileTurns(7);
+  expect(sdk).toHaveBeenLastCalledWith("conv.read", { id: 7, details: true, before_id: 2 });
+  expect(turns[0].parts).toContainEqual(expect.objectContaining({ kind: "files", paths: ["/old.png"] }));
+  expect(turns[0].parts).toContainEqual(expect.objectContaining({ kind: "tool", status: "finished" }));
+});

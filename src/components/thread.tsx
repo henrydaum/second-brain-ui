@@ -35,7 +35,6 @@ import {
   ErrorPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
-  groupPartByType,
   useAuiState,
 } from "@assistant-ui/react";
 
@@ -110,7 +109,7 @@ const userMessageComponents = {
  * the sentinel is offscreen, because the browser lacks the API — leaves the
  * person a way up, and one that fires does not need them to press it.
  */
-const LoadOlder: FC = () => {
+export const LoadOlder: FC = () => {
   const { scrollbackHasMore, loadingOlderMessages, loadOlderMessages } =
     useConversations();
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -120,15 +119,9 @@ const LoadOlder: FC = () => {
   const anchor = useRef<{ height: number; top: number } | null>(null);
   const turns = useAuiState((s) => s.thread.messages.length);
 
-  /** Whichever ancestor actually scrolls. Walked rather than held by ref,
-   *  because the element belongs to assistant-ui's `ThreadPrimitive.Viewport`
-   *  and is not ours. */
+  /** Resolve the viewport even before its content is tall enough to scroll. */
   const viewportOf = (node: HTMLElement | null) => {
-    let scroller: HTMLElement | null = node?.parentElement ?? null;
-    while (scroller && scroller.scrollHeight <= scroller.clientHeight) {
-      scroller = scroller.parentElement;
-    }
-    return scroller;
+    return node?.closest<HTMLElement>('[data-slot="chat-viewport"]') ?? null;
   };
 
   /**
@@ -145,16 +138,13 @@ const LoadOlder: FC = () => {
    */
   useLayoutEffect(() => {
     const held = anchor.current;
-    if (!held) return;
+    if (!held || loadingOlderMessages) return;
     anchor.current = null;
     const viewport = viewportOf(sentinel.current);
     if (!viewport) return;
-    // `scroll-smooth` is on the viewport, and animating this would show the
-    // reader sliding away from their line and back. Assigning `scrollTop`
-    // rather than calling `scrollTo` because the smooth behaviour is CSS, and
-    // a direct assignment is not subject to it.
-    viewport.scrollTop = held.top + (viewport.scrollHeight - held.height);
-  }, [turns]);
+    // Override CSS smooth scrolling so prepending is corrected before paint.
+    viewport.scrollTo({ top: held.top + (viewport.scrollHeight - held.height), behavior: "instant" });
+  }, [turns, loadingOlderMessages]);
 
   const loadAnchored = useCallback(async () => {
     const viewport = viewportOf(sentinel.current);
@@ -178,21 +168,21 @@ const LoadOlder: FC = () => {
       // down past everything that just arrived, which carries the sentinel back
       // out of view. Without it the sentinel stays put and fires again
       // immediately, pulling page after page in one burst.
-      { rootMargin: "400px 0px 0px 0px" },
+      { root: viewportOf(node), rootMargin: "400px 0px 0px 0px" },
     );
     observer.observe(node);
     return () => observer.disconnect();
   }, [scrollbackHasMore, loadingOlderMessages, loadAnchored]);
 
-  if (!scrollbackHasMore) return null;
-
+  // Keep the sentinel mounted on the final page: its ref is still needed to
+  // restore the anchor after the load button disappears.
   return (
     <div
       ref={sentinel}
-      className="mx-auto w-full max-w-(--thread-max-width) py-2"
+      className={cn("mx-auto w-full shrink-0 max-w-(--thread-max-width)", scrollbackHasMore && "py-2")}
       aria-busy={loadingOlderMessages || undefined}
     >
-      {loadingOlderMessages ? (
+      {!scrollbackHasMore ? null : loadingOlderMessages ? (
         // Standing in for the turns about to arrive, so the gap fills with
         // something the shape of the answer rather than with nothing.
         <div className="flex animate-pulse flex-col gap-y-8" aria-hidden>
@@ -246,7 +236,7 @@ export const Thread: FC = () => {
         autoScroll={false}
         scrollToBottomOnRunStart={false}
         className={cn(
-          "relative flex flex-1 flex-col overflow-y-scroll motion-safe:scroll-smooth px-4 pt-4",
+          "relative flex min-h-0 flex-1 flex-col overflow-y-scroll motion-safe:scroll-smooth px-4 pt-4",
           centerComposer && "justify-center",
         )}
       >
@@ -273,7 +263,7 @@ export const Thread: FC = () => {
             messages whose spacing that container owns. */}
         <LoadOlder />
 
-        <div className="mb-8 flex flex-col gap-y-5 empty:hidden">
+        <div className="mb-8 flex shrink-0 flex-col gap-y-5 empty:hidden">
           <ThreadPrimitive.Messages>
             {({ message }) => {
               // The third role is nobody: a compaction marker, which is in the
@@ -448,6 +438,7 @@ const ComposerAction: FC = () => {
 };
 
 export const AssistantMessage: FC = () => {
+  const content = useAuiState((s) => s.message.content);
 
   return (
     <MessagePrimitive.Root
@@ -462,20 +453,25 @@ export const AssistantMessage: FC = () => {
         {/* Activity has one explicit owner below the ordered parts. */}
         <MessagePrimitive.GroupedParts
           indicator="never"
-          groupBy={groupPartByType({ "tool-call": ["group-tool"] })}
+          groupBy={(part) => part.type === "tool-call" ||
+            (part.type === "data" && part.name === AGENT_FILES) ||
+            (part.type === "text" && !part.text.trim()) ? ["group-tool"] : []}
         >
           {({ part, children }) => {
             switch (part.type) {
-              case "group-tool":
+              case "group-tool": {
+                const count = part.indices.filter((index) => content[index]?.type === "tool-call").length;
+                if (!count) return null;
                 return (
                   <ToolGroupRoot>
                     <ToolGroupTrigger
-                      count={part.indices.length}
+                      count={count}
                       active={part.status.type === "running"}
                     />
                     <ToolGroupContent>{children}</ToolGroupContent>
                   </ToolGroupRoot>
                 );
+              }
               case "text":
                 return <MarkdownText />;
               case "tool-call":

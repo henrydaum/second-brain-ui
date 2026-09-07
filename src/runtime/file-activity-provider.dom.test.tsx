@@ -12,6 +12,9 @@ vi.mock("@/runtime/provider", () => ({
 vi.mock("@/lib/ledger", async (original) => ({
   ...await original<typeof import("@/lib/ledger")>(), readLedger: vi.fn(),
 }));
+vi.mock("@/lib/history", async (original) => ({
+  ...await original<typeof import("@/lib/history")>(), readConversationFileTurns: vi.fn(async () => []),
+}));
 vi.mock("@/lib/files", () => ({ forgetFile: vi.fn() }));
 vi.mock("@/lib/thumbnails", () => ({ forgetThumbnail: vi.fn() }));
 const { readLedger } = await import("@/lib/ledger");
@@ -127,4 +130,19 @@ it("keeps unknown durable ownership drawer-only until its message arrives", asyn
   controls.state.turns = [...controls.state.turns, { ...turn("later-segment"), turnId: "later" }];
   rerender(app());
   expect(activity.sectionFor("later-segment")?.touched).toHaveLength(1);
+});
+
+it("includes persisted files outside the loaded transcript", async () => {
+  const { readConversationFileTurns } = await import("@/lib/history");
+  vi.mocked(readConversationFileTurns).mockResolvedValueOnce([{
+    ...turn("old", false), createdAt: 1,
+    parts: [{ kind: "files", paths: ["/old.png"] }],
+  }]);
+  vi.mocked(readLedger).mockResolvedValue([]);
+  const { rerender } = render(app());
+  await waitFor(() => expect(activity.entries.map((entry) => entry.path)).toContain("/old.png"));
+  expect(controls.state.turns.map((turn) => turn.id)).toEqual(["first"]);
+  controls.state.turns = [{ ...turn("old", false), createdAt: 1 }, ...controls.state.turns];
+  rerender(app());
+  expect(activity.entries.map((entry) => entry.path)).toContain("/old.png");
 });

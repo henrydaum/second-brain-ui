@@ -56,6 +56,7 @@ import {
   type CategoryCount,
   type Conversation,
   type LoadResult,
+  conversationLoadError,
 } from "@/lib/conversations";
 import {
   ALL_CONVERSATIONS_FILTER,
@@ -1663,7 +1664,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
           // "No such conversation." is also what a conversation this user does
           // not own looks like — the server declines to distinguish them, and
           // repeating its wording is more honest than inventing a reason.
-          report(new Error(result?.messages?.[0] ?? "Could not open it."));
+          report(new Error(conversationLoadError(result)));
           return;
         }
         const read = await readConversation(id);

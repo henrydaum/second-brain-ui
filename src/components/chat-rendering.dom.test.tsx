@@ -257,3 +257,19 @@ it("shows literal structured inputs, with a raw toggle and no copy control", () 
   expect(screen.queryByRole("button", { name: "Copy input" })).not.toBeInTheDocument();
   expect(document.querySelector("pre")?.textContent).toBe(JSON.stringify(args, null, 2));
 });
+
+it("coalesces tools across hidden file and empty text parts", async () => {
+  render(<Harness />);
+  await frame({ kind: "typing", payload: true });
+  for (let index = 0; index < 4; index++) {
+    if (index === 1) {
+      await frame({ kind: "attachments", payload: ["/one.png"] });
+      await text("empty", " ", 1, true);
+    }
+    await frame({ kind: "tool_status", payload: { call_id: `group-${index}`, tool_name: "test", status: "started" } });
+    await frame({ kind: "tool_status", payload: { call_id: `group-${index}`, tool_name: "test", status: "finished", ok: true } });
+  }
+  await frame({ kind: "typing", payload: false });
+  expect(screen.getByText("4 tool calls")).toBeInTheDocument();
+  expect(screen.queryByText("1 tool call")).toBeNull();
+});

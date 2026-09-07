@@ -497,3 +497,28 @@ export async function readConversation(
         : (rows[0]?.id ?? null),
   };
 }
+
+/** Scan persisted outputs independently of the transcript's loaded window.
+ * Parse after joining pages so tool calls and results can straddle a boundary.
+ */
+export async function readConversationFileTurns(
+  id: number, cancelled: () => boolean = () => false,
+): Promise<Turn[]> {
+  const pages: StoredMessage[][] = [];
+  let before: number | undefined;
+  while (!cancelled()) {
+    const data = await sdk<StoredMessage[] | {
+      messages?: StoredMessage[]; has_more?: boolean; oldest_id?: number | null;
+    }>("conv.read", { id, details: true, ...(before === undefined ? {} : { before_id: before }) });
+    if (cancelled()) return [];
+    const rows = Array.isArray(data) ? data : data?.messages ?? [];
+    pages.push(rows);
+    if (Array.isArray(data) || !data?.has_more) break;
+    const oldest = data.oldest_id ?? rows[0]?.id;
+    if (typeof oldest !== "number" || (before !== undefined && oldest >= before)) {
+      throw new Error("Conversation file history pagination did not advance.");
+    }
+    before = oldest;
+  }
+  return toTurns(pages.reverse().flat());
+}

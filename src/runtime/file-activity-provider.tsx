@@ -6,6 +6,7 @@ import {
   createContext, use, useCallback, useEffect, useMemo, useRef, useState,
   type PropsWithChildren,
 } from "react";
+import { readConversationFileTurns } from "@/lib/history";
 import { forgetFile } from "@/lib/files";
 import { readLedger, toFileEvents, type FileEvent } from "@/lib/ledger";
 import { forgetThumbnail } from "@/lib/thumbnails";
@@ -92,6 +93,17 @@ export function FileActivityProvider({ children }: PropsWithChildren) {
   const { state } = useSession();
   const [ledger, setLedger] = useState(() => emptyLedger(conversationId));
   const [filesOpen, setFilesOpen] = useState(false);
+  const [archive, setArchive] = useState<{ id: number; turns: Turn[]; failure: string | null } | null>(null);
+  useEffect(() => {
+    setArchive(null);
+    if (conversationId === null) return;
+    let cancelled = false;
+    void readConversationFileTurns(conversationId, () => cancelled).then(
+      (turns) => { if (!cancelled) setArchive({ id: conversationId, turns: fileTurns(turns), failure: null }); },
+      () => { if (!cancelled) setArchive({ id: conversationId, turns: [], failure: "Conversation file history could not be loaded." }); },
+    );
+    return () => { cancelled = true; };
+  }, [conversationId]);
   const [focusTurn, setFocusTurn] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState(0);
   const [viewing, setViewing] = useState<Viewing | null>(null);
@@ -177,7 +189,25 @@ export function FileActivityProvider({ children }: PropsWithChildren) {
   if (!sameFileTurns(projection.current, state.turns)) {
     projection.current = fileTurns(state.turns);
   }
-  const turns = projection.current;
+  const projected = projection.current;
+  const turns = useMemo(() => {
+    const saved = archive?.id === conversationId ? archive.turns : [];
+    const current = new Map(projected.map((turn) => [turn.id, turn]));
+    // A loaded page can end inside a reply. Keep outputs recovered from its
+    // other pages even after that partial reply enters the visible transcript.
+    for (const turn of saved) {
+      const loaded = current.get(turn.id);
+      if (!loaded) { current.set(turn.id, turn); continue; }
+      const known = new Set(loaded.parts.flatMap((part) => part.kind === "files" ? part.paths : []));
+      const missing = turn.parts.flatMap((part) => {
+        if (part.kind !== "files") return [];
+        const paths = part.paths.filter((path) => !known.has(path));
+        return paths.length ? [{ ...part, paths }] : [];
+      });
+      if (missing.length) current.set(turn.id, { ...loaded, parts: [...missing, ...loaded.parts] });
+    }
+    return [...current.values()].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  }, [archive, conversationId, projected]);
   const derived = useMemo(() => {
     const held = ledger.conversationId === conversationId ? ledger : emptyLedger(conversationId);
     const historicalTurns = turns.filter((turn) => turn.source !== "live");
@@ -215,8 +245,8 @@ export function FileActivityProvider({ children }: PropsWithChildren) {
       [...new Set((recoveredBound.get(turn.id) ?? [])
         .filter((event) => event.effect === "shown").map((event) => event.path))],
     ]));
-    return { sections, files, entries, byTurn, recovered, failure: held.failure };
-  }, [ledger, conversationId, turns]);
+    return { sections, files, entries, byTurn, recovered, failure: held.failure ?? (archive?.id === conversationId ? archive.failure : null) };
+  }, [ledger, conversationId, turns, archive]);
 
   const clearFocus = useCallback(() => setFocusTurn(null), []);
   const value = useMemo<FileActivity>(() => ({

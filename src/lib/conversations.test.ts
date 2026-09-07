@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 // module is enough to need a stub in a suite that runs without a DOM.
 vi.mock("@/lib/client", () => ({ sdk: vi.fn() }));
 
-const { conversationTitle } = await import("@/lib/conversations");
+const { conversationLoadError, conversationTitle } = await import("@/lib/conversations");
 type Conversation = import("@/lib/conversations").Conversation;
 
 const conversation = (fields: Partial<Conversation> = {}): Conversation => ({
@@ -40,5 +40,23 @@ describe("conversationTitle", () => {
     expect(
       conversationTitle(conversation({ title: "Virginia Holiday (cleared)" })),
     ).toBe("Virginia Holiday (cleared)");
+  });
+});
+
+describe("conversationLoadError", () => {
+  it("includes a structured kernel reason", () => {
+    expect(conversationLoadError({
+      ok: false,
+      error: {
+        code: "conversation_in_use",
+        message: "This conversation is bound to another session.",
+      },
+    })).toBe(
+      "Could not open it. This conversation is bound to another session.",
+    );
+  });
+
+  it("retains the fallback when the server supplies no reason", () => {
+    expect(conversationLoadError({ ok: false })).toBe("Could not open it.");
   });
 });

@@ -160,5 +160,14 @@ export function setConversationCategory(id: number, category: string | null) {
 export type LoadResult = {
   ok: boolean;
   messages?: string[];
-  error?: string | null;
+  error?: { code?: string; message?: string } | string | null;
 };
+
+/** Preserve the kernel's reason while saying which UI action failed. */
+export function conversationLoadError(result?: LoadResult | null): string {
+  const reason =
+    (typeof result?.error === "string"
+      ? result.error
+      : result?.error?.message) ?? result?.messages?.[0];
+  return `Could not open it.${reason ? ` ${reason}` : ""}`;
+}

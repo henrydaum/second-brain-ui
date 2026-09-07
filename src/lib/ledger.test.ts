@@ -244,3 +244,12 @@ describe("toFileEvents", () => {
     expect(events.map((e) => e.path)).toEqual(["/c", "/b", "/a"]);
   });
 });
+
+it("reads all ledger pages, including a poll backlog larger than one page", async () => {
+  const { sdk } = await import("@/lib/client");
+  const { readLedger } = await import("./ledger");
+  vi.mocked(sdk).mockResolvedValueOnce(Array.from({ length: 50 }, (_, i) => row({ id: 100 - i })))
+    .mockResolvedValueOnce([row({ id: 50 })]);
+  expect(await readLedger(7, 49)).toHaveLength(51);
+  expect(sdk).toHaveBeenLastCalledWith("ledger.read", expect.objectContaining({ before_id: 51, since_id: 49 }));
+});

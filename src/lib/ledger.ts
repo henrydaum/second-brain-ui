@@ -230,10 +230,24 @@ export async function readLedger(
   conversationId: number,
   sinceId?: number,
 ): Promise<LedgerRow[]> {
-  const rows = await sdk<LedgerRow[]>("ledger.read", {
-    conversation_id: conversationId,
-    action_types: [...FILE_ACTIONS],
-    ...(sinceId === undefined ? {} : { since_id: sinceId }),
-  });
-  return Array.isArray(rows) ? rows : [];
+  const all: LedgerRow[] = [];
+  let before: number | undefined;
+  const limit = 50;
+  for (;;) {
+    const rows = await sdk<LedgerRow[]>("ledger.read", {
+      conversation_id: conversationId,
+      action_types: [...FILE_ACTIONS],
+      limit,
+      ...(sinceId === undefined ? {} : { since_id: sinceId }),
+      ...(before === undefined ? {} : { before_id: before }),
+    });
+    if (!Array.isArray(rows) || !rows.length) return all;
+    const oldest = Math.min(...rows.map((row) => row.id));
+    if (before !== undefined && oldest >= before) {
+      throw new Error("File history pagination did not advance.");
+    }
+    all.push(...rows);
+    if (rows.length < limit) return all;
+    before = oldest;
+  }
 }
