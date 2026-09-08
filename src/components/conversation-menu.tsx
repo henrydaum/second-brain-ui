@@ -121,11 +121,11 @@ export const ConversationMenu: FC = () => {
             type="button"
             variant="ghost"
             size="sm"
-            // **Sized to the title, not to the row.** `me-auto` is what pushes
-            // the status and the buttons to the far edge; `flex-1` did that too
-            // and made the control a full-width bar with a word in the corner
-            // of it. The cap keeps a long title from doing the same thing.
-            className="me-auto -mx-1 h-8 min-w-0 max-w-[min(28rem,45vw)] justify-start gap-1.5 px-2 font-medium"
+            // On a phone the title owns all space left between the two control
+            // groups. That space changes when Files appears, so a viewport cap
+            // would keep reserving room for it after it disappears. Desktop
+            // keeps the compact, title-sized control it has always used.
+            className="me-auto -mx-1 h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 font-medium md:flex-none md:max-w-[min(28rem,45vw)]"
             aria-label={`Conversation: ${title}`}
           >
             <span className="min-w-0 truncate">{title}</span>

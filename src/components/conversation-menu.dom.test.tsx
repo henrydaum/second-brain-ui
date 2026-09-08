@@ -43,6 +43,16 @@ const openMenu = async () => {
 };
 
 describe("ConversationMenu", () => {
+  it("fills the available mobile header space but stays capped on desktop", () => {
+    render(<ConversationMenu />);
+
+    const trigger = screen.getByRole("button", {
+      name: "Conversation: Kitchen rewire",
+    });
+    expect(trigger).toHaveClass("flex-1", "md:flex-none");
+    expect(trigger).toHaveClass("md:max-w-[min(28rem,45vw)]");
+  });
+
   it("runs the command behind each conversation action", async () => {
     const user = await openMenu();
 
