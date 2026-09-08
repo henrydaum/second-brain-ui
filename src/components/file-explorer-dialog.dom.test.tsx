@@ -343,3 +343,43 @@ it("switches between breadcrumbs and the selected path, with Escape cancelling o
   expect(screen.queryByLabelText("Host folder path")).not.toBeInTheDocument();
   expect(screen.getByRole("textbox", { name: "Search in work" })).toBeInTheDocument();
 });
+
+it("restores the list position after mentioning a file and reopening", async () => {
+  const user = userEvent.setup();
+  render(<Harness />);
+  await screen.findByRole("button", { name: "a.txt" });
+  const list = document.querySelector('[data-slot="explorer-list"]') as HTMLElement;
+  list.scrollTop = 850;
+  fireEvent.scroll(list);
+  await user.click(screen.getByRole("button", { name: "Actions for a.txt" }));
+  await user.click(screen.getByRole("menuitem", { name: "Mention in chat" }));
+  await user.click(screen.getByRole("button", { name: "Open explorer" }));
+  await screen.findByRole("button", { name: "a.txt" });
+  await waitFor(() => expect(document.querySelector('[data-slot="explorer-list"]')?.scrollTop).toBe(850));
+});
+
+it("keeps a separate scroll position for each directory", async () => {
+  const user = userEvent.setup();
+  render(<Harness />);
+  await screen.findByRole("button", { name: "notes" });
+  const list = document.querySelector('[data-slot="explorer-list"]') as HTMLElement;
+  list.scrollTop = 600;
+  fireEvent.scroll(list);
+  await user.click(screen.getByRole("button", { name: "notes" }));
+  await screen.findByRole("button", { name: "child.txt" });
+  expect(list.scrollTop).toBe(0);
+  await user.click(screen.getByRole("button", { name: "Back" }));
+  await screen.findByRole("button", { name: "a.txt" });
+  expect(list.scrollTop).toBe(600);
+});
+
+it("places the path cursor at the end on touch devices", async () => {
+  vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+  const user = userEvent.setup();
+  render(<Harness />);
+  await screen.findByRole("button", { name: "a.txt" });
+  await user.click(screen.getByRole("button", { name: "Edit folder path" }));
+  const input = screen.getByLabelText("Host folder path") as HTMLInputElement;
+  expect(input.selectionStart).toBe(input.value.length);
+  expect(input.selectionEnd).toBe(input.value.length);
+});

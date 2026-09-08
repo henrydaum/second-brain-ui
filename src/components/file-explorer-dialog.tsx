@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAui } from "@assistant-ui/react";
 import { ArrowLeftIcon, ArrowRightIcon, FolderIcon, FolderOpenIcon, RefreshCwIcon, StarIcon, SearchIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -19,7 +19,13 @@ import { useFileActivity } from "@/runtime/file-activity-provider";
 const inputClass = "bg-background min-w-0 rounded-md border px-3 py-2 text-base sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const messageOf = (error: unknown) => error instanceof Error ? error.message : "Could not load this folder.";
 
-export function FileExplorerDialog({ open, onOpenChange, target }: { open: boolean; onOpenChange: (open: boolean) => void; target?: ExplorerTarget }) {
+export function FileExplorerDialog({ open, onOpenChange, target, onPick, onReturnFocus }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  target?: ExplorerTarget;
+  onPick?: (path: string) => void;
+  onReturnFocus?: () => void;
+}) {
   const aui = useAui();
   const { view, viewing } = useFileActivity();
   const [directory, setDirectory] = useState("");
@@ -40,6 +46,9 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
   const previewButton = useRef<HTMLElement | null>(null);
   const wasViewing = useRef(false);
   const pendingTarget = useRef<ExplorerTarget | undefined>(target);
+  const places = useRef(new Map<string, number>());
+  const placeKey = JSON.stringify([directory, filter]);
+  const revealPending = useRef(false);
   useEffect(() => { pendingTarget.current = target; }, [target]);
 
   const navigate = useCallback(async (path: string, validate = false, direction: "back" | "forward" | "new" = "new") => {
@@ -73,7 +82,7 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
     if (!open) return;
     let alive = true;
     const reveal = pendingTarget.current;
-    if (reveal) { setRevealed(reveal.path); setFilter(""); }
+    if (reveal) { revealPending.current = true; setRevealed(reveal.path); setFilter(""); }
     const initialRequest = ++request.current;
     setBusy(true);
     setFailure(null);
@@ -115,12 +124,17 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
   }, [open, refresh, navigate, target]);
 
   useEffect(() => {
-    if (wasViewing.current && !viewing && open) previewButton.current?.focus();
+    if (wasViewing.current && !viewing && open) previewButton.current?.focus({ preventScroll: true });
     wasViewing.current = Boolean(viewing);
   }, [viewing, open]);
 
+  useLayoutEffect(() => {
+    if (open && !busy && listBody) listBody.scrollTop = places.current.get(placeKey) ?? 0;
+  }, [open, busy, listBody, placeKey]);
+
   useEffect(() => {
-    if (!open || busy || !revealed || !listBody) return;
+    if (!open || busy || !revealed || !listBody || !revealPending.current) return;
+    revealPending.current = false;
     const row = [...listBody.querySelectorAll<HTMLElement>("[data-explorer-path]")]
       .find((element) => element.dataset.explorerPath === revealed);
     row?.scrollIntoView?.({ block: "nearest" });
@@ -130,10 +144,19 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
   const shown = useMemo(() => visibleEntries(entries, filter), [entries, filter]);
   const paths = shown.filter((entry) => !entry.is_dir).map((entry) => entry.path);
   const folderName = hostBreadcrumbs(directory).at(-1)?.label || "folder";
+  const pick = (path: string) => {
+    if (listBody) places.current.set(placeKey, listBody.scrollTop);
+    onPick?.(path);
+    ++request.current;
+    onOpenChange(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!viewing) onOpenChange(next); }}>
       <DialogContent
+        // Picker portals can be launched from a Settings form. Address-bar
+        // submission must not bubble into that form and advance its step.
+        onSubmit={(event) => event.stopPropagation()}
         className="flex h-[min(94dvh,54rem)] w-[min(calc(100vw-1rem),70rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
         overlayClassName="bg-black/45 backdrop-blur-[2px]"
         onOpenAutoFocus={(event) => {
@@ -142,6 +165,7 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
         }}
         onEscapeKeyDown={(event) => { if (viewing || (event.target instanceof HTMLElement && event.target.hasAttribute("data-explorer-address-input"))) event.preventDefault(); }}
         onCloseAutoFocus={(event) => {
+          if (onReturnFocus) { event.preventDefault(); onReturnFocus(); return; }
           if (!mentionFocus.current) return;
           event.preventDefault();
           mentionFocus.current = false;
@@ -153,8 +177,8 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
         <header className="flex h-14 shrink-0 items-center gap-3 border-b ps-4 pe-14 sm:h-16 sm:ps-6">
           <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg"><FolderOpenIcon className="size-4" /></span>
           <div className="min-w-0">
-            <DialogTitle className="text-base">File explorer</DialogTitle>
-            <DialogDescription className="text-xs">Files on your Second Brain host</DialogDescription>
+            <DialogTitle className="text-base">{onPick ? "Choose a path" : "File explorer"}</DialogTitle>
+            <DialogDescription className="text-xs">{onPick ? "Select a file or folder on your Second Brain host" : "Files on your Second Brain host"}</DialogDescription>
           </div>
         </header>
         <div className="flex flex-col gap-2 border-b p-3 sm:p-4">
@@ -186,7 +210,9 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
           {locationFailure && <p role="status" className="text-muted-foreground text-xs">{locationFailure}</p>}
           {failure && <div role="alert" className="text-destructive flex items-center gap-2 text-sm"><span>{failure}</span><Button variant="outline" size="sm" onClick={() => retry.current()}>Retry</Button></div>}
         </div>
-        <div ref={setListBody} className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-3" aria-busy={busy}>
+        <div ref={setListBody} data-slot="explorer-list" onScroll={(event) => {
+          if (open && !busy) places.current.set(placeKey, event.currentTarget.scrollTop);
+        }} className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-3" aria-busy={busy}>
           {!busy && revealed && directory === parentHostPath(revealed) && !entries.some((entry) => entry.path === revealed) && <p role="status" className="text-muted-foreground p-3 text-sm">The file is no longer in this folder.</p>}
           {busy && <p role="status" className="text-muted-foreground p-3 text-sm">Loading folder…</p>}
           {!busy && directory && shown.length === 0 && <p className="text-muted-foreground p-3 text-sm">{entries.length ? "No matching filenames." : "This folder is empty."}</p>}
@@ -201,16 +227,21 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
                 {entry.is_dir ? <FolderIcon aria-hidden className="text-primary fill-primary/10 size-5 shrink-0" /> : <FileKindIcon path={entry.path} className="text-muted-foreground size-5 shrink-0" />}
                 <span className={cn("truncate", entry.is_dir && "font-medium")}>{entry.name}</span>
               </button>
-              <FileActionsMenu path={entry.path} disabled={busy} onMention={() => {
+              {onPick ? <Button variant="ghost" size="sm" disabled={busy} aria-label={`Select ${entry.name}`} onClick={() => pick(entry.path)}>Select</Button> : <FileActionsMenu path={entry.path} disabled={busy} onMention={() => {
                 const composer = aui.composer();
                 composer.setText(mentionPath(composer.getState().text, entry.path));
                 mentionFocus.current = true;
+                if (listBody) places.current.set(placeKey, listBody.scrollTop);
                 ++request.current;
                 onOpenChange(false);
-              }} />
+              }} />}
             </li>)}
           </ul>
         </div>
+        {onPick && <footer className="flex justify-end gap-2 border-t p-3">
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button disabled={busy || !directory} onClick={() => pick(directory)}>Use this folder</Button>
+        </footer>}
       </DialogContent>
     </Dialog>
   );

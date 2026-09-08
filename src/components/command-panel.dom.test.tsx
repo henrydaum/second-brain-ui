@@ -37,6 +37,19 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it("offers path picking for text and JSON fields, with valid JSON array defaults", () => {
+  form = { field: { name: "fs_writable_dirs", default: ["/work"] }, display: { prompt: "Directories", input_mode: "json" } };
+  render(<CommandPanel />);
+  expect(screen.getByRole("textbox")).toHaveValue('[\n  "/work"\n]');
+  expect(screen.getByRole("button", { name: "Choose path" })).toBeEnabled();
+});
+
+it("does not offer path picking for numeric fields", () => {
+  form = { field: { name: "count" }, display: { prompt: "Count", input_mode: "number" } };
+  render(<CommandPanel />);
+  expect(screen.queryByRole("button", { name: "Choose path" })).not.toBeInTheDocument();
+});
+
 describe("CommandPanel choices", () => {
   it("sends the pre-selected default when it is picked again", async () => {
     const user = userEvent.setup();

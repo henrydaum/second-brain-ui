@@ -14,6 +14,7 @@ import {
   CommandOutput,
 } from "@/components/command-renderers";
 import { Button } from "@/components/ui/button";
+import { FormPathPicker } from "@/components/form-path-picker";
 import { cn, titleCase } from "@/lib/utils";
 import { useApprovals, useSession } from "@/runtime/provider";
 
@@ -35,7 +36,8 @@ export const CommandPanel: FC = () => {
   useEffect(() => {
     if (!form) return;
     const defaultValue = form?.field?.default;
-    setTyped(defaultValue != null ? String(defaultValue) : "");
+    setTyped(defaultValue == null ? "" : form.display?.input_mode === "json" && typeof defaultValue !== "string"
+      ? JSON.stringify(defaultValue, null, 2) : String(defaultValue));
     const choices = form?.display?.choices ?? [];
     const defaultIndex = choices.findIndex(
       (choice) => String(choice.value) === String(defaultValue),
@@ -280,6 +282,8 @@ export const CommandPanel: FC = () => {
                     className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/30 h-10 w-full rounded-lg border px-3 text-base outline-none focus-visible:ring-[3px]"
                   />
                 )}
+                {mode !== "number" && <FormPathPicker inputId={fieldId} value={typed} mode={mode}
+                  disabled={busy} identity={form} onChange={setTyped} />}
               </div>
             )}
           </fieldset>

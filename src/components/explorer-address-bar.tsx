@@ -16,7 +16,14 @@ export function ExplorerAddressBar({ directory, busy, onNavigate }: {
   const breadcrumbs = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    if (editing) { input.current?.focus(); input.current?.select(); }
+    if (editing) {
+      input.current?.focus();
+      if (window.matchMedia?.("(pointer: coarse)").matches) {
+        const end = input.current?.value.length ?? 0;
+        input.current?.setSelectionRange(end, end);
+        if (input.current) input.current.scrollLeft = input.current.scrollWidth;
+      } else input.current?.select();
+    }
     else {
       if (breadcrumbs.current) breadcrumbs.current.scrollLeft = breadcrumbs.current.scrollWidth;
       if (wasEditing.current) editButton.current?.focus();
@@ -41,7 +48,7 @@ export function ExplorerAddressBar({ directory, busy, onNavigate }: {
   ) : (
     <div className="bg-muted/40 flex h-9 min-w-0 items-center rounded-md border px-1">
       <nav ref={breadcrumbs} aria-label="Folder breadcrumbs" className="min-w-0 overflow-x-auto [scrollbar-width:none]">
-        <ol className="flex w-max items-center text-sm">
+        <ol className="flex w-max items-center text-base sm:text-sm">
           {hostBreadcrumbs(directory).map((crumb, index, crumbs) => <li key={crumb.path} className="flex shrink-0 items-center">
             {index > 0 && <ChevronRightIcon aria-hidden className="text-muted-foreground size-3.5" />}
             <button type="button" title={crumb.path} aria-current={index === crumbs.length - 1 ? "location" : undefined}
