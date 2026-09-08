@@ -16,7 +16,7 @@ import { forgetFile } from "@/lib/files";
 import { forgetThumbnail } from "@/lib/thumbnails";
 import { useFileActivity } from "@/runtime/file-activity-provider";
 
-const inputClass = "bg-background min-w-0 rounded-md border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const inputClass = "bg-background min-w-0 rounded-md border px-3 py-2 text-base sm:text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const messageOf = (error: unknown) => error instanceof Error ? error.message : "Could not load this folder.";
 
 export function FileExplorerDialog({ open, onOpenChange, target }: { open: boolean; onOpenChange: (open: boolean) => void; target?: ExplorerTarget }) {
@@ -175,8 +175,10 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            <ExplorerAddressBar directory={directory} busy={busy} onNavigate={(path) => navigate(path, true)} />
-            <div className="relative col-span-2 min-w-0 sm:col-span-1">
+            <div className="order-2 col-span-2 min-w-0 sm:order-none sm:col-span-1">
+              <ExplorerAddressBar directory={directory} busy={busy} onNavigate={(path) => navigate(path, true)} />
+            </div>
+            <div className="relative order-1 min-w-0 sm:order-none">
               <SearchIcon aria-hidden className="text-muted-foreground pointer-events-none absolute start-3 top-2.5 size-4" />
               <input aria-label={`Search in ${folderName}`} placeholder={`Search in ${folderName}`} className={`${inputClass} h-9 w-full ps-9`} value={filter} onChange={(event) => setFilter(event.target.value)} />
             </div>

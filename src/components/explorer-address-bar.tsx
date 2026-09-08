@@ -31,7 +31,7 @@ export function ExplorerAddressBar({ directory, busy, onNavigate }: {
       void onNavigate(draft.trim()).then((success) => { if (success) setEditing(false); });
     }}>
       <input ref={input} data-explorer-address-input aria-label="Host folder path"
-        className="bg-background border-ring h-9 w-full min-w-0 rounded-md border px-3 text-sm outline-none ring-1 ring-ring"
+        className="bg-background border-ring h-9 w-full min-w-0 rounded-md border px-3 text-base sm:text-sm outline-none ring-1 ring-ring"
         value={draft} onChange={(event) => setDraft(event.target.value)}
         onBlur={() => { if (!busy) setEditing(false); }}
         onKeyDown={(event) => {
