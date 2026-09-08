@@ -9,8 +9,8 @@
  * per file.
  */
 
-import { useEffect, type FC } from "react";
-import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from "lucide-react";
+import { useEffect, useRef, type FC } from "react";
+import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon, FolderOpenIcon } from "lucide-react";
 
 import { FileView } from "@/components/file-view";
 import { MarkdownModePicker } from "@/components/markdown-mode";
@@ -25,9 +25,12 @@ import {
 import { fileUrl } from "@/lib/client";
 import { guessKind, nameOf } from "@/lib/files";
 import { useFileActivity } from "@/runtime/file-activity-provider";
+import { useFileExplorer } from "@/runtime/file-explorer-provider";
 
 export const FileViewerDialog: FC = () => {
   const { viewing, stepView, closeView } = useFileActivity();
+  const { openExplorer } = useFileExplorer();
+  const revealing = useRef(false);
 
   /**
    * Arrow keys, bound to the window rather than to the dialog: the focus after
@@ -75,6 +78,7 @@ export const FileViewerDialog: FC = () => {
       <DialogContent
         className="h-[min(92dvh,52rem)] min-w-0 w-[calc(100vw-1rem)] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-3 sm:w-full sm:max-w-4xl sm:p-4"
         overlayClassName="bg-black/50"
+        onCloseAutoFocus={(event) => { if (revealing.current) event.preventDefault(); }}
         /**
          * Focus the document itself where there is one, so the arrow keys
          * scroll it without a click first.
@@ -157,6 +161,11 @@ export const FileViewerDialog: FC = () => {
               the one kind whose immediate answer and asked answer cannot
               differ, so there is nothing to wait for. */}
           <div className="flex min-w-0 items-center gap-3">
+            <TooltipIconButton tooltip="Open containing folder" side="top" className="size-8" onClick={() => {
+              revealing.current = true;
+              closeView();
+              openExplorer(path);
+            }}><FolderOpenIcon className="size-4" /></TooltipIconButton>
             {guessKind(path) === "markdown" && <MarkdownModePicker />}
             {many && (
               <span className="shrink-0">

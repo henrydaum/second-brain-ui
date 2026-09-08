@@ -22,6 +22,7 @@ import {
   FileActivityProvider,
   useFileActivity,
 } from "@/runtime/file-activity-provider";
+import { FileExplorerProvider } from "@/runtime/file-explorer-provider";
 import { SecondBrainProvider } from "@/runtime/provider";
 
 export const App: FC = () => {
@@ -47,6 +48,7 @@ export const App: FC = () => {
             drawer, and the chip under each reply — are in different branches
             of it. */}
         <FileActivityProvider>
+          <FileExplorerProvider>
           <div className="flex h-dvh w-full overflow-hidden pt-[env(safe-area-inset-top)]">
             <ConversationSidebar open={navOpen} onOpenChange={setNavOpen} />
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -73,6 +75,7 @@ export const App: FC = () => {
               the conversation on screen at all. Fixed-positioned, so where it
               sits in this tree decides only what it stacks above. */}
           <NotificationBanners />
+          </FileExplorerProvider>
         </FileActivityProvider>
       </SecondBrainProvider>
     </ErrorBoundary>

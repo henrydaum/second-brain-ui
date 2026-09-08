@@ -9,24 +9,23 @@ import { FileViewerDialog } from "@/components/file-viewer-dialog";
 
 const mocks = vi.hoisted(() => ({
   sdk: vi.fn(), setText: vi.fn(), view: vi.fn(), forgetFile: vi.fn(), forgetThumbnail: vi.fn(),
-  draft: "", activity: {} as Record<string, unknown>,
+  draft: "", activity: {} as Record<string, unknown>, openExplorer: vi.fn(),
 }));
 vi.mock("@/lib/client", () => ({ sdk: mocks.sdk, fileUrl: (path: string) => path }));
 vi.mock("@assistant-ui/react", () => ({ useAui: () => ({ composer: () => ({
   getState: () => ({ text: mocks.draft, attachments: ["existing attachment"] }), setText: mocks.setText,
 }) }) }));
 vi.mock("@/runtime/file-activity-provider", () => ({ useFileActivity: () => mocks.activity }));
+vi.mock("@/runtime/file-explorer-provider", () => ({ useFileExplorer: () => ({ openExplorer: mocks.openExplorer }) }));
 vi.mock("@/lib/files", async (original) => ({ ...await original<object>(), forgetFile: mocks.forgetFile }));
 vi.mock("@/lib/thumbnails", () => ({ forgetThumbnail: mocks.forgetThumbnail }));
 vi.mock("@/components/file-view", () => ({ FileView: ({ path }: { path: string }) => <div data-slot="file-view" tabIndex={0}>{path}</div> }));
 vi.mock("@/components/markdown-mode", () => ({ MarkdownModePicker: () => null }));
-vi.mock("@/components/assistant-ui/tooltip-icon-button", () => ({
-  TooltipIconButton: ({ tooltip, side: _side, ...props }: { tooltip: string; side?: string }) => <button aria-label={tooltip} {...props} />,
-}));
+
 
 const entry = (name: string, is_dir = false, root = "/data") => ({ name, path: `${root}/${name}`, is_dir, size: 0, mtime: 0 });
 const initial = [entry("b.txt"), entry("notes", true), entry("a.txt")];
-function Harness() {
+function Harness({ target }: { target?: { path: string; request: number } }) {
   const [open, setOpen] = useState(true);
   const [viewing, setViewing] = useState<{ paths: string[]; index: number } | null>(null);
   mocks.activity = {
@@ -38,21 +37,22 @@ function Harness() {
   return <>
     <button onClick={() => setOpen(true)}>Open explorer</button>
     <textarea data-slot="chat-composer-input" defaultValue="Draft" />
-    <FileExplorerDialog open={open} onOpenChange={setOpen} />
+    <FileExplorerDialog open={open} onOpenChange={setOpen} target={target} />
     {viewing && <FileViewerDialog />}
   </>;
 }
 beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   vi.clearAllMocks();
   mocks.draft = "";
-  mocks.sdk.mockImplementation(async (type: string, args: { path?: string }) => {
-    if (type === "paths.get") return "/data";
-    if (type === "config.read") return ["/work"];
+  mocks.sdk.mockImplementation(async (type: string, args: { path?: string; name?: string; key?: string }) => {
+    if (type === "paths.get") return args.name === "project" ? "/kernel" : "/data";
+    if (type === "config.read") return args.key === "sync_directories" ? ["/sync", "/work"] : ["/work"];
     if (type === "fs.stat") return { path: args.path, is_dir: true };
     return args.path === "/data" ? initial : [entry("child.txt", false, args.path)];
   });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 it("discovers shortcuts, navigates and filters without per-file requests", async () => {
   const user = userEvent.setup();
@@ -60,6 +60,9 @@ it("discovers shortcuts, navigates and filters without per-file requests", async
   await screen.findByRole("button", { name: "notes" });
   expect(mocks.sdk).toHaveBeenCalledWith("fs.list", { path: "/data", details: true });
   expect(mocks.sdk).not.toHaveBeenCalledWith("fs.stat", expect.anything());
+  expect(screen.getByRole("option", { name: "Kernel root: /kernel" })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "Sync: /sync" })).toBeInTheDocument();
+  expect(screen.getAllByRole("option").filter((option) => (option as HTMLOptionElement).value === "/work")).toHaveLength(1);
   await user.type(screen.getByLabelText("Filter filenames"), "A.");
   expect(screen.queryByRole("button", { name: "b.txt" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "a.txt" })).toBeInTheDocument();
@@ -74,7 +77,8 @@ it.each(["", "Please read this", "Please read this\n"])("mentions into draft %j 
   mocks.draft = draft;
   const user = userEvent.setup();
   render(<Harness />);
-  await user.click(await screen.findByRole("button", { name: "Mention a.txt" }));
+  await user.click(await screen.findByRole("button", { name: "Actions for a.txt" }));
+  await user.click(screen.getByRole("menuitem", { name: "Mention in chat" }));
   expect(mocks.setText).toHaveBeenCalledWith(`${draft}${draft && !draft.endsWith("\n") ? "\n" : ""}/data/a.txt\n`);
   await waitFor(() => expect(document.querySelector("textarea")).toHaveFocus());
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -108,7 +112,7 @@ it("retains the last directory and filter on reopening and refreshes configurati
   await screen.findByRole("button", { name: "child.txt" });
   expect(screen.getByLabelText("Host folder path")).toHaveValue("/data/notes");
   expect(screen.getByLabelText("Filter filenames")).toHaveValue("child");
-  expect(mocks.sdk.mock.calls.filter(([type]) => type === "config.read")).toHaveLength(2);
+  expect(mocks.sdk.mock.calls.filter(([type]) => type === "config.read")).toHaveLength(4);
 });
 
 it("keeps the previous listing on failed navigation and retries the failed target", async () => {
@@ -184,4 +188,101 @@ it("discards a pending navigation after closure", async () => {
   await screen.findByRole("button", { name: "a.txt" });
   expect(screen.getByLabelText("Host folder path")).toHaveValue("/data");
   expect(screen.queryByRole("button", { name: "stale.txt" })).not.toBeInTheDocument();
+});
+
+it("copies the full path through the menu and reports clipboard failures", async () => {
+  const user = userEvent.setup();
+  const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  render(<Harness />);
+  await user.click(await screen.findByRole("button", { name: "Actions for a.txt" }));
+  await user.click(screen.getByRole("menuitem", { name: "Copy path" }));
+  expect(write).toHaveBeenCalledWith("/data/a.txt");
+  expect(await screen.findByText("Path copied.")).toBeInTheDocument();
+  write.mockRejectedValueOnce(new Error("Denied"));
+  await user.click(screen.getByRole("button", { name: "Actions for a.txt" }));
+  await user.click(screen.getByRole("menuitem", { name: "Copy path" }));
+  expect(await screen.findByText(/Could not copy path/)).toBeInTheDocument();
+  write.mockRestore();
+});
+
+it("reveals a requested file, clears filtering, and refreshes the folder navigated to afterwards", async () => {
+  const user = userEvent.setup();
+  const { rerender } = render(<Harness />);
+  await screen.findByRole("button", { name: "a.txt" });
+  await user.type(screen.getByLabelText("Filter filenames"), "no matches");
+  rerender(<Harness target={{ path: "/work/child.txt", request: 1 }} />);
+  const file = await screen.findByRole("button", { name: "child.txt" });
+  await waitFor(() => expect(file).toHaveFocus());
+  expect(screen.getByLabelText("Host folder path")).toHaveValue("/work");
+  expect(screen.getByLabelText("Filter filenames")).toHaveValue("");
+  expect(file.closest("li")).toHaveClass("ring-2");
+  await user.selectOptions(screen.getByLabelText("Folder shortcuts"), "/data");
+  await screen.findByRole("button", { name: "a.txt" });
+  await user.click(screen.getByRole("button", { name: "Refresh folder" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "a.txt" })).toBeEnabled());
+  expect(screen.getByLabelText("Host folder path")).toHaveValue("/data");
+});
+
+it("keeps the explorer open when Escape dismisses the actions menu", async () => {
+  const user = userEvent.setup();
+  render(<Harness />);
+  await user.click(await screen.findByRole("button", { name: "Actions for a.txt" }));
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "File explorer" })).toBeInTheDocument();
+});
+
+it("mentions a folder without navigating into it", async () => {
+  const user = userEvent.setup();
+  render(<Harness />);
+  await user.click(await screen.findByRole("button", { name: "Actions for notes" }));
+  await user.click(screen.getByRole("menuitem", { name: "Mention in chat" }));
+  expect(mocks.setText).toHaveBeenCalledWith("/data/notes\n");
+  expect(mocks.sdk).not.toHaveBeenCalledWith("fs.list", { path: "/data/notes", details: true });
+  await waitFor(() => expect(document.querySelector("textarea")).toHaveFocus());
+});
+
+it("navigates breadcrumbs and goes back across folder and shortcut changes", async () => {
+  const user = userEvent.setup();
+  render(<Harness />);
+  await user.click(await screen.findByRole("button", { name: "notes" }));
+  await screen.findByRole("button", { name: "child.txt" });
+  await user.click(screen.getByRole("button", { name: "data" }));
+  await screen.findByRole("button", { name: "a.txt" });
+  await user.click(screen.getByRole("button", { name: "Back" }));
+  await screen.findByRole("button", { name: "child.txt" });
+  expect(screen.getByLabelText("Host folder path")).toHaveValue("/data/notes");
+  await user.selectOptions(screen.getByLabelText("Folder shortcuts"), "/work");
+  await waitFor(() => expect(screen.getByLabelText("Host folder path")).toHaveValue("/work"));
+  await user.click(screen.getByRole("button", { name: "Refresh folder" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Back" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Back" }));
+  await waitFor(() => expect(screen.getByLabelText("Host folder path")).toHaveValue("/data/notes"));
+  await user.click(screen.getByRole("button", { name: "Back" }));
+  await screen.findByRole("button", { name: "a.txt" });
+  expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+});
+
+it("does not consume Back history when its request fails", async () => {
+  const user = userEvent.setup();
+  render(<Harness />);
+  await user.click(await screen.findByRole("button", { name: "notes" }));
+  await screen.findByRole("button", { name: "child.txt" });
+  mocks.sdk.mockRejectedValueOnce(new Error("Unavailable"));
+  await user.click(screen.getByRole("button", { name: "Back" }));
+  await screen.findByRole("alert");
+  expect(screen.getByLabelText("Host folder path")).toHaveValue("/data/notes");
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  await screen.findByRole("button", { name: "a.txt" });
+  expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+});
+
+it("reveals the currently viewed file after paging", async () => {
+  const user = userEvent.setup();
+  render(<Harness />);
+  await user.click(await screen.findByRole("button", { name: "a.txt" }));
+  await user.click(screen.getByRole("button", { name: "Next file" }));
+  await user.click(screen.getByRole("button", { name: "Open containing folder" }));
+  expect(mocks.openExplorer).toHaveBeenCalledWith("/data/b.txt");
+  expect(screen.queryByRole("dialog", { name: "b.txt" })).not.toBeInTheDocument();
 });

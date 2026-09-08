@@ -18,6 +18,8 @@ import { useEffect, useRef, useState, type FC } from "react";
 import { TerminalIcon, XIcon } from "lucide-react";
 
 import { FileThumbnail } from "@/components/file-kind-icon";
+import { FileActionsMenu } from "@/components/file-actions-menu";
+import { useFileExplorer } from "@/runtime/file-explorer-provider";
 import { preloadFileViewer } from "@/components/lazy-file-viewer";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { nameOf } from "@/lib/files";
@@ -100,7 +102,7 @@ export const FilesDrawer: FC = () => {
   useEffect(() => {
     if (!isInline || !visible) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       if (document.querySelector('[data-slot="dialog-content"]')) return;
       setFilesOpen(false);
     };
@@ -303,6 +305,10 @@ const Row: FC<{
   entry: FileEntry;
   onOpen: (entry: FileEntry) => void;
 }> = ({ entry, onOpen }) => {
+  const { openExplorer } = useFileExplorer();
+  const { setFilesOpen } = useFileActivity();
+  const isInline = useMediaQuery(XL_QUERY);
+  const [copyFeedback, setCopyFeedback] = useState("");
   const inside = (
     <>
       {/* Any image still on disk gets its own picture, whether the agent showed
@@ -343,7 +349,8 @@ const Row: FC<{
   // panel, and the viewer already puts it under the filename the moment you
   // open one. A row is a name, a picture and what happened to it.
   return (
-    <li>
+    <li className="flex flex-wrap items-center gap-1">
+      <div className="min-w-0 flex-1">
       {entry.gone ? (
         <div className={className}>{inside}</div>
       ) : (
@@ -369,6 +376,12 @@ const Row: FC<{
           </TooltipContent>
         </Tooltip>
       )}
+      </div>
+      <FileActionsMenu path={entry.path} onCopyResult={setCopyFeedback} onReveal={() => {
+        if (!isInline) setFilesOpen(false);
+        openExplorer(entry.path);
+      }} />
+      {copyFeedback && <p role="status" className="text-muted-foreground w-full px-1 text-xs">{copyFeedback}</p>}
     </li>
   );
 };

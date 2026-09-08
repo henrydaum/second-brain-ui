@@ -13,7 +13,6 @@
 
 import {
   memo,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -32,7 +31,8 @@ import {
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { preloadSettings, SettingsDialog } from "@/components/lazy-settings";
-import { LazyFileExplorerDialog, preloadFileExplorer } from "@/components/lazy-file-explorer";
+import { preloadFileExplorer } from "@/components/lazy-file-explorer";
+import { useFileExplorer } from "@/runtime/file-explorer-provider";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -264,8 +264,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
   const { state } = useSession();
   const { settingsOpen, setSettingsOpen } = useSettings();
   const [settingsMounted, setSettingsMounted] = useState(settingsOpen);
-  const [explorerOpen, setExplorerOpen] = useState(false);
-  const [explorerMounted, setExplorerMounted] = useState(false);
+  const { openExplorer } = useFileExplorer();
 
   // One switch at a time. Each of these is several Requests, and a second click
   // partway through would interleave two loads into one session.
@@ -395,8 +394,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
   const showExplorer = () => {
     preloadFileExplorer();
     if (!isDesktop) closeDrawer();
-    setExplorerMounted(true);
-    setExplorerOpen(true);
+    openExplorer();
   };
 
   useEffect(() => {
@@ -638,7 +636,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
       {/* `mt-auto` is what pins this to the bottom in both states — with the
           list unmounted there is nothing else to push it down. Separated by a
           rule, because it is not another conversation. */}
-      <div className="mt-auto grid grid-cols-[2rem_1fr] gap-x-1 border-t p-2">
+      <div className="mt-auto grid grid-cols-[2rem_1fr] gap-x-1 gap-y-1 border-t p-2">
         <TooltipIconButton tooltip="File explorer" side="right" className="size-8"
           onPointerEnter={preloadFileExplorer} onFocus={preloadFileExplorer} onClick={showExplorer}>
           <FolderOpenIcon className="size-4" />
@@ -679,9 +677,6 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
 
   const dialogs = <>
     {settingsMounted && <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />}
-    {explorerMounted && <Suspense fallback={null}>
-      <LazyFileExplorerDialog open={explorerOpen} onOpenChange={setExplorerOpen} />
-    </Suspense>}
   </>;
 
   if (isDesktop) {

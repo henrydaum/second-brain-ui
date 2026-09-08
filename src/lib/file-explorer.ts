@@ -34,6 +34,21 @@ export function visibleEntries(entries: DirectoryEntry[], filter: string): Direc
     .sort((a, b) => Number(b.is_dir) - Number(a.is_dir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
 }
 
+/** Each breadcrumb keeps its full host path; drive and share roots stay intact. */
+export function hostBreadcrumbs(path: string): { path: string; label: string }[] {
+  if (!path) return [];
+  const crumbs: { path: string; label: string }[] = [];
+  let current = path;
+  while (true) {
+    const parent = parentHostPath(current);
+    const trimmed = current.replace(/[\\/]+$/, "");
+    const atRoot = parent.replace(/[\\/]+$/, "") === trimmed;
+    crumbs.unshift({ path: current, label: atRoot ? current : trimmed.slice(trimmed.search(/[^\\/]+$/)) });
+    if (atRoot) return crumbs;
+    current = parent;
+  }
+}
+
 export function mentionPath(draft: string, path: string): string {
   return `${draft}${draft && !draft.endsWith("\n") ? "\n" : ""}${path}\n`;
 }

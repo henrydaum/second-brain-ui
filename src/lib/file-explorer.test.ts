@@ -1,8 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/client", () => ({ sdk: vi.fn() }));
-import { isAbsoluteHostPath, mentionPath, parentHostPath, visibleEntries } from "@/lib/file-explorer";
+import { hostBreadcrumbs, isAbsoluteHostPath, mentionPath, parentHostPath, visibleEntries } from "@/lib/file-explorer";
 
 describe("host paths", () => {
+  it.each([
+    ["/srv/data/notes", ["/", "/srv", "/srv/data", "/srv/data/notes"], ["/", "srv", "data", "notes"]],
+    ["C:\\Users\\Henry", ["C:\\", "C:\\Users", "C:\\Users\\Henry"], ["C:\\", "Users", "Henry"]],
+    ["\\\\host\\share\\notes", ["\\\\host\\share\\", "\\\\host\\share\\notes"], ["\\\\host\\share\\", "notes"]],
+    ["/", ["/"], ["/"]],
+    ["", [], []],
+  ])("builds breadcrumbs for %s", (path, paths, labels) => {
+    expect(hostBreadcrumbs(path).map((crumb) => crumb.path)).toEqual(paths);
+    expect(hostBreadcrumbs(path).map((crumb) => crumb.label)).toEqual(labels);
+  });
   it.each([
     ["C:\\", "C:\\"], ["C:\\Users\\Henry\\", "C:\\Users"],
     ["C:\\Users", "C:\\"], ["D:/work/notes", "D:/work"],
