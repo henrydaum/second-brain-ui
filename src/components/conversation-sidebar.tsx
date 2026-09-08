@@ -13,6 +13,7 @@
 
 import {
   memo,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -25,11 +26,13 @@ import {
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   SettingsIcon,
+  FolderOpenIcon,
   Trash2Icon,
 } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { preloadSettings, SettingsDialog } from "@/components/lazy-settings";
+import { LazyFileExplorerDialog, preloadFileExplorer } from "@/components/lazy-file-explorer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -261,6 +264,8 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
   const { state } = useSession();
   const { settingsOpen, setSettingsOpen } = useSettings();
   const [settingsMounted, setSettingsMounted] = useState(settingsOpen);
+  const [explorerOpen, setExplorerOpen] = useState(false);
+  const [explorerMounted, setExplorerMounted] = useState(false);
 
   // One switch at a time. Each of these is several Requests, and a second click
   // partway through would interleave two loads into one session.
@@ -385,6 +390,13 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     preloadSettings();
     if (!isDesktop) closeDrawer();
     setSettingsOpen(true);
+  };
+
+  const showExplorer = () => {
+    preloadFileExplorer();
+    if (!isDesktop) closeDrawer();
+    setExplorerMounted(true);
+    setExplorerOpen(true);
   };
 
   useEffect(() => {
@@ -627,6 +639,16 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           list unmounted there is nothing else to push it down. Separated by a
           rule, because it is not another conversation. */}
       <div className="mt-auto grid grid-cols-[2rem_1fr] gap-x-1 border-t p-2">
+        <TooltipIconButton tooltip="File explorer" side="right" className="size-8"
+          onPointerEnter={preloadFileExplorer} onFocus={preloadFileExplorer} onClick={showExplorer}>
+          <FolderOpenIcon className="size-4" />
+        </TooltipIconButton>
+        <button type="button" tabIndex={railCollapsed ? -1 : undefined}
+          aria-hidden={railCollapsed || undefined} onPointerEnter={preloadFileExplorer}
+          onFocus={preloadFileExplorer} onClick={showExplorer}
+          className={cn("text-muted-foreground hover:text-foreground min-w-0 truncate px-1 text-start text-sm transition-opacity", railCollapsed ? "pointer-events-none opacity-0" : "opacity-100")}>
+          File explorer
+        </button>
         <TooltipIconButton
           tooltip="Settings"
           side="right"
@@ -655,15 +677,18 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     </aside>
   );
 
-  const settingsDialog = settingsMounted ? (
-    <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-  ) : null;
+  const dialogs = <>
+    {settingsMounted && <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />}
+    {explorerMounted && <Suspense fallback={null}>
+      <LazyFileExplorerDialog open={explorerOpen} onOpenChange={setExplorerOpen} />
+    </Suspense>}
+  </>;
 
   if (isDesktop) {
     return (
       <>
         {sidebar}
-        {settingsDialog}
+        {dialogs}
       </>
     );
   }
@@ -675,7 +700,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           {sidebar}
         </SheetContent>
       </Sheet>
-      {settingsDialog}
+      {dialogs}
     </>
   );
 };

@@ -345,6 +345,7 @@ const Composer: FC = () => {
           <div className="border-primary/25 data-[dragging=true]:border-ring focus-within:border-primary/60 flex w-full flex-col rounded-(--composer-radius) border bg-(--composer-bg) p-2 data-[dragging=true]:border-dashed">
             <ComposerAttachments />
             <ComposerPrimitive.Input
+              data-slot="chat-composer-input"
               rows={1}
               autoFocus={finePointer}
               unstable_insertNewlineOnTouchEnter
