@@ -18,8 +18,6 @@ import { useEffect, useRef, useState, type FC } from "react";
 import { TerminalIcon, XIcon } from "lucide-react";
 
 import { FileThumbnail } from "@/components/file-kind-icon";
-import { FileActionsMenu } from "@/components/file-actions-menu";
-import { useFileExplorer } from "@/runtime/file-explorer-provider";
 import { preloadFileViewer } from "@/components/lazy-file-viewer";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { nameOf } from "@/lib/files";
@@ -305,9 +303,6 @@ const Row: FC<{
   entry: FileEntry;
   onOpen: (entry: FileEntry) => void;
 }> = ({ entry, onOpen }) => {
-  const { openExplorer } = useFileExplorer();
-  const { setFilesOpen } = useFileActivity();
-  const isInline = useMediaQuery(XL_QUERY);
   const inside = (
     <>
       {/* Any image still on disk gets its own picture, whether the agent showed
@@ -348,8 +343,7 @@ const Row: FC<{
   // panel, and the viewer already puts it under the filename the moment you
   // open one. A row is a name, a picture and what happened to it.
   return (
-    <li className="group relative">
-      <div className="min-w-0 pe-11 pointer-fine:pe-0 pointer-fine:group-hover:pe-9 pointer-fine:group-focus-within:pe-9">
+    <li>
       {entry.gone ? (
         <div className={className}>{inside}</div>
       ) : (
@@ -375,11 +369,6 @@ const Row: FC<{
           </TooltipContent>
         </Tooltip>
       )}
-      </div>
-      <FileActionsMenu path={entry.path} className="absolute end-0 top-1/2 -translate-y-1/2 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100 data-[state=open]:opacity-100" onReveal={() => {
-        if (!isInline) setFilesOpen(false);
-        openExplorer(entry.path);
-      }} />
     </li>
   );
 };
