@@ -10,9 +10,10 @@ const deleteConversation = vi.fn();
 
 // Mutable so a test can put the composer mid-turn without a second mock.
 let typing = false;
+let status = "open";
 
 vi.mock("@/runtime/provider", () => ({
-  useSession: () => ({ say, state: { typing } }),
+  useSession: () => ({ say, state: { typing }, status }),
   useConversations: () => ({
     conversationId: 7,
     openConversationRow: { id: 7, title: "Kitchen rewire", category: null },
@@ -28,6 +29,7 @@ const { ConversationMenu } = await import("@/components/conversation-menu");
 beforeEach(() => {
   vi.clearAllMocks();
   typing = false;
+  status = "open";
 });
 afterEach(cleanup);
 
@@ -82,5 +84,16 @@ describe("ConversationMenu", () => {
 
     await user.click(screen.getByRole("menuitem", { name: "Delete" }));
     expect(deleteConversation).toHaveBeenCalledWith(7);
+  });
+
+  it("does not start an approval-backed delete while disconnected", async () => {
+    status = "reconnecting";
+    await openMenu();
+
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(deleteConversation).not.toHaveBeenCalled();
   });
 });

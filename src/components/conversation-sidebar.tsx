@@ -261,7 +261,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
     setConversationFilter,
   } = useConversations();
   const { inputRequests } = useApprovals();
-  const { state } = useSession();
+  const { state, status } = useSession();
   const { settingsOpen, setSettingsOpen } = useSettings();
   const [settingsMounted, setSettingsMounted] = useState(settingsOpen);
   const { openExplorer } = useFileExplorer();
@@ -275,6 +275,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
   );
   const locked =
     busy ||
+    status !== "open" ||
     state.typing ||
     state.form !== null ||
     inputRequests.length > 0 ||

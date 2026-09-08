@@ -100,12 +100,13 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
 
         {/* Last in the row, against the edge the panel comes out of — the same
             pairing the conversations button has with the sidebar at the other
-            end. Not hidden at any width, unlike that one: the files panel
-            starts closed everywhere, so this is the only way to it. */}
-        <TooltipIconButton
+            end. It appears only when the drawer has something to show; the
+            short entrance keeps a file arriving mid-turn from popping in. */}
+        {total > 0 && (
+          <TooltipIconButton
           tooltip={filesOpen ? "Hide files" : "Show files"}
           side="bottom"
-          className="relative size-8"
+          className="relative size-8 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-2 motion-safe:duration-200"
           aria-expanded={filesOpen}
           onPointerEnter={preloadFilesDrawer}
           onFocus={preloadFilesDrawer}
@@ -116,13 +117,14 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
               drawer's business; whether there are any is the only thing worth
               saying from out here, and it is what decides whether opening it is
               worth doing. */}
-          {total > 0 && !filesOpen && (
+          {!filesOpen && (
             <span
               aria-hidden
               className="bg-primary absolute end-1 top-1 size-1.5 rounded-full"
             />
           )}
-        </TooltipIconButton>
+          </TooltipIconButton>
+        )}
       </div>
     </header>
   );

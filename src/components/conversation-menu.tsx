@@ -78,7 +78,7 @@ export const ConversationMenu: FC = () => {
     categoriseConversation,
     deleteConversation,
   } = useConversations();
-  const { say, state } = useSession();
+  const { say, state, status } = useSession();
 
   const [open, setOpen] = useState(false);
   const [asking, setAsking] = useState<Asking>(null);
@@ -243,6 +243,7 @@ export const ConversationMenu: FC = () => {
             <Rule />
             <DropdownMenuItem
               className="text-destructive focus:bg-destructive/10 focus:text-destructive flex-1 justify-center px-1.5"
+              disabled={status !== "open"}
               onSelect={() => void deleteConversation(conversationId)}
             >
               Delete
