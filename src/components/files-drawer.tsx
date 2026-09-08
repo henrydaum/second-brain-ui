@@ -308,7 +308,6 @@ const Row: FC<{
   const { openExplorer } = useFileExplorer();
   const { setFilesOpen } = useFileActivity();
   const isInline = useMediaQuery(XL_QUERY);
-  const [copyFeedback, setCopyFeedback] = useState("");
   const inside = (
     <>
       {/* Any image still on disk gets its own picture, whether the agent showed
@@ -349,8 +348,8 @@ const Row: FC<{
   // panel, and the viewer already puts it under the filename the moment you
   // open one. A row is a name, a picture and what happened to it.
   return (
-    <li className="flex flex-wrap items-center gap-1">
-      <div className="min-w-0 flex-1">
+    <li className="group relative">
+      <div className="min-w-0 pe-11 pointer-fine:pe-0 pointer-fine:group-hover:pe-9 pointer-fine:group-focus-within:pe-9">
       {entry.gone ? (
         <div className={className}>{inside}</div>
       ) : (
@@ -377,11 +376,10 @@ const Row: FC<{
         </Tooltip>
       )}
       </div>
-      <FileActionsMenu path={entry.path} onCopyResult={setCopyFeedback} onReveal={() => {
+      <FileActionsMenu path={entry.path} className="absolute end-0 top-1/2 -translate-y-1/2 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100 data-[state=open]:opacity-100" onReveal={() => {
         if (!isInline) setFilesOpen(false);
         openExplorer(entry.path);
       }} />
-      {copyFeedback && <p role="status" className="text-muted-foreground w-full px-1 text-xs">{copyFeedback}</p>}
     </li>
   );
 };

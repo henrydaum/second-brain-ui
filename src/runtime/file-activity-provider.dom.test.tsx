@@ -39,6 +39,16 @@ function deferred() {
 beforeEach(() => { controls.conversationId = 1; controls.state = { turns: [turn("first")], typing: false }; vi.mocked(readLedger).mockReset(); });
 afterEach(cleanup);
 
+it("retains explorer origin while paging and resets it for other preview sources", async () => {
+  vi.mocked(readLedger).mockResolvedValue([]);
+  render(app());
+  await act(async () => activity.view(["/one.txt", "/two.txt"], 0, "explorer"));
+  act(() => activity.stepView(1));
+  expect(activity.viewing).toMatchObject({ source: "explorer", index: 1 });
+  act(() => activity.view(["/one.txt"], 0));
+  expect(activity.viewing?.source).toBeUndefined();
+});
+
 it("rejects an opening ledger response after switching conversations", async () => {
   const stale = deferred();
   vi.mocked(readLedger).mockImplementation(async (id) => id === 1 ? stale.promise : []);

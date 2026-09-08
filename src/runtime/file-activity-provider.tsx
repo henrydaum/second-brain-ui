@@ -17,7 +17,7 @@ import {
 import { useConversations, useSession } from "@/runtime/provider";
 import type { Turn } from "@/runtime/store";
 
-export type Viewing = { paths: string[]; index: number };
+export type Viewing = { paths: string[]; index: number; source?: "explorer" };
 export type FileActivity = {
   sections: FileSection[];
   sectionFor: (turnId: string) => FileSection | null;
@@ -33,7 +33,7 @@ export type FileActivity = {
   focusRequest: number;
   clearFocus: () => void;
   viewing: Viewing | null;
-  view: (paths: string[], index: number) => void;
+  view: (paths: string[], index: number, source?: "explorer") => void;
   stepView: (by: number) => void;
   closeView: () => void;
 };
@@ -264,10 +264,10 @@ export function FileActivityProvider({ children }: PropsWithChildren) {
       setFilesOpen(true);
     },
     viewing,
-    view: (paths, index) => {
+    view: (paths, index, source) => {
       const openable = paths.filter((path) => !derived.files.get(path)?.gone);
       const chosen = paths[index];
-      if (openable.length) setViewing({ paths: openable, index: Math.max(0, openable.indexOf(chosen)) });
+      if (openable.length) setViewing({ paths: openable, index: Math.max(0, openable.indexOf(chosen)), ...(source ? { source } : {}) });
     },
     stepView: (by) => setViewing((current) => current && ({
       ...current, index: (current.index + by + current.paths.length) % current.paths.length,

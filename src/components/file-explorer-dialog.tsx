@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAui } from "@assistant-ui/react";
-import { ArrowLeftIcon, ArrowUpIcon, ChevronRightIcon, FolderIcon, FolderOpenIcon, RefreshCwIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightIcon, FolderIcon, FolderOpenIcon, RefreshCwIcon, StarIcon, SearchIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { FileActionsMenu } from "@/components/file-actions-menu";
 import type { ExplorerTarget } from "@/runtime/file-explorer-provider";
 import { cn } from "@/lib/utils";
+import { ExplorerAddressBar } from "@/components/explorer-address-bar";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { FileKindIcon } from "@/components/file-kind-icon";
 import { sdk } from "@/lib/client";
@@ -22,12 +24,10 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
   const { view, viewing } = useFileActivity();
   const [directory, setDirectory] = useState("");
   const directoryRef = useRef("");
-  const [backStack, setBackStack] = useState<string[]>([]);
-  const [pathInput, setPathInput] = useState("");
+  const [history, setHistory] = useState<{ back: string[]; forward: string[] }>({ back: [], forward: [] });
   const [locations, setLocations] = useState<{ path: string; label: string }[]>([]);
   const [entries, setEntries] = useState<DirectoryEntry[]>([]);
   const [filter, setFilter] = useState("");
-  const [copyFeedback, setCopyFeedback] = useState("");
   const [revealed, setRevealed] = useState<string>();
   const [listBody, setListBody] = useState<HTMLDivElement | null>(null);
   const [busy, setBusy] = useState(false);
@@ -42,25 +42,28 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
   const pendingTarget = useRef<ExplorerTarget | undefined>(target);
   useEffect(() => { pendingTarget.current = target; }, [target]);
 
-  const navigate = useCallback(async (path: string, validate = false, back = false) => {
+  const navigate = useCallback(async (path: string, validate = false, direction: "back" | "forward" | "new" = "new") => {
     const id = ++request.current;
-    retry.current = () => void navigate(path, validate, back);
+    retry.current = () => void navigate(path, validate, direction);
     setBusy(true);
     setFailure(null);
-    setCopyFeedback("");
     try {
       const result = await readDirectory(path, validate);
-      if (id !== request.current) return;
+      if (id !== request.current) return false;
       const previous = directoryRef.current;
-      if (back) setBackStack((stack) => stack.slice(0, -1));
-      else if (previous && previous !== result.path) setBackStack((stack) => [...stack, previous]);
+      if (previous && previous !== result.path) setHistory((held) => {
+        if (direction === "back") return { back: held.back.slice(0, -1), forward: [...held.forward, previous] };
+        if (direction === "forward") return { back: [...held.back, previous], forward: held.forward.slice(0, -1) };
+        return { back: [...held.back, previous], forward: [] };
+      });
       directoryRef.current = result.path;
       setDirectory(result.path);
-      setPathInput(result.path);
       setEntries(result.entries);
       pendingTarget.current = undefined;
+      return true;
     } catch (error) {
       if (id === request.current) setFailure(messageOf(error));
+      return false;
     } finally {
       if (id === request.current) setBusy(false);
     }
@@ -126,14 +129,18 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
 
   const shown = useMemo(() => visibleEntries(entries, filter), [entries, filter]);
   const paths = shown.filter((entry) => !entry.is_dir).map((entry) => entry.path);
-  const parent = directory ? parentHostPath(directory) : "";
+  const folderName = hostBreadcrumbs(directory).at(-1)?.label || "folder";
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!viewing) onOpenChange(next); }}>
       <DialogContent
         className="flex h-[min(94dvh,54rem)] w-[min(calc(100vw-1rem),70rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
         overlayClassName="bg-black/45 backdrop-blur-[2px]"
-        onEscapeKeyDown={(event) => { if (viewing) event.preventDefault(); }}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          (event.currentTarget as HTMLElement | null)?.focus();
+        }}
+        onEscapeKeyDown={(event) => { if (viewing || (event.target instanceof HTMLElement && event.target.hasAttribute("data-explorer-address-input"))) event.preventDefault(); }}
         onCloseAutoFocus={(event) => {
           if (!mentionFocus.current) return;
           event.preventDefault();
@@ -151,36 +158,33 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
           </div>
         </header>
         <div className="flex flex-col gap-2 border-b p-3 sm:p-4">
-          <div className="flex flex-wrap gap-2">
-            <select aria-label="Folder shortcuts" value="" className={`${inputClass} w-full sm:w-56`} onChange={(event) => void navigate(event.target.value, true)}>
-              <option value="" disabled>Folder shortcuts</option>
-              {locations.map(({ path, label }) => <option key={path} value={path}>{label}: {path}</option>)}
-            </select>
-            <input aria-label="Filter filenames" placeholder="Filter filenames…" className={`${inputClass} flex-1`} value={filter} onChange={(event) => setFilter(event.target.value)} />
+          <div data-slot="explorer-toolbar" className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[auto_minmax(0,1fr)_minmax(10rem,14rem)]">
+            <div className="flex items-center gap-1">
+              <TooltipIconButton tooltip="Back" disabled={busy || history.back.length === 0} onClick={() => void navigate(history.back.at(-1)!, false, "back")}><ArrowLeftIcon className="size-4" /></TooltipIconButton>
+              <TooltipIconButton tooltip="Forward" className="hidden sm:inline-flex" disabled={busy || history.forward.length === 0} onClick={() => void navigate(history.forward.at(-1)!, false, "forward")}><ArrowRightIcon className="size-4" /></TooltipIconButton>
+              <TooltipIconButton tooltip="Refresh folder" className="hidden sm:inline-flex" onClick={() => setRefresh((value) => value + 1)}><RefreshCwIcon className="size-4" /></TooltipIconButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <TooltipIconButton tooltip="Folder shortcuts"><StarIcon className="size-4" /></TooltipIconButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="max-h-80 max-w-[calc(100vw-2rem)] overflow-y-auto">
+                  {locations.map(({ path, label }) => <DropdownMenuItem key={path} aria-label={`${label}: ${path}`} onSelect={() => void navigate(path, true)}>
+                    <span className="min-w-0"><span className="block text-xs text-muted-foreground">{label}</span><span className="block truncate" title={path}>{path}</span></span>
+                  </DropdownMenuItem>)}
+                  {locations.length === 0 && <DropdownMenuItem disabled>No folder shortcuts available</DropdownMenuItem>}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <ExplorerAddressBar directory={directory} busy={busy} onNavigate={(path) => navigate(path, true)} />
+            <div className="relative col-span-2 min-w-0 sm:col-span-1">
+              <SearchIcon aria-hidden className="text-muted-foreground pointer-events-none absolute start-3 top-2.5 size-4" />
+              <input aria-label={`Search in ${folderName}`} placeholder={`Search in ${folderName}`} className={`${inputClass} h-9 w-full ps-9`} value={filter} onChange={(event) => setFilter(event.target.value)} />
+            </div>
           </div>
-          <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void navigate(pathInput.trim(), true); }}>
-            <TooltipIconButton variant="outline" tooltip="Back" disabled={busy || backStack.length === 0} onClick={() => void navigate(backStack.at(-1)!, false, true)}><ArrowLeftIcon className="size-4" /></TooltipIconButton>
-            <TooltipIconButton variant="outline" tooltip="Up one folder" disabled={!directory || parent === directory} onClick={() => void navigate(parent)}><ArrowUpIcon className="size-4" /></TooltipIconButton>
-            <TooltipIconButton variant="outline" tooltip="Refresh folder" onClick={() => setRefresh((value) => value + 1)}><RefreshCwIcon className="size-4" /></TooltipIconButton>
-            <input aria-label="Host folder path" className={`${inputClass} flex-1`} value={pathInput} onChange={(event) => setPathInput(event.target.value)} />
-            <Button type="submit" variant="outline">Go</Button>
-          </form>
-          {directory && <nav aria-label="Folder breadcrumbs" className="min-w-0 overflow-x-auto">
-            <ol className="flex w-max min-w-full items-center gap-1 text-xs">
-              {hostBreadcrumbs(directory).map((crumb, index, crumbs) => <li key={crumb.path} className="flex shrink-0 items-center gap-1">
-                {index > 0 && <ChevronRightIcon aria-hidden className="text-muted-foreground size-3" />}
-                <button type="button" title={crumb.path} aria-current={index === crumbs.length - 1 ? "location" : undefined}
-                  disabled={busy || index === crumbs.length - 1}
-                  className="text-muted-foreground hover:bg-accent hover:text-foreground rounded px-2 py-2 focus-visible:ring-2 focus-visible:ring-ring aria-current:text-foreground aria-current:font-medium"
-                  onClick={() => void navigate(crumb.path)}>{crumb.label}</button>
-              </li>)}
-            </ol>
-          </nav>}
           {locationFailure && <p role="status" className="text-muted-foreground text-xs">{locationFailure}</p>}
           {failure && <div role="alert" className="text-destructive flex items-center gap-2 text-sm"><span>{failure}</span><Button variant="outline" size="sm" onClick={() => retry.current()}>Retry</Button></div>}
         </div>
         <div ref={setListBody} className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-3" aria-busy={busy}>
-          {copyFeedback && <p role="status" className="text-muted-foreground px-3 py-2 text-sm">{copyFeedback}</p>}
           {!busy && revealed && directory === parentHostPath(revealed) && !entries.some((entry) => entry.path === revealed) && <p role="status" className="text-muted-foreground p-3 text-sm">The file is no longer in this folder.</p>}
           {busy && <p role="status" className="text-muted-foreground p-3 text-sm">Loading folder…</p>}
           {!busy && directory && shown.length === 0 && <p className="text-muted-foreground p-3 text-sm">{entries.length ? "No matching filenames." : "This folder is empty."}</p>}
@@ -190,12 +194,12 @@ export function FileExplorerDialog({ open, onOpenChange, target }: { open: boole
                 if (entry.is_dir) { void navigate(entry.path); return; }
                 previewButton.current = event.currentTarget;
                 for (const path of paths) { forgetFile(path); forgetThumbnail(path); }
-                view(paths, paths.indexOf(entry.path));
+                view(paths, paths.indexOf(entry.path), "explorer");
               }}>
                 {entry.is_dir ? <FolderIcon aria-hidden className="text-primary fill-primary/10 size-5 shrink-0" /> : <FileKindIcon path={entry.path} className="text-muted-foreground size-5 shrink-0" />}
                 <span className={cn("truncate", entry.is_dir && "font-medium")}>{entry.name}</span>
               </button>
-              <FileActionsMenu path={entry.path} disabled={busy} onCopyResult={setCopyFeedback} onMention={() => {
+              <FileActionsMenu path={entry.path} disabled={busy} onMention={() => {
                 const composer = aui.composer();
                 composer.setText(mentionPath(composer.getState().text, entry.path));
                 mentionFocus.current = true;

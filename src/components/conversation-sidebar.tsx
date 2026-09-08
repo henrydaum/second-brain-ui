@@ -636,7 +636,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
       {/* `mt-auto` is what pins this to the bottom in both states — with the
           list unmounted there is nothing else to push it down. Separated by a
           rule, because it is not another conversation. */}
-      <div className="mt-auto grid grid-cols-[2rem_1fr] gap-x-1 gap-y-1 border-t p-2">
+      <div className="mt-auto grid grid-cols-[2rem_1fr] gap-x-1 gap-y-0 border-t p-2 md:gap-y-1">
         <TooltipIconButton tooltip="File explorer" side="right" className="size-8"
           onPointerEnter={preloadFileExplorer} onFocus={preloadFileExplorer} onClick={showExplorer}>
           <FolderOpenIcon className="size-4" />

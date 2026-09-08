@@ -27,15 +27,16 @@ const entry = (name: string, is_dir = false, root = "/data") => ({ name, path: `
 const initial = [entry("b.txt"), entry("notes", true), entry("a.txt")];
 function Harness({ target }: { target?: { path: string; request: number } }) {
   const [open, setOpen] = useState(true);
-  const [viewing, setViewing] = useState<{ paths: string[]; index: number } | null>(null);
+  const [viewing, setViewing] = useState<{ paths: string[]; index: number; source?: "explorer" } | null>(null);
   mocks.activity = {
     viewing,
-    view: (paths: string[], index: number) => { mocks.view(paths, index); setViewing({ paths, index }); },
+    view: (paths: string[], index: number, source?: "explorer") => { mocks.view(paths, index, source); setViewing({ paths, index, source }); },
     stepView: (by: number) => setViewing((value) => value && ({ ...value, index: (value.index + by + value.paths.length) % value.paths.length })),
     closeView: () => setViewing(null),
   };
   return <>
     <button onClick={() => setOpen(true)}>Open explorer</button>
+    <button onClick={() => { setOpen(false); setViewing({ paths: ["/data/a.txt", "/data/b.txt"], index: 0 }); }}>Preview from chat</button>
     <textarea data-slot="chat-composer-input" defaultValue="Draft" />
     <FileExplorerDialog open={open} onOpenChange={setOpen} target={target} />
     {viewing && <FileViewerDialog />}
@@ -60,17 +61,20 @@ it("discovers shortcuts, navigates and filters without per-file requests", async
   await screen.findByRole("button", { name: "notes" });
   expect(mocks.sdk).toHaveBeenCalledWith("fs.list", { path: "/data", details: true });
   expect(mocks.sdk).not.toHaveBeenCalledWith("fs.stat", expect.anything());
-  expect(screen.getByRole("option", { name: "Kernel root: /kernel" })).toBeInTheDocument();
-  expect(screen.getByRole("option", { name: "Sync: /sync" })).toBeInTheDocument();
-  expect(screen.getAllByRole("option").filter((option) => (option as HTMLOptionElement).value === "/work")).toHaveLength(1);
-  await user.type(screen.getByLabelText("Filter filenames"), "A.");
+  await user.click(screen.getByRole("button", { name: "Folder shortcuts" }));
+  expect(screen.getByRole("menuitem", { name: "Kernel root: /kernel" })).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: "Sync: /sync" })).toBeInTheDocument();
+  expect(screen.getAllByRole("menuitem", { name: /\/work/ })).toHaveLength(1);
+  await user.keyboard("{Escape}");
+  await user.type(screen.getByRole("textbox", { name: /^Search in / }), "A.");
   expect(screen.queryByRole("button", { name: "b.txt" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "a.txt" })).toBeInTheDocument();
-  await user.clear(screen.getByLabelText("Filter filenames"));
-  await user.selectOptions(screen.getByLabelText("Folder shortcuts"), "/work");
+  await user.clear(screen.getByRole("textbox", { name: /^Search in / }));
+  await user.click(screen.getByRole("button", { name: "Folder shortcuts" }));
+  await user.click(screen.getByRole("menuitem", { name: /\/work$/ }));
   await screen.findByRole("button", { name: "child.txt" });
   expect(mocks.sdk).toHaveBeenCalledWith("fs.stat", { path: "/work" });
-  expect(screen.getByLabelText("Host folder path")).toHaveValue("/work");
+  expect(document.querySelector('[aria-current="location"]')).toHaveAttribute("title", "/work");
 });
 
 it.each(["", "Please read this", "Please read this\n"])("mentions into draft %j and focuses chat", async (draft) => {
@@ -89,7 +93,8 @@ it("previews visible files, pages them, and returns with Escape and focus intact
   render(<Harness />);
   const file = await screen.findByRole("button", { name: "a.txt" });
   await user.click(file);
-  expect(mocks.view).toHaveBeenCalledWith(["/data/a.txt", "/data/b.txt"], 0);
+  expect(mocks.view).toHaveBeenCalledWith(["/data/a.txt", "/data/b.txt"], 0, "explorer");
+  expect(screen.queryByRole("button", { name: "Open containing folder" })).not.toBeInTheDocument();
   expect(mocks.forgetFile).toHaveBeenCalledWith("/data/b.txt");
   await user.click(screen.getByRole("button", { name: "Next file" }));
   expect(screen.getByRole("dialog", { name: "b.txt" })).toBeInTheDocument();
@@ -106,12 +111,12 @@ it("retains the last directory and filter on reopening and refreshes configurati
   render(<Harness />);
   await user.click(await screen.findByRole("button", { name: "notes" }));
   await screen.findByRole("button", { name: "child.txt" });
-  await user.type(screen.getByLabelText("Filter filenames"), "child");
+  await user.type(screen.getByRole("textbox", { name: /^Search in / }), "child");
   await user.keyboard("{Escape}");
   await user.click(screen.getByRole("button", { name: "Open explorer" }));
   await screen.findByRole("button", { name: "child.txt" });
-  expect(screen.getByLabelText("Host folder path")).toHaveValue("/data/notes");
-  expect(screen.getByLabelText("Filter filenames")).toHaveValue("child");
+  expect(document.querySelector('[aria-current="location"]')).toHaveAttribute("title", "/data/notes");
+  expect(screen.getByRole("textbox", { name: /^Search in / })).toHaveValue("child");
   expect(mocks.sdk.mock.calls.filter(([type]) => type === "config.read")).toHaveLength(4);
 });
 
@@ -134,11 +139,12 @@ it("ignores stale listings when a newer navigation completes", async () => {
   let resolve!: (entries: typeof initial) => void;
   mocks.sdk.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
   await user.click(screen.getByRole("button", { name: "notes" }));
+  await user.click(screen.getByRole("button", { name: "Edit folder path" }));
   fireEvent.change(screen.getByLabelText("Host folder path"), { target: { value: "/new" } });
-  await user.click(screen.getByRole("button", { name: "Go" }));
+  await user.keyboard("{Enter}");
   await screen.findByRole("button", { name: "child.txt" });
   await act(async () => resolve([entry("stale.txt")]));
-  expect(screen.getByLabelText("Host folder path")).toHaveValue("/new");
+  expect(document.querySelector('[aria-current="location"]')).toHaveAttribute("title", "/new");
   expect(screen.queryByRole("button", { name: "stale.txt" })).not.toBeInTheDocument();
 });
 
@@ -148,8 +154,9 @@ it("handles absent writable folders and rejects relative paths without a request
   render(<Harness />);
   await screen.findByText("This folder is empty.");
   const count = mocks.sdk.mock.calls.length;
+  await user.click(screen.getByRole("button", { name: "Edit folder path" }));
   fireEvent.change(screen.getByLabelText("Host folder path"), { target: { value: "relative" } });
-  await user.click(screen.getByRole("button", { name: "Go" }));
+  await user.keyboard("{Enter}");
   expect(await screen.findByRole("alert")).toHaveTextContent("absolute path");
   expect(mocks.sdk).toHaveBeenCalledTimes(count);
 });
@@ -169,8 +176,9 @@ it("rejects a manually entered file without listing it", async () => {
   render(<Harness />);
   await screen.findByRole("button", { name: "a.txt" });
   mocks.sdk.mockResolvedValueOnce({ path: "/data/a.txt", is_dir: false });
+  await user.click(screen.getByRole("button", { name: "Edit folder path" }));
   fireEvent.change(screen.getByLabelText("Host folder path"), { target: { value: "/data/a.txt" } });
-  await user.click(screen.getByRole("button", { name: "Go" }));
+  await user.keyboard("{Enter}");
   expect(await screen.findByRole("alert")).toHaveTextContent("This path is a file");
   expect(mocks.sdk).not.toHaveBeenCalledWith("fs.list", { path: "/data/a.txt", details: true });
 });
@@ -186,7 +194,7 @@ it("discards a pending navigation after closure", async () => {
   await act(async () => resolve([entry("stale.txt")]));
   await user.click(screen.getByRole("button", { name: "Open explorer" }));
   await screen.findByRole("button", { name: "a.txt" });
-  expect(screen.getByLabelText("Host folder path")).toHaveValue("/data");
+  expect(document.querySelector('[aria-current="location"]')).toHaveAttribute("title", "/data");
   expect(screen.queryByRole("button", { name: "stale.txt" })).not.toBeInTheDocument();
 });
 
@@ -197,11 +205,11 @@ it("copies the full path through the menu and reports clipboard failures", async
   await user.click(await screen.findByRole("button", { name: "Actions for a.txt" }));
   await user.click(screen.getByRole("menuitem", { name: "Copy path" }));
   expect(write).toHaveBeenCalledWith("/data/a.txt");
-  expect(await screen.findByText("Path copied.")).toBeInTheDocument();
+  expect((await screen.findAllByText("Path copied")).some((element) => element.classList.contains("sr-only"))).toBe(true);
   write.mockRejectedValueOnce(new Error("Denied"));
   await user.click(screen.getByRole("button", { name: "Actions for a.txt" }));
   await user.click(screen.getByRole("menuitem", { name: "Copy path" }));
-  expect(await screen.findByText(/Could not copy path/)).toBeInTheDocument();
+  expect((await screen.findAllByText(/Could not copy path/)).some((element) => element.classList.contains("sr-only"))).toBe(true);
   write.mockRestore();
 });
 
@@ -209,18 +217,19 @@ it("reveals a requested file, clears filtering, and refreshes the folder navigat
   const user = userEvent.setup();
   const { rerender } = render(<Harness />);
   await screen.findByRole("button", { name: "a.txt" });
-  await user.type(screen.getByLabelText("Filter filenames"), "no matches");
+  await user.type(screen.getByRole("textbox", { name: /^Search in / }), "no matches");
   rerender(<Harness target={{ path: "/work/child.txt", request: 1 }} />);
   const file = await screen.findByRole("button", { name: "child.txt" });
   await waitFor(() => expect(file).toHaveFocus());
-  expect(screen.getByLabelText("Host folder path")).toHaveValue("/work");
-  expect(screen.getByLabelText("Filter filenames")).toHaveValue("");
+  expect(document.querySelector('[aria-current="location"]')).toHaveAttribute("title", "/work");
+  expect(screen.getByRole("textbox", { name: /^Search in / })).toHaveValue("");
   expect(file.closest("li")).toHaveClass("ring-2");
-  await user.selectOptions(screen.getByLabelText("Folder shortcuts"), "/data");
+  await user.click(screen.getByRole("button", { name: "Folder shortcuts" }));
+  await user.click(screen.getByRole("menuitem", { name: /\/data$/ }));
   await screen.findByRole("button", { name: "a.txt" });
   await user.click(screen.getByRole("button", { name: "Refresh folder" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "a.txt" })).toBeEnabled());
-  expect(screen.getByLabelText("Host folder path")).toHaveValue("/data");
+  expect(document.querySelector('[aria-current="location"]')).toHaveAttribute("title", "/data");
 });
 
 it("keeps the explorer open when Escape dismisses the actions menu", async () => {
@@ -251,13 +260,14 @@ it("navigates breadcrumbs and goes back across folder and shortcut changes", asy
   await screen.findByRole("button", { name: "a.txt" });
   await user.click(screen.getByRole("button", { name: "Back" }));
   await screen.findByRole("button", { name: "child.txt" });
-  expect(screen.getByLabelText("Host folder path")).toHaveValue("/data/notes");
-  await user.selectOptions(screen.getByLabelText("Folder shortcuts"), "/work");
-  await waitFor(() => expect(screen.getByLabelText("Host folder path")).toHaveValue("/work"));
+  expect(document.querySelector('[aria-current="location"]')).toHaveAttribute("title", "/data/notes");
+  await user.click(screen.getByRole("button", { name: "Folder shortcuts" }));
+  await user.click(screen.getByRole("menuitem", { name: /\/work$/ }));
+  await waitFor(() => expect(document.querySelector('[aria-current="location"]')).toHaveAttribute("title", "/work"));
   await user.click(screen.getByRole("button", { name: "Refresh folder" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Back" })).toBeEnabled());
   await user.click(screen.getByRole("button", { name: "Back" }));
-  await waitFor(() => expect(screen.getByLabelText("Host folder path")).toHaveValue("/data/notes"));
+  await waitFor(() => expect(document.querySelector('[aria-current="location"]')).toHaveAttribute("title", "/data/notes"));
   await user.click(screen.getByRole("button", { name: "Back" }));
   await screen.findByRole("button", { name: "a.txt" });
   expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
@@ -271,7 +281,7 @@ it("does not consume Back history when its request fails", async () => {
   mocks.sdk.mockRejectedValueOnce(new Error("Unavailable"));
   await user.click(screen.getByRole("button", { name: "Back" }));
   await screen.findByRole("alert");
-  expect(screen.getByLabelText("Host folder path")).toHaveValue("/data/notes");
+  expect(document.querySelector('[aria-current="location"]')).toHaveAttribute("title", "/data/notes");
   await user.click(screen.getByRole("button", { name: "Retry" }));
   await screen.findByRole("button", { name: "a.txt" });
   expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
@@ -280,9 +290,56 @@ it("does not consume Back history when its request fails", async () => {
 it("reveals the currently viewed file after paging", async () => {
   const user = userEvent.setup();
   render(<Harness />);
-  await user.click(await screen.findByRole("button", { name: "a.txt" }));
+  await screen.findByRole("button", { name: "a.txt" });
+  await user.click(screen.getByRole("button", { name: "Close" }));
+  await user.click(screen.getByRole("button", { name: "Preview from chat" }));
   await user.click(screen.getByRole("button", { name: "Next file" }));
   await user.click(screen.getByRole("button", { name: "Open containing folder" }));
   expect(mocks.openExplorer).toHaveBeenCalledWith("/data/b.txt");
   expect(screen.queryByRole("dialog", { name: "b.txt" })).not.toBeInTheDocument();
+});
+
+it("walks Forward history and clears it only after a successful new destination", async () => {
+  const user = userEvent.setup();
+  render(<Harness />);
+  await user.click(await screen.findByRole("button", { name: "notes" }));
+  await screen.findByRole("button", { name: "child.txt" });
+  await user.click(screen.getByRole("button", { name: "Back" }));
+  await screen.findByRole("button", { name: "a.txt" });
+  await user.click(screen.getByRole("button", { name: "Forward" }));
+  await screen.findByRole("button", { name: "child.txt" });
+  expect(screen.getByRole("button", { name: "Forward" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Back" }));
+  await screen.findByRole("button", { name: "a.txt" });
+  mocks.sdk.mockRejectedValueOnce(new Error("Unavailable"));
+  await user.click(screen.getByRole("button", { name: "Forward" }));
+  await screen.findByRole("alert");
+  expect(screen.getByRole("button", { name: "Forward" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Folder shortcuts" }));
+  await user.click(screen.getByRole("menuitem", { name: /\/work$/ }));
+  await screen.findByRole("button", { name: "child.txt" });
+  expect(screen.getByRole("button", { name: "Forward" })).toBeDisabled();
+});
+
+it("switches between breadcrumbs and the selected path, with Escape cancelling only editing", async () => {
+  const user = userEvent.setup();
+  render(<Harness />);
+  await screen.findByRole("button", { name: "a.txt" });
+  expect(screen.queryByLabelText("Host folder path")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Edit folder path" }));
+  const input = screen.getByLabelText("Host folder path") as HTMLInputElement;
+  expect(input).toHaveValue("/data");
+  expect(input.selectionStart).toBe(0);
+  expect(input.selectionEnd).toBe(5);
+  await user.type(input, "/discarded");
+  await user.keyboard("{Escape}");
+  expect(screen.queryByLabelText("Host folder path")).not.toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "File explorer" })).toBeInTheDocument();
+  expect(document.querySelector('[aria-current="location"]')).toHaveAttribute("title", "/data");
+  await user.click(screen.getByRole("button", { name: "Edit folder path" }));
+  await user.clear(screen.getByLabelText("Host folder path"));
+  await user.type(screen.getByLabelText("Host folder path"), "/work{Enter}");
+  await screen.findByRole("button", { name: "child.txt" });
+  expect(screen.queryByLabelText("Host folder path")).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Search in work" })).toBeInTheDocument();
 });

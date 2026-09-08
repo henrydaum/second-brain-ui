@@ -161,11 +161,11 @@ export const FileViewerDialog: FC = () => {
               the one kind whose immediate answer and asked answer cannot
               differ, so there is nothing to wait for. */}
           <div className="flex min-w-0 items-center gap-3">
-            <TooltipIconButton tooltip="Open containing folder" side="top" className="size-8" onClick={() => {
+            {viewing.source !== "explorer" && <TooltipIconButton tooltip="Open containing folder" side="top" className="size-8" onClick={() => {
               revealing.current = true;
               closeView();
               openExplorer(path);
-            }}><FolderOpenIcon className="size-4" /></TooltipIconButton>
+            }}><FolderOpenIcon className="size-4" /></TooltipIconButton>}
             {guessKind(path) === "markdown" && <MarkdownModePicker />}
             {many && (
               <span className="shrink-0">
