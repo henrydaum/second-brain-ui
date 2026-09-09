@@ -119,19 +119,8 @@
   inset: 0 0 auto;
   z-index: 20;
   pointer-events: none;
-  background: var(--background);
-  box-shadow: none;
-}
-
-/* Keep scrolling text out of the title's contrast area, then dissolve the
- * surface into the conversation. The fade never intercepts chat input. */
-.sb-session-bar::after {
-  content: "";
-  position: absolute;
-  inset: 100% 0 auto;
-  height: 1rem;
   background: linear-gradient(to bottom, var(--background), transparent);
-  pointer-events: none;
+  box-shadow: none;
 }
 
 .sb-session-bar > * {

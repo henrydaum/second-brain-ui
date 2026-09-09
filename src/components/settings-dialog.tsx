@@ -189,7 +189,7 @@ export const SettingsDialogContent: FC<{
   return (
     <div className="grid min-h-0 min-w-0 w-full flex-1 grid-cols-1 overflow-hidden sm:grid-cols-[14rem_minmax(0,1fr)]">
           <nav
-            className="bg-muted/25 hidden min-h-0 flex-col border-r p-3 sm:flex"
+            className="bg-popover hidden min-h-0 flex-col border-r p-3 sm:flex"
             aria-label="Settings sections"
           >
             <div>
