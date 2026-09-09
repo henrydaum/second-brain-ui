@@ -82,8 +82,8 @@
   transition-timing-function: var(--sb-ease);
 }
 
-.sb-control:active:not(:disabled):not([aria-disabled="true"]) {
-  scale: 0.96;
+.sb-control[data-size="icon"]:active:not(:disabled):not([aria-disabled="true"]) {
+  scale: 0.97;
 }
 
 .sb-floating [role^="menuitem"] {
@@ -96,13 +96,14 @@
 
 .sb-composer {
   border-color: color-mix(in srgb, var(--sb-tint) 25%, var(--border));
-  background-image: linear-gradient(145deg, var(--sb-material-sheen), transparent 32%);
+  background-color: var(--composer-bg);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .sb-composer:focus-within {
   border-color: color-mix(in srgb, var(--sb-tint) var(--sb-focus-strength), var(--border));
-  box-shadow: inset 0 1px 0 var(--sb-edge), 0 0 0 3px color-mix(in srgb, var(--sb-tint) var(--sb-focus-halo), transparent), var(--sb-shadow);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sb-tint) var(--sb-focus-halo), transparent);
 }
 
 .sb-composer[data-dragging="true"] {
@@ -170,10 +171,22 @@
   box-shadow: inset 0 1px 0 var(--sb-edge);
 }
 
-/* A brief rim reflection on presses, without filtering text or icons. */
+/* Spectral fringes follow the glyph silhouette, not the button rectangle.
+ * Warm/cool bands soften into one another and settle even on a held press.
+ * This is an optical approximation; the original glyph remains legible. */
+@keyframes sb-spectral-press {
+  0%, 100% { filter: none; }
+  30% {
+    filter: drop-shadow(-0.65px -0.2px 0.2px rgb(255 65 20 / 60%))
+      drop-shadow(-0.35px -0.1px 0.25px rgb(255 210 30 / 45%))
+      drop-shadow(0.65px 0.2px 0.2px rgb(30 80 255 / 60%))
+      drop-shadow(0.35px 0.1px 0.25px rgb(20 220 210 / 45%));
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
-  .sb-control:active:not(:disabled):not([aria-disabled="true"]) {
-    box-shadow: inset 1px 0 0 rgb(175 215 230 / 25%), inset -1px 0 0 rgb(225 195 210 / 22%), inset 0 1px 0 var(--sb-edge);
+  .sb-control:active:not(:disabled):not([aria-disabled="true"]) > svg {
+    animation: sb-spectral-press 240ms ease-out;
   }
 }
 
@@ -224,7 +237,6 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .sb-choice-control:active:not(:has(input:disabled)) {
-    scale: 0.98;
     box-shadow: inset 0 1px 0 var(--sb-edge);
   }
 }
@@ -272,7 +284,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sb-control:active:not(:disabled):not([aria-disabled="true"]) {
+  .sb-control[data-size="icon"]:active:not(:disabled):not([aria-disabled="true"]) {
     scale: none;
   }
 }
