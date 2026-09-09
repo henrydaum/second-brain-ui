@@ -194,7 +194,7 @@ export const FilesDrawer: FC = () => {
       // reachable by tab.
       inert={!visible}
       className={cn(
-        "bg-sidebar flex h-full w-full flex-col overflow-hidden",
+        "sb-panel bg-sidebar flex h-full w-full flex-col overflow-hidden",
         "xl:shrink-0 xl:transition-[width]",
         visible ? "xl:w-96 xl:border-s" : "xl:w-0 xl:border-s-0",
       )}

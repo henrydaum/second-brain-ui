@@ -458,7 +458,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
         // `w-full` below `md`, so the panel fills whatever `SheetContent` gave
         // it — including the `max-w-[85vw]` that keeps a drawer off the edge of
         // a narrow phone, which a fixed `w-64` here would have overrun.
-        "bg-sidebar flex h-full w-full flex-col overflow-hidden border-e",
+        "sb-panel bg-sidebar flex h-full w-full flex-col overflow-hidden border-e",
         // From `md`: an inline rail, transitioning width so collapsing
         // animates rather than sliding the whole panel.
         "md:shrink-0 md:transition-[width]",

@@ -278,7 +278,7 @@ export const Thread: FC = () => {
 
         <ThreadPrimitive.ViewportFooter
           className={cn(
-            "bg-background mx-auto flex w-full max-w-(--thread-max-width) flex-col gap-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-6",
+            "sb-composer-footer mx-auto flex w-full max-w-(--thread-max-width) flex-col gap-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-6",
             !centerComposer &&
               "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
           )}
@@ -342,7 +342,7 @@ const Composer: FC = () => {
   return (
       <ComposerPrimitive.Root className="relative flex w-full flex-col">
         <ComposerPrimitive.AttachmentDropzone asChild>
-          <div className="border-primary/25 data-[dragging=true]:border-ring focus-within:border-primary/60 flex w-full flex-col rounded-(--composer-radius) border bg-(--composer-bg) p-2 data-[dragging=true]:border-dashed">
+          <div className="sb-glass sb-composer border-primary/25 data-[dragging=true]:border-ring focus-within:border-primary/60 flex w-full flex-col rounded-(--composer-radius) border bg-(--composer-bg) p-2 data-[dragging=true]:border-dashed">
             <ComposerAttachments />
             <ComposerPrimitive.Input
               data-slot="chat-composer-input"

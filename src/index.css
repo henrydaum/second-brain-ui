@@ -11,6 +11,116 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Shared material and motion tokens. Opaque surfaces are the baseline; blur
+ * is an enhancement for browsers that support it. Text never gets filtered. */
+:root {
+  --sb-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --sb-edge: rgb(255 255 255 / 75%);
+  --sb-shadow: 0 8px 28px rgb(0 0 0 / 7%), 0 2px 6px rgb(0 0 0 / 3%);
+}
+
+.dark {
+  --sb-edge: rgb(255 255 255 / 12%);
+  --sb-shadow: 0 8px 28px rgb(0 0 0 / 24%), 0 2px 6px rgb(0 0 0 / 12%);
+}
+
+.sb-glass {
+  background-color: var(--popover);
+  background-image: linear-gradient(155deg, var(--sb-edge), transparent 42%);
+  box-shadow: inset 0 1px 0 var(--sb-edge), var(--sb-shadow);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sb-glass {
+    background-color: color-mix(in srgb, var(--popover) 90%, transparent);
+    -webkit-backdrop-filter: blur(18px) saturate(125%);
+    backdrop-filter: blur(18px) saturate(125%);
+  }
+}
+
+.sb-floating {
+  border-radius: 0.875rem;
+  animation-duration: 180ms;
+  animation-timing-function: var(--sb-ease);
+}
+
+.sb-floating[data-state="closed"] {
+  animation-duration: 120ms;
+}
+
+.sb-control {
+  transition-property: color, background-color, border-color, box-shadow, opacity, scale;
+  transition-duration: 140ms;
+  transition-timing-function: var(--sb-ease);
+}
+
+.sb-control:active:not(:disabled):not([aria-disabled="true"]) {
+  scale: 0.96;
+}
+
+.sb-floating [role^="menuitem"] {
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sb-composer-footer {
+  background: linear-gradient(to bottom, transparent, var(--background) 85%);
+}
+
+.sb-composer {
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.sb-composer:focus-within {
+  box-shadow: inset 0 1px 0 var(--sb-edge), 0 0 0 3px color-mix(in srgb, var(--ring) 12%, transparent), var(--sb-shadow);
+}
+
+/* Large reading surfaces stay opaque. A quiet edge highlight adds depth
+ * without stacking expensive backdrop filters over the transcript. */
+.sb-panel,
+.sb-sheet {
+  background-image: linear-gradient(150deg, color-mix(in srgb, var(--foreground) 2%, transparent), transparent 45%);
+  box-shadow: inset -1px 0 0 var(--sb-edge);
+  transition-duration: 220ms;
+  transition-timing-function: var(--sb-ease);
+}
+
+.sb-sheet {
+  animation-duration: 220ms;
+  animation-timing-function: var(--sb-ease);
+}
+
+.sb-sheet[data-state="closed"] {
+  animation-duration: 160ms;
+}
+
+.sb-dialog {
+  box-shadow: inset 0 1px 0 var(--sb-edge), 0 24px 80px rgb(0 0 0 / 20%);
+  animation-duration: 200ms;
+  animation-timing-function: var(--sb-ease);
+}
+
+.sb-dialog[data-state="closed"] {
+  animation-duration: 140ms;
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  .sb-glass {
+    background: var(--popover);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .sb-composer-footer {
+    background: var(--background);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-control:active:not(:disabled):not([aria-disabled="true"]) {
+    scale: none;
+  }
+}
+
 @theme inline {
   --font-sans: ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,

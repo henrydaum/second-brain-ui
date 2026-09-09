@@ -23,6 +23,7 @@ function SheetContent({
       <DialogPrimitive.Content
         data-slot="sheet-content"
         className={cn(
+          "sb-sheet",
           "bg-sidebar fixed inset-y-0 z-50 flex h-dvh flex-col overflow-hidden shadow-xl outline-none data-[state=closed]:duration-150 data-[state=open]:duration-150",
           side === "left"
             ? "start-0 border-e data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left"
