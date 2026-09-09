@@ -157,7 +157,7 @@ export function FileExplorerDialog({ open, onOpenChange, target, onPick, onRetur
         // Picker portals can be launched from a Settings form. Address-bar
         // submission must not bubble into that form and advance its step.
         onSubmit={(event) => event.stopPropagation()}
-        className="flex h-[min(94dvh,54rem)] w-[min(calc(100vw-1rem),70rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+        className="sb-glass sb-glass-sheet flex h-[min(94dvh,54rem)] w-[min(calc(100vw-1rem),70rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
         overlayClassName="bg-black/45 backdrop-blur-[2px]"
         onOpenAutoFocus={(event) => {
           event.preventDefault();

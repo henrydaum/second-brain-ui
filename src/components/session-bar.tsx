@@ -36,7 +36,7 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
   }, []);
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 px-2 sm:px-4">
+    <header className="sb-session-bar flex h-12 shrink-0 items-center gap-2 px-2 sm:px-4">
       {/* Below `md` the sidebar is an off-canvas drawer, so the only way back
           to it is from out here. */}
       <TooltipIconButton
@@ -71,7 +71,7 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
        * phone has no room to spare and the touch floor has already spent it,
        * so down there the padding is the whole of it.
        */}
-      <div className="flex shrink-0 items-center gap-0 pointer-fine:gap-2">
+      <div className="sb-header-controls flex shrink-0 items-center gap-0 pointer-fine:gap-2">
         <span
           className="text-muted-foreground flex shrink-0 items-center gap-2 px-(--header-control-inset) text-xs"
           // The transport's state, announced when it changes: a dropped stream

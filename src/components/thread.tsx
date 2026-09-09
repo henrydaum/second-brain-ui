@@ -222,7 +222,7 @@ export const Thread: FC = () => {
 
   return (
     <ThreadPrimitive.Root
-      className="bg-background @container flex h-full flex-col"
+      className="sb-thread bg-background @container flex h-full flex-col"
       style={{
         ["--thread-max-width" as string]: "44rem",
         ["--composer-bg" as string]:
@@ -329,7 +329,7 @@ const ScrollToBottom: FC = () => (
       // `size` variant would crush the arrow into a 36px button. The variant
       // supplies the border and background now, so the class list only has to
       // say where it floats.
-      className="bg-background absolute -top-12 z-10 size-9 self-center rounded-full shadow-md disabled:invisible"
+      className="sb-glass bg-background absolute -top-12 z-10 size-9 self-center rounded-full shadow-md disabled:invisible"
     >
       <ArrowDownIcon />
     </TooltipIconButton>
@@ -628,7 +628,7 @@ const UserMessage: FC = () => (
   >
     <UserMessageAttachments />
     <div className="col-start-2 min-w-0">
-      <div className="bg-muted text-foreground rounded-xl px-4 py-2 wrap-break-word empty:hidden">
+      <div className="sb-user-message bg-muted text-foreground rounded-xl px-4 py-2 wrap-break-word empty:hidden">
         <MessagePrimitive.Parts components={userMessageComponents} />
       </div>
     </div>

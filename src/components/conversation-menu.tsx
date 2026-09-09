@@ -334,7 +334,7 @@ const NameDialog: FC<{
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sb-glass sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{heading}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
