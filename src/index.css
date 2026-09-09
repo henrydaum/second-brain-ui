@@ -124,7 +124,27 @@
 }
 
 .sb-session-bar > * {
+  position: relative;
+  z-index: 1;
   pointer-events: auto;
+}
+
+/* Mask only the backdrop layer so title and controls stay sharp. */
+.sb-session-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, rgb(0 0 0 / 85%) 40%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 0%, rgb(0 0 0 / 85%) 40%, transparent 100%);
+}
+
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .sb-session-bar::before {
+    display: none;
+  }
 }
 
 .sb-chat-shell [data-slot="chat-viewport"] {
