@@ -20,6 +20,11 @@
   --sb-tint: oklch(0.59 0 0);
   --sb-ambient: oklch(0.93 0 0 / 65%);
   --sb-selection: oklch(0.94 0 0);
+  --sb-material-opacity: 85%;
+  --sb-sheet-opacity: 92%;
+  --sb-material-sheen: rgb(255 255 255 / 60%);
+  --sb-focus-strength: 65%;
+  --sb-focus-halo: 12%;
 }
 
 .dark {
@@ -28,17 +33,22 @@
   --sb-tint: oklch(0.76 0 0);
   --sb-ambient: oklch(0.29 0 0 / 38%);
   --sb-selection: oklch(0.3 0 0);
+  --sb-material-opacity: 94%;
+  --sb-sheet-opacity: 96%;
+  --sb-material-sheen: rgb(255 255 255 / 6%);
+  --sb-focus-strength: 40%;
+  --sb-focus-halo: 5%;
 }
 
 .sb-glass {
   background-color: var(--popover);
-  background-image: linear-gradient(155deg, var(--sb-edge), transparent 42%);
+  background-image: linear-gradient(155deg, var(--sb-material-sheen), transparent 42%);
   box-shadow: inset 0 1px 0 var(--sb-edge), var(--sb-shadow);
 }
 
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .sb-glass {
-    background-color: color-mix(in srgb, var(--popover) var(--sb-glass-opacity, 90%), transparent);
+    background-color: color-mix(in srgb, var(--popover) var(--sb-glass-opacity, var(--sb-material-opacity)), transparent);
     -webkit-backdrop-filter: blur(18px) saturate(125%);
     backdrop-filter: blur(18px) saturate(125%);
   }
@@ -47,7 +57,7 @@
 /* Large task sheets transmit less of the backdrop than compact popovers.
  * Keep this opt-in so approval surfaces remain solid. */
 .sb-glass-sheet {
-  --sb-glass-opacity: 94%;
+  --sb-glass-opacity: var(--sb-sheet-opacity);
 }
 
 @media (max-width: 639px) {
@@ -86,13 +96,13 @@
 
 .sb-composer {
   border-color: color-mix(in srgb, var(--sb-tint) 25%, var(--border));
-  background-image: linear-gradient(145deg, var(--sb-edge), transparent 32%, color-mix(in srgb, var(--sb-tint) 6%, transparent));
+  background-image: linear-gradient(145deg, var(--sb-material-sheen), transparent 32%);
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .sb-composer:focus-within {
-  border-color: color-mix(in srgb, var(--sb-tint) 65%, var(--border));
-  box-shadow: inset 0 1px 0 var(--sb-edge), 0 0 0 3px color-mix(in srgb, var(--sb-tint) 12%, transparent), var(--sb-shadow);
+  border-color: color-mix(in srgb, var(--sb-tint) var(--sb-focus-strength), var(--border));
+  box-shadow: inset 0 1px 0 var(--sb-edge), 0 0 0 3px color-mix(in srgb, var(--sb-tint) var(--sb-focus-halo), transparent), var(--sb-shadow);
 }
 
 .sb-composer[data-dragging="true"] {
