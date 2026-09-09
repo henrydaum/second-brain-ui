@@ -14,6 +14,7 @@ import {
   CommandOutput,
 } from "@/components/command-renderers";
 import { Button } from "@/components/ui/button";
+import { useSurfaceReveal } from "@/components/ui/use-surface-reveal";
 import { FormPathPicker } from "@/components/form-path-picker";
 import { cn, titleCase } from "@/lib/utils";
 import { useApprovals, useSession } from "@/runtime/provider";
@@ -32,6 +33,7 @@ export const CommandPanel: FC = () => {
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [advancing, setAdvancing] = useState(false);
+  const formSurface = useSurfaceReveal<HTMLFormElement>(form);
 
   useEffect(() => {
     if (!form) return;
@@ -127,7 +129,7 @@ export const CommandPanel: FC = () => {
       )}
 
       {!cancelling && display && form && (
-        <form onSubmit={submit} className="space-y-6">
+        <form ref={formSurface} onSubmit={submit} className="sb-step-surface space-y-6" data-pending={advancing || undefined}>
           {/* A fieldset's browser default min-width is its min-content width.
               A wide prompt table would therefore widen the choice grid below
               it unless this boundary explicitly permits shrinking. */}
@@ -160,7 +162,7 @@ export const CommandPanel: FC = () => {
                     <label
                       key={`${index}-${String(choice.value)}`}
                       className={cn(
-                        "has-[:focus-visible]:border-ring has-[:focus-visible]:ring-ring/30 flex min-h-11 min-w-0 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-start transition-colors has-[:focus-visible]:ring-[3px]",
+                        "sb-choice-control has-[:focus-visible]:border-ring has-[:focus-visible]:ring-ring/30 flex min-h-11 min-w-0 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-start transition-colors has-[:focus-visible]:ring-[3px]",
                         selected
                           ? "border-primary bg-primary/5"
                           : "bg-card/60 hover:bg-muted/70",

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { ExplorerAddressBar } from "@/components/explorer-address-bar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { useSurfaceReveal } from "@/components/ui/use-surface-reveal";
 import { FileKindIcon } from "@/components/file-kind-icon";
 import { sdk } from "@/lib/client";
 import { hostBreadcrumbs, mentionPath, parentHostPath, readDirectory, visibleEntries, type DirectoryEntry } from "@/lib/file-explorer";
@@ -40,6 +41,7 @@ export function FileExplorerDialog({ open, onOpenChange, target, onPick, onRetur
   const [failure, setFailure] = useState<string | null>(null);
   const [locationFailure, setLocationFailure] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const directorySurface = useSurfaceReveal<HTMLUListElement>(directory);
   const request = useRef(0);
   const retry = useRef<() => void>(() => {});
   const mentionFocus = useRef(false);
@@ -216,9 +218,9 @@ export function FileExplorerDialog({ open, onOpenChange, target, onPick, onRetur
           {!busy && revealed && directory === parentHostPath(revealed) && !entries.some((entry) => entry.path === revealed) && <p role="status" className="text-muted-foreground p-3 text-sm">The file is no longer in this folder.</p>}
           {busy && <p role="status" className="text-muted-foreground p-3 text-sm">Loading folder…</p>}
           {!busy && directory && shown.length === 0 && <p className="text-muted-foreground p-3 text-sm">{entries.length ? "No matching filenames." : "This folder is empty."}</p>}
-          <ul aria-label="Directory contents" className="space-y-1">
+          <ul ref={directorySurface} aria-label="Directory contents" className="sb-step-surface space-y-1" data-pending={busy || undefined}>
             {shown.map((entry) => <li key={entry.path} data-explorer-path={entry.path} className={cn("hover:bg-accent/50 flex min-w-0 items-center gap-2 rounded-md pe-2", entry.is_dir && "bg-muted/60", entry.path === revealed && "ring-primary/50 ring-2 ring-inset")}>
-              <button type="button" disabled={busy} className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-3 py-3 text-start text-sm focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50" title={entry.path} onClick={(event) => {
+              <button type="button" disabled={busy} className="sb-control flex min-w-0 flex-1 items-center gap-3 rounded-md px-3 py-3 text-start text-sm focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50" title={entry.path} onClick={(event) => {
                 if (entry.is_dir) { void navigate(entry.path); return; }
                 previewButton.current = event.currentTarget;
                 for (const path of paths) { forgetFile(path); forgetThumbnail(path); }

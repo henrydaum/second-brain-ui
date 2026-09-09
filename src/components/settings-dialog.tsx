@@ -13,6 +13,7 @@ import {
   type SettingsPageId,
 } from "@/components/settings-structure";
 import { Button } from "@/components/ui/button";
+import { useSurfaceReveal } from "@/components/ui/use-surface-reveal";
 import type { Command } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 import { useSession, useSettings } from "@/runtime/provider";
@@ -52,7 +53,7 @@ function CommandCard({
       aria-busy={pending || undefined}
       onClick={onRun}
       className={cn(
-        "group bg-card hover:bg-accent/50 focus-visible:ring-ring flex w-full items-start gap-3 rounded-lg border p-3 text-start transition-colors focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50",
+        "sb-control group bg-card hover:bg-accent/50 focus-visible:ring-ring flex w-full items-start gap-3 rounded-lg border p-3 text-start transition-colors focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50",
         featured && "border-primary/40 bg-primary/[0.03] p-4 lg:col-span-2",
       )}
     >
@@ -130,6 +131,7 @@ export const SettingsDialogContent: FC<{
   const [pendingCommand, setPendingCommand] = useState<string | null>(null);
   const activeName = state.form?.name ?? state.command?.name;
   const commandActive = Boolean(activeName);
+  const pageSurface = useSurfaceReveal<HTMLElement>(`${page}:${activeName ?? "catalog"}`);
 
   useEffect(() => {
     if (activeName) {
@@ -198,7 +200,7 @@ export const SettingsDialogContent: FC<{
                   disabled={commandActionPending}
                   onClick={() => navigateTo(id)}
                   className={cn(
-                    "mb-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors disabled:pointer-events-none disabled:opacity-50",
+                    "sb-control mb-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors disabled:pointer-events-none disabled:opacity-50",
                     page === id
                       ? "sb-selected-surface font-medium shadow-sm"
                       : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
@@ -222,7 +224,7 @@ export const SettingsDialogContent: FC<{
             </div>
           </nav>
 
-          <main className="min-w-0 w-full max-w-full overflow-x-hidden overflow-y-auto p-4 sm:p-6">
+          <main ref={pageSurface} className="min-w-0 w-full max-w-full overflow-x-hidden overflow-y-auto p-4 sm:p-6">
             <label className="mb-4 block sm:hidden">
               <span className="sr-only">Settings section</span>
               <select
