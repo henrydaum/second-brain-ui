@@ -214,7 +214,7 @@ export function FileExplorerDialog({ open, onOpenChange, target, onPick, onRetur
         </div>
         <div ref={setListBody} data-slot="explorer-list" onScroll={(event) => {
           if (open && !busy) places.current.set(placeKey, event.currentTarget.scrollTop);
-        }} className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-3" aria-busy={busy}>
+        }} className="bg-popover min-h-0 flex-1 overflow-y-auto p-2 sm:p-3" aria-busy={busy}>
           {!busy && revealed && directory === parentHostPath(revealed) && !entries.some((entry) => entry.path === revealed) && <p role="status" className="text-muted-foreground p-3 text-sm">The file is no longer in this folder.</p>}
           {busy && <p role="status" className="text-muted-foreground p-3 text-sm">Loading folder…</p>}
           {!busy && directory && shown.length === 0 && <p className="text-muted-foreground p-3 text-sm">{entries.length ? "No matching filenames." : "This folder is empty."}</p>}

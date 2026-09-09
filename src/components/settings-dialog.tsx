@@ -224,7 +224,7 @@ export const SettingsDialogContent: FC<{
             </div>
           </nav>
 
-          <main ref={pageSurface} className="min-w-0 w-full max-w-full overflow-x-hidden overflow-y-auto p-4 sm:p-6">
+          <main ref={pageSurface} className="bg-popover min-w-0 w-full max-w-full overflow-x-hidden overflow-y-auto p-4 sm:p-6">
             <label className="mb-4 block sm:hidden">
               <span className="sr-only">Settings section</span>
               <select

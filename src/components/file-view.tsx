@@ -94,7 +94,9 @@ const Frame: FC<{
     tabIndex={scrolls === undefined ? undefined : 0}
     aria-label={scrolls}
     className={cn(
-      "bg-muted/30 flex items-center justify-center overflow-hidden rounded-lg border",
+      "flex items-center justify-center overflow-hidden rounded-lg border",
+      // Documents need a uniform reading surface even inside a glass viewer.
+      scrolls !== undefined ? "bg-popover" : "bg-muted/30",
       scrolls !== undefined &&
         "focus-visible:ring-ring outline-none focus-visible:ring-2",
       className,

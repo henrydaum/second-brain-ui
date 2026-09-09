@@ -106,7 +106,7 @@ export const SettingsDialog: FC<{
 
 const SettingsFallback: FC = () => (
   <div
-    className="text-muted-foreground flex flex-1 items-center justify-center gap-2 text-sm"
+    className="bg-popover text-muted-foreground flex flex-1 items-center justify-center gap-2 text-sm"
     role="status"
   >
     <LoaderCircleIcon className="size-4 animate-spin" />
