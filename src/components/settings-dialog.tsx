@@ -200,8 +200,8 @@ export const SettingsDialogContent: FC<{
                   className={cn(
                     "mb-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors disabled:pointer-events-none disabled:opacity-50",
                     page === id
-                      ? "bg-background font-medium shadow-sm"
-                      : "text-muted-foreground hover:bg-background/70 hover:text-foreground",
+                      ? "sb-selected-surface font-medium shadow-sm"
+                      : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                   )}
                 >
                   <Icon className="size-4" />

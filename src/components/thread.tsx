@@ -222,7 +222,7 @@ export const Thread: FC = () => {
 
   return (
     <ThreadPrimitive.Root
-      className="sb-thread bg-background @container flex h-full flex-col"
+      className="sb-thread @container flex h-full flex-col"
       style={{
         ["--thread-max-width" as string]: "44rem",
         ["--composer-bg" as string]:

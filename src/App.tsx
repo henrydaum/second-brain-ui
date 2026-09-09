@@ -51,7 +51,7 @@ export const App: FC = () => {
           <FileExplorerProvider>
           <div className="flex h-dvh w-full overflow-hidden pt-[env(safe-area-inset-top)]">
             <ConversationSidebar open={navOpen} onOpenChange={setNavOpen} />
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="sb-chat-shell relative flex min-w-0 flex-1 flex-col overflow-hidden">
               <SessionBar onOpenNav={() => setNavOpen(true)} />
               <main className="flex-1 overflow-hidden">
                 <Thread />

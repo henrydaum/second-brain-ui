@@ -76,7 +76,7 @@ export const FileViewerDialog: FC = () => {
   return (
     <Dialog open onOpenChange={(open) => !open && closeView()}>
       <DialogContent
-        className="h-[min(92dvh,52rem)] min-w-0 w-[calc(100vw-1rem)] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-3 sm:w-full sm:max-w-4xl sm:p-4"
+        className="sb-glass sb-glass-sheet h-[min(92dvh,52rem)] min-w-0 w-[calc(100vw-1rem)] max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-3 sm:w-full sm:max-w-4xl sm:p-4"
         overlayClassName="bg-black/50"
         onCloseAutoFocus={(event) => { if (revealing.current) event.preventDefault(); }}
         /**

@@ -163,7 +163,7 @@ export const CommandPanel: FC = () => {
                         "has-[:focus-visible]:border-ring has-[:focus-visible]:ring-ring/30 flex min-h-11 min-w-0 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-start transition-colors has-[:focus-visible]:ring-[3px]",
                         selected
                           ? "border-primary bg-primary/5"
-                          : "bg-background hover:bg-muted/45",
+                          : "bg-card/60 hover:bg-muted/70",
                       )}
                     >
                       <input

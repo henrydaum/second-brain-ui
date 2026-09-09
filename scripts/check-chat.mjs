@@ -46,8 +46,10 @@ try {
     await expect(page.getByRole('status', { name: 'Thinking', exact: true })).toBeVisible();
     const userMessage = page.locator('[data-role="user"]').last();
     await expect.poll(async () => userMessage.evaluate((node) => {
-      const viewport = node.closest('[data-slot="chat-viewport"]');
-      return Math.abs(node.getBoundingClientRect().top - viewport.getBoundingClientRect().top);
+      // The transparent header now overlays the viewport. New turns still
+      // anchor below its controls, at the same screen position as before.
+      const header = document.querySelector('.sb-session-bar');
+      return Math.abs(node.getBoundingClientRect().top + parseFloat(getComputedStyle(node).paddingTop) - header.getBoundingClientRect().bottom);
     })).toBeLessThan(18);
     await emit('stream_delta', { stream_id: 's1', seq: 1, delta: 'First, the gallery.', done: false });
     await emit('attachments', ['/one.png', '/two.png', '/three.png', '/four.png', '/five.png']);
@@ -132,8 +134,8 @@ try {
     await page.waitForTimeout(1000);
     await page.screenshot({ path: `test-results/chat/${mobile ? 'mobile' : 'desktop'}-send-debug.png` });
     await expect.poll(async () => page.locator('[data-role="user"]').last().evaluate((node) => {
-      const viewport = node.closest('[data-slot="chat-viewport"]');
-      return Math.abs(node.getBoundingClientRect().top - viewport.getBoundingClientRect().top);
+      const header = document.querySelector('.sb-session-bar');
+      return Math.abs(node.getBoundingClientRect().top + parseFloat(getComputedStyle(node).paddingTop) - header.getBoundingClientRect().bottom);
     })).toBeLessThan(18);
     await page.screenshot({ path: `test-results/chat/${mobile ? 'mobile' : 'desktop'}-send-anchor.png` });
     await emit('stream_delta', { turn_id: 'interrupted-turn', stream_id: 'before-user', seq: 1, delta: 'Before the interruption.', done: true });
