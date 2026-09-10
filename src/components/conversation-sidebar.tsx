@@ -476,7 +476,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           src="/second-brain-mark.png"
           alt="Second Brain"
           className={cn(
-            "sb-logotype absolute top-2 left-2 size-8 object-contain transition-opacity",
+            "sb-logotype absolute top-3 left-3 size-6 object-contain transition-opacity",
             railCollapsed && "pointer-events-none opacity-0",
           )}
         />
