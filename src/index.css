@@ -191,23 +191,12 @@
   box-shadow: inset 0 1px 0 var(--sb-edge);
 }
 
-/* Spectral fringes follow the glyph silhouette, not the button rectangle.
- * Warm/cool bands soften into one another and settle even on a held press.
- * This is an optical approximation; the original glyph remains legible. */
-@keyframes sb-spectral-press {
-  0%, 100% { filter: none; }
-  30% {
-    filter: drop-shadow(-0.65px -0.2px 0.2px rgb(255 65 20 / 60%))
-      drop-shadow(-0.35px -0.1px 0.25px rgb(255 210 30 / 45%))
-      drop-shadow(0.65px 0.2px 0.2px rgb(30 80 255 / 60%))
-      drop-shadow(0.35px 0.1px 0.25px rgb(20 220 210 / 45%));
-  }
+.sb-logotype {
+  filter: none;
 }
 
-@media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
-  .sb-control:active:not(:disabled):not([aria-disabled="true"]) > svg {
-    animation: sb-spectral-press 240ms ease-out;
-  }
+.dark .sb-logotype {
+  filter: invert(1);
 }
 
 [data-slot="conversation"][data-active="true"] > button:first-child {

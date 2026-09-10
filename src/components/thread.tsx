@@ -251,9 +251,11 @@ export const Thread: FC = () => {
               isLoading && "invisible",
             )}
           >
-            <h1 className="text-primary text-2xl font-semibold">
-              What can I help with?
-            </h1>
+            <img
+              src="/second-brain-logotype.png"
+              alt="Second Brain"
+              className="sb-logotype block h-auto w-full"
+            />
           </div>
         )}
 
