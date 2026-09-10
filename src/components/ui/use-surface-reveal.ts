@@ -1,17 +1,29 @@
 import { useEffect, useRef } from "react";
+import { readMotion } from "@/lib/motion";
 
 /** Animate replacement content in place: no remount, stale interactive copy,
  * or delay before the next screen can accept input. */
 export function useSurfaceReveal<T extends HTMLElement>(identity: unknown) {
   const ref = useRef<T>(null);
+  const interruptedOpacity = useRef<number | null>(null);
   useEffect(() => {
     const element = ref.current;
-    if (!element?.animate || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    if (!element?.animate) return;
+    const motion = readMotion(element, "reveal");
+    if (motion.duration === 0) {
+      interruptedOpacity.current = null;
+      return;
+    }
     const animation = element.animate(
-      [{ opacity: 0.35 }, { opacity: 1 }],
-      { duration: 160, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+      [{ opacity: interruptedOpacity.current ?? 0.8 }, { opacity: 1 }],
+      motion,
     );
-    return () => animation.cancel();
+    interruptedOpacity.current = null;
+    return () => {
+      interruptedOpacity.current = animation.playState === "running"
+        ? Number(getComputedStyle(element).opacity) : null;
+      animation.cancel();
+    };
   }, [identity]);
   return ref;
 }

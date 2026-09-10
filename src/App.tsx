@@ -15,7 +15,6 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { LazyFilesDrawer } from "@/components/lazy-files-drawer";
 import { InputRequestDialog } from "@/components/input-request-dialog";
 import { LazyFileViewerDialog } from "@/components/lazy-file-viewer";
-import { NotificationBanners } from "@/components/notification-banners";
 import { SessionBar } from "@/components/session-bar";
 import { Thread } from "@/components/thread";
 import {
@@ -70,11 +69,7 @@ export const App: FC = () => {
           <InputRequestDialog />
           <FileViewerMount />
 
-          {/* Beside the dialog and for the same reason: a notification is the
-              system speaking to the *session*, and most of them are not about
-              the conversation on screen at all. Fixed-positioned, so where it
-              sits in this tree decides only what it stacks above. */}
-          <NotificationBanners />
+
           </FileExplorerProvider>
         </FileActivityProvider>
       </SecondBrainProvider>

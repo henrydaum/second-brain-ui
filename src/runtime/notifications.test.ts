@@ -2,7 +2,7 @@
  * The two sets, pinned.
  *
  * Every case here is something `docs/NOTIFICATIONS.md` warns will bite an
- * implementation that assumes the banner list and the panel list are two views
+ * implementation that assumes the status queue and the panel list are two views
  * of one list. They are not, and the reducer is pure so that saying so costs a
  * test rather than a browser.
  */
@@ -57,34 +57,34 @@ function run(...actions: NotificationAction[]) {
   return actions.reduce(reduceNotifications, initialNotifications);
 }
 
-describe("the banner set is larger than the panel set", () => {
-  it("banners a transient notification and files nothing", () => {
+describe("the status queue is larger than the panel set", () => {
+  it("queues a transient notification and files nothing", () => {
     // "Compacting conversation…" and overflow recovery arrive with no
     // `notification_id` on purpose: a panel that fills with progress lines is
-    // one nobody reads. The banner is the only surface they ever get, so
-    // filtering the banners to persisted rows would send them nowhere.
+    // one nobody reads. The status line is the only surface they ever get, so
+    // filtering the status queue to persisted rows would send them nowhere.
     const state = run({
       type: "raised",
       notification: frame({ title: "Compacting conversation…", level: "info" }),
       key: "k1",
     });
 
-    expect(state.banners).toHaveLength(1);
+    expect(state.notificationQueue).toHaveLength(1);
     expect(state.rows).toHaveLength(0);
   });
 
-  it("banners and files a persisted one", () => {
+  it("queues and files a persisted one", () => {
     const state = run({
       type: "raised",
       notification: frame({ notification_id: 7 }),
       key: "k1",
     });
 
-    expect(state.banners).toHaveLength(1);
+    expect(state.notificationQueue).toHaveLength(1);
     expect(state.rows.map((one) => one.id)).toEqual([7]);
   });
 
-  it("keys banners on something transient notifications actually have", () => {
+  it("keys queued arrivals independently of persisted IDs", () => {
     // Keying a React list on `notification_id` gives every transient one
     // `key={undefined}`, which collapses them into one entry and then animates
     // the wrong one out.
@@ -93,7 +93,7 @@ describe("the banner set is larger than the panel set", () => {
       { type: "raised", notification: frame(), key: "k2" },
     );
 
-    expect(state.banners.map((one) => one.key)).toEqual(["k2", "k1"]);
+    expect(state.notificationQueue.map((one) => one.key)).toEqual(["k2", "k1"]);
   });
 });
 
@@ -108,9 +108,9 @@ describe("the same notification never lands twice", () => {
     );
 
     expect(state.rows).toHaveLength(1);
-    // Both still bannered: the replay is a duplicate row, but two arrivals are
-    // two arrivals, and the banner list is keyed on its own ids anyway.
-    expect(state.banners).toHaveLength(2);
+    // Both still queued: the replay is a duplicate row, but two arrivals are
+    // two arrivals, and the status queue is keyed on its own ids anyway.
+    expect(state.notificationQueue).toHaveLength(2);
   });
 
   it("merges a frame and the backfill that also carries it", () => {
@@ -179,7 +179,7 @@ describe("what the bell is drawn from", () => {
 
   it("counts nothing for transient notifications", () => {
     // They have no row, so there is nothing to settle and nothing to badge —
-    // the banner already was the whole of their delivery.
+    // the status message already was the whole of their delivery.
     const state = run({ type: "raised", notification: frame(), key: "k1" });
 
     expect(unreadCount(state)).toBe(0);
@@ -220,7 +220,7 @@ describe("an empty panel says which kind of empty", () => {
   });
 });
 
-describe("banners come down", () => {
+describe("status messages expire", () => {
   it("removes one by key", () => {
     const state = run(
       { type: "raised", notification: frame(), key: "k1" },
@@ -228,18 +228,18 @@ describe("banners come down", () => {
       { type: "dismissed", key: "k1" },
     );
 
-    expect(state.banners.map((one) => one.key)).toEqual(["k2"]);
+    expect(state.notificationQueue.map((one) => one.key)).toEqual(["k2"]);
   });
 
-  it("leaves the row behind when a persisted banner is dismissed", () => {
-    // Dismissing the banner is not settling the notification. The panel is
+  it("leaves the row behind when a persisted status message expires", () => {
+    // Expiring the status message is not settling the notification. The panel is
     // where it lives afterwards, and the unread dot should still be up.
     const state = run(
       { type: "raised", notification: frame({ notification_id: 7 }), key: "k1" },
       { type: "dismissed", key: "k1" },
     );
 
-    expect(state.banners).toHaveLength(0);
+    expect(state.notificationQueue).toHaveLength(0);
     expect(unreadCount(state)).toBe(1);
   });
 });

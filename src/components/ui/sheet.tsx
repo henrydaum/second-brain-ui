@@ -19,12 +19,12 @@ function SheetContent({
 }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-40 bg-black/50" />
+      <DialogPrimitive.Overlay className="data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 sb-overlay fixed inset-0 z-40" />
       <DialogPrimitive.Content
         data-slot="sheet-content"
         className={cn(
           "sb-sheet",
-          "bg-sidebar fixed inset-y-0 z-50 flex h-dvh flex-col overflow-hidden shadow-xl outline-none data-[state=closed]:duration-150 data-[state=open]:duration-150",
+          "bg-sidebar fixed inset-y-0 z-50 flex h-dvh flex-col overflow-hidden shadow-xl outline-none",
           side === "left"
             ? "start-0 border-e data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left"
             : "end-0 border-s data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",

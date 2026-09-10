@@ -22,16 +22,8 @@ type SettingsCommandGate = (
   action: () => void | Promise<void>,
 ) => Promise<boolean>;
 
-/**
- * One command, as a card.
- *
- * `featured` is the same card given the width of the grid and a tint, for the
- * one command on a page that is not a peer of the others — see
- * `FEATURED_COMMANDS`. Everything else about it is deliberately identical:
- * a card that behaved differently as well as looking different would be a
- * second component pretending to be this one.
- */
-function CommandCard({
+/** Related commands share one surface and a consistent row layout. */
+function CommandRow({
   command,
   onRun,
   disabled,
@@ -53,17 +45,17 @@ function CommandCard({
       aria-busy={pending || undefined}
       onClick={onRun}
       className={cn(
-        "sb-control group bg-card hover:bg-accent/50 focus-visible:ring-ring flex w-full items-start gap-3 rounded-lg border p-3 text-start transition-colors focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50",
-        featured && "border-primary/40 bg-primary/[0.03] p-4 lg:col-span-2",
+        "sb-control sb-row group flex w-full items-start gap-3 p-4 text-start disabled:pointer-events-none disabled:opacity-50",
+        featured && "bg-muted/30",
       )}
     >
       <span
         className={cn(
           "bg-muted text-muted-foreground group-hover:text-foreground flex size-8 shrink-0 items-center justify-center rounded-md transition-colors",
-          featured && "bg-primary/10 text-primary size-10",
+          featured && "text-primary",
         )}
       >
-        <Icon className={cn("size-4.5", featured && "size-5")} />
+        <Icon className="size-4" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">{presentation.title}</span>
@@ -200,7 +192,7 @@ export const SettingsDialogContent: FC<{
                   disabled={commandActionPending}
                   onClick={() => navigateTo(id)}
                   className={cn(
-                    "sb-control mb-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors disabled:pointer-events-none disabled:opacity-50",
+                    "sb-control mb-1 flex w-full items-center gap-2.5 px-3 py-2 text-sm disabled:pointer-events-none disabled:opacity-50",
                     page === id
                       ? "sb-selected-surface font-medium shadow-sm"
                       : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
@@ -291,9 +283,9 @@ export const SettingsDialogContent: FC<{
                   : "No commands are available in this section."}
               </div>
             ) : (
-              <div className="grid gap-3 lg:grid-cols-2">
+              <div className="sb-settings-group">
                 {visibleCommands.map((command) => (
-                  <CommandCard
+                  <CommandRow
                     key={command.name}
                     command={command}
                     featured={FEATURED_COMMANDS.has(command.name)}

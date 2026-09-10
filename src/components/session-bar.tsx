@@ -9,6 +9,7 @@
  */
 
 import { useEffect, type FC } from "react";
+import { useAuiState } from "@assistant-ui/react";
 import { FilesIcon, PanelLeftOpenIcon, XIcon } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -27,6 +28,7 @@ const LABELS = {
 
 export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
   const { status } = useSession();
+  const hasMessages = useAuiState((s) => s.thread.messages.length > 0);
   const { filesOpen, setFilesOpen, total } = useFileActivity();
   const label = LABELS[status];
 
@@ -36,7 +38,7 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
   }, []);
 
   return (
-    <header className="sb-session-bar flex h-12 shrink-0 items-center gap-2 px-2 sm:px-4">
+    <header data-populated={hasMessages} className="sb-session-bar flex h-12 shrink-0 items-center gap-2 px-2 sm:px-4">
       {/* Below `md` the sidebar is an off-canvas drawer, so the only way back
           to it is from out here. */}
       <TooltipIconButton
@@ -106,7 +108,7 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
           <TooltipIconButton
           tooltip={filesOpen ? "Hide files" : "Show files"}
           side="bottom"
-          className="relative size-8 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-2 motion-safe:duration-200"
+          className="relative size-8 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-2 motion-safe:duration-(--sb-motion-enter)"
           aria-expanded={filesOpen}
           onPointerEnter={preloadFilesDrawer}
           onFocus={preloadFilesDrawer}

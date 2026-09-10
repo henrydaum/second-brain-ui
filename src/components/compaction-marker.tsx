@@ -139,7 +139,7 @@ export const CompactionRule: FC = () => {
             width="100%"
             // `block`, or the svg sits on a text baseline and carries a strip
             // of descender space under a rule that is ten pixels tall.
-            className="text-muted-foreground/40 group-hover:text-muted-foreground block w-full transition-colors duration-200"
+            className="text-muted-foreground/40 group-hover:text-muted-foreground block w-full transition-colors duration-(--sb-motion-enter)"
           >
             <defs>
               <pattern
@@ -184,7 +184,7 @@ export const CompactionMarker: FC = () => {
   return (
     <MessagePrimitive.Root
       data-role="system"
-      className="fade-in animate-in mx-auto w-full max-w-(--thread-max-width) px-2 duration-150"
+      className="fade-in animate-in mx-auto w-full max-w-(--thread-max-width) px-2 duration-(--sb-motion-reveal)"
     >
       <CompactionRule />
     </MessagePrimitive.Root>

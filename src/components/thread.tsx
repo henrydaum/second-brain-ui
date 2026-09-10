@@ -1,4 +1,4 @@
-﻿/**
+/**
  * The chat window.
  *
  * Structurally this is the assistant-ui starter template, with everything the
@@ -13,6 +13,7 @@
  * nothing here is passed any props about the conversation.
  */
 
+import { NotificationStatus } from "@/components/notification-status";
 import {
   useCallback,
   useEffect,
@@ -281,7 +282,7 @@ export const Thread: FC = () => {
 
         <ThreadPrimitive.ViewportFooter
           className={cn(
-            "sb-composer-footer mx-auto flex w-full max-w-(--thread-max-width) flex-col gap-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-6",
+            "sb-composer-footer mx-auto flex w-full max-w-(--thread-max-width) flex-col gap-3 [--composer-bottom-space:max(1rem,env(safe-area-inset-bottom))] pb-(--composer-bottom-space) md:[--composer-bottom-space:1.5rem]",
             !centerComposer &&
               "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
           )}
@@ -289,7 +290,10 @@ export const Thread: FC = () => {
           <ScrollToBottom />
           <Suggestions />
           <ErrorBanner />
-          <Composer />
+          <div className="relative min-w-0">
+            <Composer />
+            <NotificationStatus />
+          </div>
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
 
@@ -556,7 +560,7 @@ const AssistantMessageFooter: FC = () => {
     >
       <div
         className={cn(
-          "flex items-center gap-2 transition-opacity duration-150",
+          "flex items-center gap-2 transition-opacity duration-(--sb-motion-reveal)",
           visible ? "opacity-100" : "pointer-events-none opacity-0",
           // Keyboard users get it back, since an invisible control is still in
           // the tab order and focusing it has to show what was focused.
@@ -627,7 +631,7 @@ const MessageTime: FC = () => {
 const UserMessage: FC = () => (
   <MessagePrimitive.Root
     data-role="user"
-    className="fade-in animate-in mx-auto grid w-full max-w-(--thread-max-width) auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 px-2 duration-150 [&:where(>*)]:col-start-2"
+    className="fade-in animate-in mx-auto grid w-full max-w-(--thread-max-width) auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] gap-y-2 px-2 duration-(--sb-motion-reveal) [&:where(>*)]:col-start-2"
   >
     <UserMessageAttachments />
     <div className="col-start-2 min-w-0">

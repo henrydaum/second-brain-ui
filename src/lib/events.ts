@@ -246,8 +246,8 @@ export type NotificationPayload = {
    *
    * Transient progress ("Compacting conversation…", overflow recovery) is
    * delivered and deliberately never stored, because a panel that fills with
-   * progress lines is one nobody reads. So the set that banners is strictly
-   * larger than the set in the panel, and this field is what tells them apart.
+   * progress lines is one nobody reads. Live status messages can include
+   * transient updates absent from the panel; this field tells them apart.
    */
   notification_id?: number;
 };

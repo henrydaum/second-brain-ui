@@ -6,89 +6,11 @@
  * popovers, tooltips, message entrances and tool-group expansion silently
  * un-animated — the classes were there, the definitions were not. */
 @import "tw-animate-css";
+@import "./styles/design-system.css";
 
 /* ReplyActivity owns the single conversation-level activity animation. */
 
 @custom-variant dark (&:is(.dark *));
-
-/* Shared material and motion tokens. Opaque surfaces are the baseline; blur
- * is an enhancement for browsers that support it. Text never gets filtered. */
-:root {
-  --sb-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --sb-edge: rgb(255 255 255 / 75%);
-  --sb-shadow: 0 8px 28px rgb(0 0 0 / 7%), 0 2px 6px rgb(0 0 0 / 3%);
-  --sb-tint: oklch(0.59 0 0);
-  --sb-ambient: oklch(0.93 0 0 / 65%);
-  --sb-selection: oklch(0.94 0 0);
-  --sb-material-opacity: 85%;
-  --sb-sheet-opacity: 92%;
-  --sb-material-sheen: rgb(255 255 255 / 60%);
-  --sb-focus-strength: 65%;
-  --sb-focus-halo: 12%;
-}
-
-.dark {
-  --sb-edge: rgb(255 255 255 / 12%);
-  --sb-shadow: 0 8px 28px rgb(0 0 0 / 24%), 0 2px 6px rgb(0 0 0 / 12%);
-  --sb-tint: oklch(0.76 0 0);
-  --sb-ambient: oklch(0.29 0 0 / 38%);
-  --sb-selection: oklch(0.3 0 0);
-  --sb-material-opacity: 94%;
-  --sb-sheet-opacity: 96%;
-  --sb-material-sheen: rgb(255 255 255 / 6%);
-  --sb-focus-strength: 40%;
-  --sb-focus-halo: 5%;
-}
-
-.sb-glass {
-  background-color: var(--popover);
-  background-image: linear-gradient(155deg, var(--sb-material-sheen), transparent 42%);
-  box-shadow: inset 0 1px 0 var(--sb-edge), var(--sb-shadow);
-}
-
-@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .sb-glass {
-    background-color: color-mix(in srgb, var(--popover) var(--sb-glass-opacity, var(--sb-material-opacity)), transparent);
-    -webkit-backdrop-filter: blur(18px) saturate(125%);
-    backdrop-filter: blur(18px) saturate(125%);
-  }
-}
-
-/* Large task sheets transmit less of the backdrop than compact popovers.
- * Keep this opt-in so approval surfaces remain solid. */
-.sb-glass-sheet {
-  --sb-glass-opacity: var(--sb-sheet-opacity);
-}
-
-@media (max-width: 639px) {
-  .sb-glass-sheet {
-    --sb-glass-opacity: 98%;
-  }
-}
-
-.sb-floating {
-  border-radius: 0.875rem;
-  animation-duration: 180ms;
-  animation-timing-function: var(--sb-ease);
-}
-
-.sb-floating[data-state="closed"] {
-  animation-duration: 120ms;
-}
-
-.sb-control {
-  transition-property: color, background-color, border-color, box-shadow, opacity, scale;
-  transition-duration: 140ms;
-  transition-timing-function: var(--sb-ease);
-}
-
-.sb-control[data-size="icon"]:active:not(:disabled):not([aria-disabled="true"]) {
-  scale: 0.97;
-}
-
-.sb-floating [role^="menuitem"] {
-  transition: background-color 120ms ease, color 120ms ease;
-}
 
 .sb-composer-footer {
   background: linear-gradient(to bottom, transparent, var(--background) 85%);
@@ -97,8 +19,8 @@
 .sb-composer {
   border-color: color-mix(in srgb, var(--sb-tint) 25%, var(--border));
   background-color: var(--composer-bg);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  box-shadow: var(--sb-shadow-subtle);
+  transition: border-color var(--sb-motion-control) var(--sb-ease), box-shadow var(--sb-motion-control) var(--sb-ease);
 }
 
 .sb-composer:focus-within {
@@ -129,16 +51,26 @@
   pointer-events: auto;
 }
 
-/* Mask only the backdrop layer so title and controls stay sharp. */
+/* Keep the empty hero untinted so its ambient gradient stays continuous.
+ * Populated conversations add contrast behind the sharp title and controls. */
 .sb-session-bar::before {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  -webkit-mask-image: linear-gradient(to bottom, black 0%, rgb(0 0 0 / 85%) 40%, transparent 100%);
-  mask-image: linear-gradient(to bottom, black 0%, rgb(0 0 0 / 85%) 40%, transparent 100%);
+  background-color: color-mix(in srgb, var(--background) 0%, transparent);
+  -webkit-backdrop-filter: blur(var(--sb-header-blur));
+  backdrop-filter: blur(var(--sb-header-blur));
+}
+
+.sb-session-bar[data-populated="true"]::before {
+  background-color: color-mix(in srgb, var(--background) var(--sb-header-opacity), transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sb-session-bar::before {
+    transition: background-color var(--sb-motion-enter) var(--sb-ease);
+  }
 }
 
 @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
@@ -161,34 +93,22 @@
 }
 
 .sb-header-controls {
-  border-radius: 999px;
+  border-radius: var(--sb-radius-pill);
   background: color-mix(in srgb, var(--muted) 65%, transparent);
   box-shadow: inset 0 1px 0 var(--sb-edge), 0 1px 3px rgb(0 0 0 / 5%);
 }
 
 .sb-session-bar .sb-control {
-  border-radius: 999px;
-}
-
-.sb-control[data-state="open"],
-.sb-control[aria-expanded="true"] {
-  background-color: var(--sb-selection);
-  box-shadow: inset 0 1px 0 var(--sb-edge);
+  border-radius: var(--sb-radius-pill);
 }
 
 [data-slot="conversation"] {
-  border-radius: 0.75rem;
-  transition: background-color 160ms ease, box-shadow 160ms ease;
+  border-radius: var(--sb-radius-row);
+  transition: background-color var(--sb-motion-control) var(--sb-ease);
 }
 
 [data-slot="conversation"][data-active="true"] {
-  background: linear-gradient(145deg, var(--sb-edge), transparent 60%), var(--sb-selection);
-  box-shadow: inset 0 1px 0 var(--sb-edge), inset 0 0 0 1px color-mix(in srgb, var(--foreground) 7%, transparent), 0 2px 6px rgb(0 0 0 / 4%);
-}
-
-.sb-selected-surface {
   background: var(--sb-selection);
-  box-shadow: inset 0 1px 0 var(--sb-edge);
 }
 
 .sb-logotype {
@@ -204,26 +124,8 @@
 }
 
 .sb-user-message {
-  border-radius: 1.125rem;
+  border-radius: var(--sb-radius-message);
   background: color-mix(in srgb, var(--muted) 85%, var(--sb-selection));
-  box-shadow: inset 0 1px 0 var(--sb-edge), 0 2px 8px rgb(0 0 0 / 3%);
-}
-
-[data-slot="tooltip-content"] {
-  border-radius: 0.625rem;
-  box-shadow: var(--sb-shadow);
-  animation-duration: 140ms;
-  animation-timing-function: var(--sb-ease);
-}
-
-/* Large reading surfaces stay opaque. A quiet edge highlight adds depth
- * without stacking expensive backdrop filters over the transcript. */
-.sb-panel,
-.sb-sheet {
-  background-image: radial-gradient(ellipse at 0% 0%, var(--sb-ambient), transparent 65%), linear-gradient(150deg, color-mix(in srgb, var(--foreground) 2%, transparent), transparent 45%);
-  box-shadow: inset -1px 0 0 var(--sb-edge);
-  transition-duration: 220ms;
-  transition-timing-function: var(--sb-ease);
 }
 
 /* One divider, like the sidebar footer, rather than a border plus highlight. */
@@ -231,51 +133,17 @@
   box-shadow: none;
 }
 
-.sb-step-surface {
-  opacity: 1;
-  transition: opacity 100ms ease-out;
+.sb-settings-group {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--sb-radius-surface);
+  background: var(--card);
 }
-
-.sb-step-surface[data-pending="true"] {
-  opacity: 0.65;
-}
-
-.sb-choice-control {
-  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, scale 140ms var(--sb-ease);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .sb-choice-control:active:not(:has(input:disabled)) {
-    box-shadow: inset 0 1px 0 var(--sb-edge);
-  }
-}
-
-.sb-sheet {
-  animation-duration: 220ms;
-  animation-timing-function: var(--sb-ease);
-}
-
-.sb-sheet[data-state="closed"] {
-  animation-duration: 160ms;
-}
-
-.sb-dialog {
-  box-shadow: inset 0 1px 0 var(--sb-edge), 0 24px 80px rgb(0 0 0 / 20%);
-  animation-duration: 200ms;
-  animation-timing-function: var(--sb-ease);
-}
-
-.sb-dialog[data-state="closed"] {
-  animation-duration: 140ms;
-}
+.sb-settings-group > .sb-row { border-radius: 0; }
+.sb-settings-group > .sb-row + .sb-row { border-top: 1px solid var(--border); }
+.sb-settings-group > .sb-row:focus-visible { outline-offset: -3px; }
 
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
-  .sb-glass {
-    background: var(--popover);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-
   .sb-composer-footer {
     background: var(--background);
   }
@@ -290,137 +158,6 @@
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sb-control[data-size="icon"]:active:not(:disabled):not([aria-disabled="true"]) {
-    scale: none;
-  }
-}
-
-@theme inline {
-  --font-sans: ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
-
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-
-  /* Shared chrome dimensions. Keeping these here prevents every compact
-   * surface from inventing a slightly different icon-button or header size. */
-  --spacing-control-sm: 2rem;
-  --spacing-control-md: 2.25rem;
-  --spacing-touch: 2.75rem;
-
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-caution: var(--caution);
-  --color-notice: var(--notice);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-}
-
-:root {
-  /* Native scrollbars, form controls and the canvas behind the app follow the
-   * palette. Without it a dark page keeps white scrollbars and white select
-   * dropdowns, which is the detail that makes a theme look half-applied. */
-  color-scheme: light;
-
-  --radius: 0.625rem;
-
-  /* Half the transparent margin an icon button leaves around its 16px glyph.
-   * The header pads its connection indicator by exactly this, so the run of
-   * status → bell → files is spaced by one rhythm rather than by a `gap` that
-   * only two of the three contribute padding to. Derived from the button box
-   * rather than typed out, because the coarse-pointer floor below changes that
-   * box and the two must not disagree. */
-  --header-control-inset: calc((var(--spacing-control-sm) - 1rem) / 2);
-
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --caution: oklch(0.632 0.194 44);
-  --notice: oklch(0.641 0.152 74);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  color-scheme: dark;
-
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --caution: oklch(0.783 0.163 48);
-  --notice: oklch(0.859 0.187 88);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
 }
 
 @layer components {
@@ -1004,4 +741,20 @@
       animation: none;
     }
   }
+}
+
+/* The status sits in existing footer padding without adding layout height. */
+.sb-notification-status {
+  opacity: 1;
+  transition: opacity var(--sb-motion-fast) var(--sb-ease);
+  animation: sb-notification-enter var(--sb-motion-enter) var(--sb-ease);
+}
+.sb-notification-status[data-closing="true"] { opacity: 0; }
+@keyframes sb-notification-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.sb-notification-line {
+  color: color-mix(in srgb, var(--foreground) 78%, var(--background));
 }

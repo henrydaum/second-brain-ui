@@ -83,7 +83,7 @@ function stub(over: Partial<provider.SecondBrain>) {
   };
   const value = {
     notifications: [],
-    banners: [],
+    notificationQueue: [],
     unread: 0,
     notificationsFailure: null,
     notificationsOpen: true,
@@ -96,11 +96,11 @@ function stub(over: Partial<provider.SecondBrain>) {
     ...over,
   } as unknown as provider.SecondBrain;
   vi.spyOn(provider, "useNotifications").mockReturnValue({
-    banners: value.banners,
+    notificationQueue: value.notificationQueue,
     notifications: value.notifications,
     unread: value.unread,
     notificationsFailure: value.notificationsFailure,
-    dismissBanner: value.dismissBanner,
+    dismissQueuedNotification: value.dismissQueuedNotification,
     markNotificationsRead: value.markNotificationsRead,
     notificationsOpen: value.notificationsOpen,
     setNotificationsOpen: value.setNotificationsOpen,

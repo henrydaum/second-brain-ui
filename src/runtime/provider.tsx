@@ -91,7 +91,7 @@ import {
   initialNotifications,
   reduceNotifications,
   unreadCount,
-  type Banner,
+  type QueuedNotification,
 } from "@/runtime/notifications";
 import {
   initialState,
@@ -320,8 +320,8 @@ export type SecondBrain = {
   /**
    * What the system has told you.
    *
-   * **`banners` and `notifications` are two sets, not two views of one.**
-   * Transient progress banners and is never stored, so it is in the first and
+   * **`notificationQueue` and `notifications` are two sets, not two views of one.**
+   * Transient progress enters the queue but is never stored, so it is in the first and
    * not the second; anything from before this page connected is in the second
    * and never was in the first. See `runtime/notifications.ts`.
    *
@@ -329,7 +329,7 @@ export type SecondBrain = {
    * notification belongs to the session, and most of them are not about the open
    * conversation at all.
    */
-  banners: Banner[];
+  notificationQueue: QueuedNotification[];
   /** The persisted ones, newest first. Backfilled on boot, kept current by the
    *  stream. */
   notifications: Notification[];
@@ -337,8 +337,8 @@ export type SecondBrain = {
   unread: number;
   /** Why the panel is empty, when the reason is not "nothing happened". */
   notificationsFailure: string | null;
-  /** Take one banner down. */
-  dismissBanner: (key: string) => void;
+  /** Remove a completed status message without marking its notification read. */
+  dismissQueuedNotification: (key: string) => void;
   /** Settle everything held. What opening the panel does. */
   markNotificationsRead: () => Promise<void>;
   notificationsOpen: boolean;
@@ -434,11 +434,11 @@ type ApprovalDomain = Pick<
 >;
 type NotificationDomain = Pick<
   SecondBrain,
-  | "banners"
+  | "notificationQueue"
   | "notifications"
   | "unread"
   | "notificationsFailure"
-  | "dismissBanner"
+  | "dismissQueuedNotification"
   | "markNotificationsRead"
   | "notificationsOpen"
   | "setNotificationsOpen"
@@ -1019,7 +1019,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
       // Said in the panel rather than the error banner, for the reason
       // `FileActivityProvider` gives about `ledger.read`: a kernel without the
       // Request would otherwise raise a banner on every boot, about a surface
-      // that may never be opened. The banners still work either way — they come
+      // that may never be opened. The status messages still work either way — they come
       // off the stream and owe this call nothing.
       notifyDispatch({
         type: "failed",
@@ -1072,7 +1072,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     }
   }, [notifications]);
 
-  const dismissBanner = useCallback((key: string) => {
+  const dismissQueuedNotification = useCallback((key: string) => {
     notifyDispatch({ type: "dismissed", key });
   }, []);
 
@@ -2119,18 +2119,18 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   );
   const notificationValue = useMemo<NotificationDomain>(
     () => ({
-      banners: notifications.banners,
+      notificationQueue: notifications.notificationQueue,
       notifications: notifications.rows,
       unread: unreadCount(notifications),
       notificationsFailure: notifications.failure,
-      dismissBanner,
+      dismissQueuedNotification,
       markNotificationsRead,
       notificationsOpen,
       setNotificationsOpen,
     }),
     [
       notifications,
-      dismissBanner,
+      dismissQueuedNotification,
       markNotificationsRead,
       notificationsOpen,
     ],

@@ -131,7 +131,7 @@ export const InputRequestDialog: FC = () => {
         <DialogClose
           disabled={answering}
           title="Cancel this request"
-          className="ring-offset-background focus:ring-ring absolute end-3 top-3 flex size-8 items-center justify-center rounded-md opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none sm:end-4 sm:top-4 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:pointer-events-none"
+          className="sb-control hover:bg-accent absolute end-3 top-3 flex size-8 items-center justify-center text-muted-foreground hover:text-foreground outline-none disabled:pointer-events-none sm:end-4 sm:top-4 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:pointer-events-none"
         >
           <XIcon />
           <span className="sr-only">Cancel this request</span>

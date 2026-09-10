@@ -162,7 +162,7 @@ export const CommandPanel: FC = () => {
                     <label
                       key={`${index}-${String(choice.value)}`}
                       className={cn(
-                        "sb-choice-control has-[:focus-visible]:border-ring has-[:focus-visible]:ring-ring/30 flex min-h-11 min-w-0 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-start transition-colors has-[:focus-visible]:ring-[3px]",
+                        "sb-choice-control has-[:focus-visible]:border-ring flex min-h-11 min-w-0 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-start has-[:focus-visible]:ring-[3px]",
                         selected
                           ? "border-primary bg-primary/5"
                           : "bg-card/60 hover:bg-muted/70",

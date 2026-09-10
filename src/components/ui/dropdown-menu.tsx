@@ -49,7 +49,7 @@ function DropdownMenuContent({
         sideOffset={sideOffset}
         className={cn(
           "sb-glass sb-floating",
-          "bg-popover text-popover-foreground data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 z-50 min-w-40 origin-(--radix-dropdown-menu-content-transform-origin) rounded-lg border p-1.5 shadow-md outline-none",
+          "bg-popover text-popover-foreground data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.98] data-[state=open]:zoom-in-[0.98] z-50 min-w-40 origin-(--radix-dropdown-menu-content-transform-origin) border p-1.5 outline-none",
           className,
         )}
         {...props}

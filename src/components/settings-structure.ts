@@ -105,14 +105,7 @@ const PAGE_COMMANDS: Record<SettingsPageId, readonly string[]> = {
   additional: [],
 };
 
-/**
- * The load-bearing command on its page, given the full-width card.
- *
- * `/config` is the way into every setting that has no control of its own, which
- * makes it a different kind of thing from the seven beside it — and it read as
- * one of eight identical boxes. It is first in `kernel` above, so the card
- * lands on top without the dialog having to arrange anything.
- */
+/** Primary commands receive a subtle fill within their settings group. */
 export const FEATURED_COMMANDS: ReadonlySet<string> = new Set(["config"]);
 
 export const SYSTEM_ACTIONS = [

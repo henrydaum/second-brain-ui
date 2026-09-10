@@ -1,62 +1,39 @@
 /**
- * What the system has told you, and what it is telling you right now.
+ * Session-wide notifications have two independent collections:
+ * - notificationQueue holds live arrivals until their status-line display ends.
+ *   It includes transient updates that have no persisted notification ID.
+ * - rows holds persisted notifications, including history fetched on connection.
  *
- * **Deliberately not part of the conversation store**, for the reason
- * `runtime/input-requests.ts` opens with: a notification belongs to the
- * *session*, not to the conversation it happened during. Most of them are not
- * about the open conversation at all — a plugin registering is about the
- * install, and a scheduled agent's report is about a background session with no
- * frontend attached. Routing them through the store would mean a `{type:
- * "history"}` — a cold boot, a conversation switch, a refetch — silently
- * discarded them along with the scrollback.
- *
- * ## Two sets, not two views of one set
- *
- * This is the thing most likely to be got wrong, so it is the shape of the
- * state rather than a rule to remember:
- *
- * - **`banners`** is everything that arrived while you were watching. Transient
- *   progress ("Compacting conversation…") is delivered and deliberately never
- *   stored, because a panel that fills with progress lines is one nobody reads.
- * - **`rows`** is what has a row in the table — the ones with a
- *   `notification_id`, plus whatever the backfill read back from before this
- *   client was connected.
- *
- * So `banners ⊋ rows` in general, and neither is derivable from the other.
+ * The queue is stored newest first and displayed oldest first, one at a time.
+ * Every severity expires from the status line. Expiration does not remove a
+ * persisted row or mark it read; the popup and unread dot own that behavior.
+ * Neither collection is reset when the user switches conversations.
  */
 
 import type { NotificationPayload } from "@/lib/events";
 import { isUnread, rowFromFrame, type Notification } from "@/lib/notifications";
 
-/**
- * One live banner.
- *
- * **`key` is generated here and is never `notification_id`.** Transient
- * notifications have no id, so keying a React list on that field gives every
- * one of them `key={undefined}` — which collapses them into one and then
- * animates the wrong one out. The row id rides along separately for the cases
- * that want it.
- */
-export type Banner = {
+/** A queued arrival has its own key because transient updates have no row ID. */
+export type QueuedNotification = {
   key: string;
   notification: NotificationPayload;
 };
 
 export type NotificationState = {
-  /** Newest first, so the stack renders nearest-the-corner first. */
-  banners: Banner[];
+  /** Newest first in storage; the status line consumes from the end. */
+  notificationQueue: QueuedNotification[];
   /** Newest first, matching the order `notification.list` returns. */
   rows: Notification[];
   /** Why the panel is empty, when the reason is not "nothing happened". Said in
    *  the panel rather than the error banner, for the reason
    *  `FileActivityProvider` gives about a missing `ledger.read`: a kernel
-   *  without the Request would otherwise raise a banner on every boot, about a
+   *  without the Request would otherwise raise an error banner on every boot, about a
    *  surface you may never open. */
   failure: string | null;
 };
 
 export const initialNotifications: NotificationState = {
-  banners: [],
+  notificationQueue: [],
   rows: [],
   failure: null,
 };
@@ -64,7 +41,7 @@ export const initialNotifications: NotificationState = {
 export type NotificationAction =
   /** A `notification` frame off the event stream. */
   | { type: "raised"; notification: NotificationPayload; key: string }
-  /** One banner leaving, whether by the close button or its own timer. */
+  /** Remove a queued status message after its display and fade complete. */
   | { type: "dismissed"; key: string }
   /** Rows from `notification.list`: the opening read, or a reconnect top-up. */
   | { type: "backfilled"; rows: Notification[] }
@@ -81,18 +58,18 @@ export function reduceNotifications(
 ): NotificationState {
   switch (action.type) {
     case "raised": {
-      const banner: Banner = { key: action.key, notification: action.notification };
-      const banners = [banner, ...state.banners];
+      const queuedNotification: QueuedNotification = { key: action.key, notification: action.notification };
+      const notificationQueue = [queuedNotification, ...state.notificationQueue];
 
       // **Only the persisted ones reach the panel.** The check is here rather
       // than at the call site so there is one place that knows the two sets
       // differ, and it is the place that holds both.
       const id = action.notification.notification_id;
-      if (id === undefined) return { ...state, banners };
+      if (id === undefined) return { ...state, notificationQueue };
 
       return {
         ...state,
-        banners,
+        notificationQueue,
         rows: merge(state.rows, [rowFromFrame(action.notification, id)]),
       };
     }
@@ -100,7 +77,7 @@ export function reduceNotifications(
     case "dismissed":
       return {
         ...state,
-        banners: state.banners.filter((banner) => banner.key !== action.key),
+        notificationQueue: state.notificationQueue.filter((queuedNotification) => queuedNotification.key !== action.key),
       };
 
     case "backfilled":
