@@ -254,7 +254,8 @@ export const Thread: FC = () => {
             <img
               src="/second-brain-logotype.png"
               alt="Second Brain"
-              className="sb-logotype block h-auto w-full"
+              draggable={false}
+              className="sb-logotype pointer-events-none block h-auto w-full select-none"
             />
           </div>
         )}

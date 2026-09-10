@@ -473,10 +473,10 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           opens and closes. */}
       <div className="relative grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-x-1 p-2 pt-11">
         <img
-          src="/second-brain-mark.png"
+          src="/icon.ico"
           alt="Second Brain"
           className={cn(
-            "sb-logotype absolute top-3 left-3 size-6 object-contain transition-opacity",
+            "absolute top-3 left-3 size-6 object-contain transition-opacity",
             railCollapsed && "pointer-events-none opacity-0",
           )}
         />
