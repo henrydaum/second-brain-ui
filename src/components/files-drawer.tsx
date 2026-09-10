@@ -196,7 +196,7 @@ export const FilesDrawer: FC = () => {
       className={cn(
         "sb-panel bg-sidebar flex h-full w-full flex-col overflow-hidden",
         "xl:shrink-0 xl:transition-[width]",
-        visible ? "xl:w-96 xl:border-s" : "xl:w-0 xl:border-s-0",
+        visible ? "xl:w-96" : "xl:w-0",
       )}
     >
       {!isInline && <SheetTitle className="sr-only">Files</SheetTitle>}
@@ -204,7 +204,7 @@ export const FilesDrawer: FC = () => {
           animates out to `xl:w-0`, and contents that shrank with it would
           reflow the whole list on the way. Below `xl` they simply fill the
           sheet. */}
-      <header className="flex h-12 w-full shrink-0 items-center gap-2 border-b px-2 xl:w-96">
+      <header className="flex h-12 w-full shrink-0 items-center gap-2 px-2 xl:w-96">
         <span className="min-w-0 flex-1 truncate px-1 text-sm font-medium">
           Files
           {total > 0 && (
@@ -225,7 +225,7 @@ export const FilesDrawer: FC = () => {
 
       <div
         ref={setBody}
-        className="min-h-0 w-full flex-1 overflow-y-auto xl:w-96"
+        className="sb-scroll-fade-top min-h-0 w-full flex-1 overflow-y-auto xl:w-96"
       >
         {failure ? (
           <p className="text-muted-foreground p-4 text-xs">{failure}</p>
@@ -248,7 +248,7 @@ export const FilesDrawer: FC = () => {
 
   return (
     <Sheet open={visible} onOpenChange={setFilesOpen}>
-      <SheetContent side="right" className="w-80 max-w-[85vw]">
+      <SheetContent side="right" className="w-80 max-w-[85vw] border-0">
         {drawer}
       </SheetContent>
     </Sheet>

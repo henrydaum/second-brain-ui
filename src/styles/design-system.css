@@ -317,3 +317,21 @@
     scale: none;
   }
 }
+
+/* Fade only scrollable content; headers and footer controls stay sharp. */
+.sb-scroll-fade-top,
+.sb-scroll-fade-both {
+  --sb-scroll-fade: 12px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--sb-scroll-fade), black calc(100% - var(--sb-scroll-fade-bottom, 0px)), var(--sb-scroll-fade-end, black));
+  mask-image: linear-gradient(to bottom, transparent, black var(--sb-scroll-fade), black calc(100% - var(--sb-scroll-fade-bottom, 0px)), var(--sb-scroll-fade-end, black));
+}
+.sb-scroll-fade-both {
+  --sb-scroll-fade-bottom: var(--sb-scroll-fade);
+  --sb-scroll-fade-end: transparent;
+}
+@media (forced-colors: active) {
+  .sb-scroll-fade-top, .sb-scroll-fade-both {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}

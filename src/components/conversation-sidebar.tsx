@@ -124,7 +124,7 @@ const ConversationList = memo(function ConversationList({
   onLoadMore: () => void;
 }) {
   return (
-    <nav className="flex-1 overflow-y-auto p-2 pt-0">
+    <nav className="sb-scroll-fade-both min-h-0 flex-1 overflow-y-auto px-2 py-4">
       {/* Nothing at all until the list has been asked for. Boot takes a few
           Requests to get here, and for all of them the old empty message was
           telling you that you had no conversations — which is a claim, and
@@ -458,7 +458,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
         // `w-full` below `md`, so the panel fills whatever `SheetContent` gave
         // it — including the `max-w-[85vw]` that keeps a drawer off the edge of
         // a narrow phone, which a fixed `w-64` here would have overrun.
-        "sb-panel bg-sidebar flex h-full w-full flex-col overflow-hidden border-e",
+        "sb-panel bg-sidebar flex h-full w-full flex-col overflow-hidden",
         // From `md`: an inline rail, transitioning width so collapsing
         // animates rather than sliding the whole panel.
         "md:shrink-0 md:transition-[width]",
@@ -637,7 +637,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
       {/* `mt-auto` is what pins this to the bottom in both states — with the
           list unmounted there is nothing else to push it down. Separated by a
           rule, because it is not another conversation. */}
-      <div className="mt-auto grid grid-cols-[2rem_1fr] gap-x-1 gap-y-0 border-t p-2 md:gap-y-1">
+      <div className="mt-auto grid grid-cols-[2rem_1fr] gap-x-1 gap-y-0 p-2 md:gap-y-1">
         <TooltipIconButton tooltip="File explorer" side="right" className="size-8"
           onPointerEnter={preloadFileExplorer} onFocus={preloadFileExplorer} onClick={showExplorer}>
           <FolderOpenIcon className="size-4" />
@@ -692,7 +692,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="left" className="w-80 max-w-[85vw]">
+        <SheetContent side="left" className="w-80 max-w-[85vw] border-0">
           {sidebar}
         </SheetContent>
       </Sheet>
