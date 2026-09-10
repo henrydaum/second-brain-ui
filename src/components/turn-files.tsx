@@ -79,9 +79,13 @@ function AttachmentTile({ path, removed, version, compact, onOpen }: {
       className={cn("group min-w-0 rounded-lg text-start outline-none focus-visible:ring-2 focus-visible:ring-ring",
         image ? "w-full" : "hover:bg-accent flex items-center gap-3 border p-3 self-start")}>
       {image && !unavailable ? (
-        <img key={src} src={src} alt={nameOf(path)} onError={() => setFailed(src)}
-          className={cn("bg-muted/20 block rounded-lg border object-contain",
-            compact ? "h-52 w-full" : "max-h-96 max-w-full")} />
+        <span key={src} className={cn("bg-muted/20 relative isolate block overflow-hidden rounded-lg border",
+          compact ? "h-52 w-full" : "w-fit max-w-full")}>
+          <span aria-hidden="true" className="sb-image-ambient" style={{ backgroundImage: `url(${JSON.stringify(src)})` }} />
+          <img src={src} alt={nameOf(path)} onError={() => setFailed(src)}
+            className={cn("relative block object-contain",
+              compact ? "h-full w-full" : "max-h-96 max-w-full")} />
+        </span>
       ) : <FileIcon className="text-muted-foreground size-5 shrink-0" aria-hidden />}
       <span className={cn("text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs",
         image && "mt-1.5 px-1")}>

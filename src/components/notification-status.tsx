@@ -12,7 +12,7 @@ export function NotificationStatus() {
   return (
     <div
       data-slot="notification-status"
-      className="sb-notification-line absolute inset-x-0 top-full flex h-(--composer-bottom-space) min-w-0 items-center justify-center px-2 text-center text-xs leading-4"
+      className="sb-notification-line pointer-events-none absolute inset-x-0 bottom-0 z-10 flex h-(--composer-bottom-space) min-w-0 items-center justify-center px-2 text-center text-xs leading-4"
       role="status"
       aria-live={notificationsOpen ? "off" : "polite"}
       aria-atomic="true"

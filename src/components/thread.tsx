@@ -223,7 +223,8 @@ export const Thread: FC = () => {
 
   return (
     <ThreadPrimitive.Root
-      className="sb-thread @container flex h-full flex-col"
+      data-empty={centerComposer}
+      className="sb-thread @container relative flex h-full flex-col [--composer-bottom-space:max(1rem,env(safe-area-inset-bottom))] md:[--composer-bottom-space:1.5rem]"
       style={{
         ["--thread-max-width" as string]: "44rem",
         ["--composer-bg" as string]:
@@ -282,7 +283,7 @@ export const Thread: FC = () => {
 
         <ThreadPrimitive.ViewportFooter
           className={cn(
-            "sb-composer-footer mx-auto flex w-full max-w-(--thread-max-width) flex-col gap-3 [--composer-bottom-space:max(1rem,env(safe-area-inset-bottom))] pb-(--composer-bottom-space) md:[--composer-bottom-space:1.5rem]",
+            "sb-composer-footer mx-auto flex w-full max-w-(--thread-max-width) flex-col gap-3 pb-(--composer-bottom-space)",
             !centerComposer &&
               "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
           )}
@@ -290,12 +291,10 @@ export const Thread: FC = () => {
           <ScrollToBottom />
           <Suggestions />
           <ErrorBanner />
-          <div className="relative min-w-0">
-            <Composer />
-            <NotificationStatus />
-          </div>
+          <Composer />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
+      <NotificationStatus />
 
     </ThreadPrimitive.Root>
   );

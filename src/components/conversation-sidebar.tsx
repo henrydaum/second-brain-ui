@@ -692,7 +692,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="left" className="w-64 max-w-[85vw]">
+        <SheetContent side="left" className="w-80 max-w-[85vw]">
           {sidebar}
         </SheetContent>
       </Sheet>
