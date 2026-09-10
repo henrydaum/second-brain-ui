@@ -472,14 +472,6 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
           drawer toggle follows the moving outer edge, matching the panel it
           opens and closes. */}
       <div className="relative grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-x-1 p-2 pt-11">
-        <img
-          src="/icon.ico"
-          alt="Second Brain"
-          className={cn(
-            "absolute top-3 left-3 size-6 object-contain transition-opacity",
-            railCollapsed && "pointer-events-none opacity-0",
-          )}
-        />
         {/* Two buttons, not one with a media query in JavaScript: on a phone
             this closes an overlay, on a laptop it collapses a rail. They use
             the same panel-shaped icon because the surface is the same even
