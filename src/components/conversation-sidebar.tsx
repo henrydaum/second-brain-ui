@@ -124,7 +124,7 @@ const ConversationList = memo(function ConversationList({
   onLoadMore: () => void;
 }) {
   return (
-    <nav className="sb-scroll-fade-both min-h-0 flex-1 overflow-y-auto px-2 py-4">
+    <nav className="min-h-0 flex-1 overflow-y-auto p-2 pt-0">
       {/* Nothing at all until the list has been asked for. Boot takes a few
           Requests to get here, and for all of them the old empty message was
           telling you that you had no conversations — which is a claim, and
@@ -458,7 +458,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
         // `w-full` below `md`, so the panel fills whatever `SheetContent` gave
         // it — including the `max-w-[85vw]` that keeps a drawer off the edge of
         // a narrow phone, which a fixed `w-64` here would have overrun.
-        "sb-panel bg-sidebar flex h-full w-full flex-col overflow-hidden",
+        "sb-panel sb-divider-end bg-sidebar flex h-full w-full flex-col overflow-hidden",
         // From `md`: an inline rail, transitioning width so collapsing
         // animates rather than sliding the whole panel.
         "md:shrink-0 md:transition-[width]",
@@ -471,7 +471,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
       {/* New chat remains pinned to the rail while its label is revealed. The
           drawer toggle follows the moving outer edge, matching the panel it
           opens and closes. */}
-      <div className="relative grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-x-1 p-2 pt-11">
+      <div className="sb-divider-bottom relative grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-x-1 p-2 pt-11">
         {/* Two buttons, not one with a media query in JavaScript: on a phone
             this closes an overlay, on a laptop it collapses a rail. They use
             the same panel-shaped icon because the surface is the same even
@@ -637,7 +637,7 @@ export const ConversationSidebar: FC<ConversationSidebarProps> = ({
       {/* `mt-auto` is what pins this to the bottom in both states — with the
           list unmounted there is nothing else to push it down. Separated by a
           rule, because it is not another conversation. */}
-      <div className="mt-auto grid grid-cols-[2rem_1fr] gap-x-1 gap-y-0 p-2 md:gap-y-1">
+      <div className="sb-divider-top mt-auto grid grid-cols-[2rem_1fr] gap-x-1 gap-y-0 p-2 md:gap-y-1">
         <TooltipIconButton tooltip="File explorer" side="right" className="size-8"
           onPointerEnter={preloadFileExplorer} onFocus={preloadFileExplorer} onClick={showExplorer}>
           <FolderOpenIcon className="size-4" />

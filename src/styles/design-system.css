@@ -318,20 +318,13 @@
   }
 }
 
-/* Fade only scrollable content; headers and footer controls stay sharp. */
-.sb-scroll-fade-top,
-.sb-scroll-fade-both {
-  --sb-scroll-fade: 12px;
-  -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--sb-scroll-fade), black calc(100% - var(--sb-scroll-fade-bottom, 0px)), var(--sb-scroll-fade-end, black));
-  mask-image: linear-gradient(to bottom, transparent, black var(--sb-scroll-fade), black calc(100% - var(--sb-scroll-fade-bottom, 0px)), var(--sb-scroll-fade-end, black));
+/* One hairline treatment for panel edges and internal separators. */
+:root {
+  --sb-divider-width: 0.5px;
+  --sb-divider-color: color-mix(in srgb, var(--foreground) 10%, transparent);
 }
-.sb-scroll-fade-both {
-  --sb-scroll-fade-bottom: var(--sb-scroll-fade);
-  --sb-scroll-fade-end: transparent;
-}
-@media (forced-colors: active) {
-  .sb-scroll-fade-top, .sb-scroll-fade-both {
-    -webkit-mask-image: none;
-    mask-image: none;
-  }
-}
+.sb-divider-top { border-top: var(--sb-divider-width) solid var(--sb-divider-color); }
+.sb-divider-bottom { border-bottom: var(--sb-divider-width) solid var(--sb-divider-color); }
+.sb-divider-start { border-inline-start: var(--sb-divider-width) solid var(--sb-divider-color); }
+.sb-divider-end { border-inline-end: var(--sb-divider-width) solid var(--sb-divider-color); }
+.sb-divider-start[inert] { border-inline-start-width: 0; }
