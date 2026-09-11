@@ -124,7 +124,7 @@ const ConversationList = memo(function ConversationList({
   onLoadMore: () => void;
 }) {
   return (
-    <nav className="min-h-0 flex-1 overflow-y-auto p-2 pt-0">
+    <nav className="min-h-0 flex-1 overflow-y-auto p-2 pt-4">
       {/* Nothing at all until the list has been asked for. Boot takes a few
           Requests to get here, and for all of them the old empty message was
           telling you that you had no conversations — which is a claim, and
