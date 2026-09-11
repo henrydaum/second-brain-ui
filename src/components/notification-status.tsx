@@ -36,6 +36,8 @@ function StatusText({ queuedNotification, onExpire }: { queuedNotification: Queu
     return afterTransition(ref.current, "opacity", () => onExpire(queuedNotification.key));
   }, [closing, queuedNotification.key, onExpire]);
 
-  const text = (queuedNotification.notification.title || queuedNotification.notification.body).replace(/\s+/g, " ").trim();
+  const title = queuedNotification.notification.title.replace(/\s+/g, " ").trim();
+  const body = queuedNotification.notification.body.replace(/\s+/g, " ").trim();
+  const text = title && body ? `${title} — ${body}` : title || body;
   return <p ref={ref} className="sb-notification-status min-w-0 truncate" data-closing={closing} title={text}>{text}</p>;
 }

@@ -744,27 +744,20 @@
 }
 
 /* The status sits in existing footer padding without adding layout height. */
-.sb-thinking-logo {
+.sb-activity-logo {
   width: 0.875rem;
   height: 0.875rem;
   flex: none;
   object-fit: contain;
-  animation: sb-thinking-logo-pulse 1.8s ease-in-out infinite;
+  animation: sb-activity-logo-spin 4s linear infinite;
 }
 
-@keyframes sb-thinking-logo-pulse {
-  0%, 100% {
-    opacity: 0.82;
-    transform: scale(0.96);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.04);
-  }
+@keyframes sb-activity-logo-spin {
+  to { transform: rotate(360deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sb-thinking-logo { animation: none; }
+  .sb-activity-logo { animation: none; }
 }
 
 .sb-notification-status {

@@ -3,7 +3,6 @@ import { useAuiState } from "@assistant-ui/react";
 import { useApprovals } from "@/runtime/provider";
 import { PRESENTATION } from "@/runtime/convert";
 import { elapsedLabel } from "@/lib/time";
-import { cn } from "@/lib/utils";
 
 export function ReplyActivity() {
   const { inputRequests } = useApprovals();
@@ -45,16 +44,15 @@ export function ActivityLine({ phase, since }: {
     <div data-slot="reply-activity" data-phase={phase}
       className="text-muted-foreground my-2 flex min-h-6 items-center gap-2 text-sm"
       role="status" aria-live="polite" aria-label={label}>
-      {phase === "thinking" ? (
+      {phase !== "awaiting_input" ? (
         <img
           aria-hidden
           alt=""
           src="/favicon.ico"
-          className="sb-thinking-logo"
+          className="sb-activity-logo"
         />
       ) : (
-        <span aria-hidden className={cn("size-1.5 rounded-full bg-current",
-          phase !== "awaiting_input" && "motion-safe:animate-pulse")} />
+        <span aria-hidden className="size-1.5 rounded-full bg-current" />
       )}
       <span>{label}</span>
       {showsElapsed && seconds >= 3 && (

@@ -22,20 +22,20 @@ it("shows oldest first without interrupting or restarting it when new notificati
   act(() => vi.advanceTimersByTime(4000));
   state.notificationQueue = [queuedNotification("Second"), ...state.notificationQueue];
   view.rerender(<NotificationStatus />);
-  expect(screen.getByRole("status")).toHaveTextContent("First");
+  expect(screen.getByRole("status")).toHaveTextContent("First — Detail");
   expect(screen.queryByText("Second")).toBeNull();
   act(() => vi.advanceTimersByTime(2000));
   act(() => vi.runOnlyPendingTimers());
   expect(state.dismissQueuedNotification).toHaveBeenCalledExactlyOnceWith("First");
   state.notificationQueue = [queuedNotification("Second")];
   view.rerender(<NotificationStatus />);
-  expect(screen.getByRole("status")).toHaveTextContent("Second");
+  expect(screen.getByRole("status")).toHaveTextContent("Second — Detail");
 });
 
 it.each(["info", "success", "warning", "error"] as const)("expires %s after the fade without requiring interaction", (level) => {
   state.notificationQueue = [queuedNotification("Notice", level)];
   render(<NotificationStatus />);
-  const text = screen.getByText("Notice");
+  const text = screen.getByText("Notice — Detail");
   text.style.transitionProperty = "opacity";
   text.style.transitionDuration = "120ms";
   act(() => vi.advanceTimersByTime(6000));
@@ -54,5 +54,5 @@ it("keeps the reserved line empty when idle and hides summaries while the popup 
   state.notificationQueue = [queuedNotification("Notice")];
   state.notificationsOpen = true;
   view.rerender(<NotificationStatus />);
-  expect(screen.getByText("Notice").parentElement).toHaveAttribute("aria-hidden", "true");
+  expect(screen.getByText("Notice — Detail").parentElement).toHaveAttribute("aria-hidden", "true");
 });
