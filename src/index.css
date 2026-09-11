@@ -744,22 +744,6 @@
 }
 
 /* The status sits in existing footer padding without adding layout height. */
-.sb-activity-logo {
-  width: 0.875rem;
-  height: 0.875rem;
-  flex: none;
-  object-fit: contain;
-  animation: sb-activity-logo-spin 8s linear infinite;
-}
-
-@keyframes sb-activity-logo-spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sb-activity-logo { animation: none; }
-}
-
 .sb-notification-status {
   opacity: 1;
   transition: opacity var(--sb-motion-fast) var(--sb-ease);
