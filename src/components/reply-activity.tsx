@@ -45,8 +45,17 @@ export function ActivityLine({ phase, since }: {
     <div data-slot="reply-activity" data-phase={phase}
       className="text-muted-foreground my-2 flex min-h-6 items-center gap-2 text-sm"
       role="status" aria-live="polite" aria-label={label}>
-      <span aria-hidden className={cn("size-1.5 rounded-full bg-current",
-        phase !== "awaiting_input" && "motion-safe:animate-pulse")} />
+      {phase === "thinking" ? (
+        <img
+          aria-hidden
+          alt=""
+          src="/favicon.ico"
+          className="sb-thinking-logo"
+        />
+      ) : (
+        <span aria-hidden className={cn("size-1.5 rounded-full bg-current",
+          phase !== "awaiting_input" && "motion-safe:animate-pulse")} />
+      )}
       <span>{label}</span>
       {showsElapsed && seconds >= 3 && (
         <span aria-hidden className="text-xs tabular-nums opacity-70">{elapsedLabel(seconds)}</span>
