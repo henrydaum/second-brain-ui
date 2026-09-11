@@ -40,8 +40,8 @@ it("filters names and puts folders first without modifying the listing", () => {
   expect(entries[0].name).toBe("a10");
 });
 
-it("appends literal paths on their own line without changing the draft", () => {
-  expect(mentionPath("", "C:\\My files\\a.txt")).toBe("C:\\My files\\a.txt\n");
-  expect(mentionPath("Please read", "/a")).toBe("Please read\n/a\n");
-  expect(mentionPath("Please read\n", "/a")).toBe("Please read\n/a\n");
+it("appends quoted paths on their own line without changing the draft", () => {
+  expect(mentionPath("", "C:\\My files\\a.txt")).toBe('"C:\\My files\\a.txt"\n');
+  expect(mentionPath("Please read", "/a")).toBe('Please read\n"/a"\n');
+  expect(mentionPath("Please read\n", "/a")).toBe('Please read\n"/a"\n');
 });

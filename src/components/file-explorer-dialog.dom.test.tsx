@@ -83,7 +83,7 @@ it.each(["", "Please read this", "Please read this\n"])("mentions into draft %j 
   render(<Harness />);
   await user.click(await screen.findByRole("button", { name: "Actions for a.txt" }));
   await user.click(screen.getByRole("menuitem", { name: "Mention in chat" }));
-  expect(mocks.setText).toHaveBeenCalledWith(`${draft}${draft && !draft.endsWith("\n") ? "\n" : ""}/data/a.txt\n`);
+  expect(mocks.setText).toHaveBeenCalledWith(`${draft}${draft && !draft.endsWith("\n") ? "\n" : ""}"/data/a.txt"\n`);
   await waitFor(() => expect(document.querySelector("textarea")).toHaveFocus());
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
@@ -246,7 +246,7 @@ it("mentions a folder without navigating into it", async () => {
   render(<Harness />);
   await user.click(await screen.findByRole("button", { name: "Actions for notes" }));
   await user.click(screen.getByRole("menuitem", { name: "Mention in chat" }));
-  expect(mocks.setText).toHaveBeenCalledWith("/data/notes\n");
+  expect(mocks.setText).toHaveBeenCalledWith('"/data/notes"\n');
   expect(mocks.sdk).not.toHaveBeenCalledWith("fs.list", { path: "/data/notes", details: true });
   await waitFor(() => expect(document.querySelector("textarea")).toHaveFocus());
 });

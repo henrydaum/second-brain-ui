@@ -50,7 +50,7 @@ export function hostBreadcrumbs(path: string): { path: string; label: string }[]
 }
 
 export function mentionPath(draft: string, path: string): string {
-  return `${draft}${draft && !draft.endsWith("\n") ? "\n" : ""}${path}\n`;
+  return `${draft}${draft && !draft.endsWith("\n") ? "\n" : ""}"${path}"\n`;
 }
 
 export async function readDirectory(path: string, validate = false): Promise<{ path: string; entries: DirectoryEntry[] }> {
