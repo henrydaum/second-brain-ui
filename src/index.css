@@ -749,7 +749,7 @@
   height: 0.875rem;
   flex: none;
   object-fit: contain;
-  animation: sb-activity-logo-spin 4s linear infinite;
+  animation: sb-activity-logo-spin 8s linear infinite;
 }
 
 @keyframes sb-activity-logo-spin {
@@ -773,6 +773,8 @@
 
 .sb-notification-line {
   color: color-mix(in srgb, var(--foreground) 78%, var(--background));
+  padding-left: calc(1rem + env(safe-area-inset-left, 0px));
+  padding-right: calc(1rem + env(safe-area-inset-right, 0px));
 }
 
 /* Extend the same image into letterboxed margins, under the sharp preview. */
