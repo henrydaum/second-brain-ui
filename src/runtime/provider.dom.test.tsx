@@ -25,6 +25,7 @@ import type { PendingAttachment } from "@assistant-ui/react";
 const sdk = vi.fn();
 const connect = vi.fn();
 const readConversation = vi.fn();
+let receiveFrame: ((frame: unknown) => void) | null = null;
 
 vi.mock("@/lib/client", () => ({
   sdk: (...args: unknown[]) => sdk(...args),
@@ -52,13 +53,16 @@ vi.mock("@/lib/notifications", () => ({
   markRead: async () => undefined,
 }));
 
-const { SecondBrainProvider, attachmentAdapter, useModels, useSession } =
+const { SecondBrainProvider, attachmentAdapter, useConversations, useModels, useSession } =
   await import("@/runtime/provider");
 
 /** Reads the one field under test out of the context. */
 const Probe = () => {
   const { state } = useSession();
-  return <span data-testid="typing">{String(state.typing)}</span>;
+  const { conversationId } = useConversations();
+  return <><span data-testid="typing">{String(state.typing)}</span>
+    <span data-testid="conversation">{String(conversationId)}</span>
+    <span data-testid="turns">{state.turns.length}</span></>;
 };
 
 const ModelProbe = () => {
@@ -87,14 +91,39 @@ const bootWith = (busy: boolean) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  receiveFrame = null;
   readConversation.mockResolvedValue({ turns: [], conversation: null });
   // The stream reports itself open, which is what the reconnect sync keys on.
   connect.mockImplementation(
-    (_onFrame: unknown, setStatus: (s: string) => void) => {
+    (onFrame: (frame: unknown) => void, setStatus: (s: string) => void) => {
+      receiveFrame = onFrame;
       setStatus("open");
       return () => {};
     },
   );
+});
+
+describe("remote conversation handoff", () => {
+  it("clears the transcript when the session is reset elsewhere", async () => {
+    bootWith(false);
+    readConversation.mockResolvedValue({
+      turns: [{ id: "old", role: "user", parts: [] }],
+      conversation: { id: 7, title: "Old" },
+      hasMore: false,
+      oldestId: null,
+    });
+    render(<SecondBrainProvider><Probe /></SecondBrainProvider>);
+    await waitFor(() => expect(screen.getByTestId("conversation")).toHaveTextContent("7"));
+    expect(screen.getByTestId("turns")).toHaveTextContent("1");
+
+    receiveFrame?.({
+      kind: "conversation",
+      payload: { conversation_id: null, title: "New Conversation" },
+    });
+
+    await waitFor(() => expect(screen.getByTestId("conversation")).toHaveTextContent("null"));
+    expect(screen.getByTestId("turns")).toHaveTextContent("0");
+  });
 });
 
 afterEach(cleanup);

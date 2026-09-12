@@ -771,6 +771,27 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         });
         return;
       }
+      if (frame.kind === "conversation") {
+        const id = frame.payload.conversation_id;
+        if (id === null) {
+          conversationIdRef.current = null;
+          setConversationId(null);
+          setOpenConversationRow(null);
+          dispatch({ type: "history", turns: [], hasMore: false, oldestId: null });
+          return;
+        }
+        if (id !== conversationIdRef.current) {
+          conversationIdRef.current = id;
+          setConversationId(id);
+          void readConversation(id).then((read) => {
+            if (conversationIdRef.current !== id) return;
+            dispatch({ type: "history", turns: read.turns,
+                       hasMore: read.hasMore, oldestId: read.oldestId });
+            setOpenConversationRow(read.conversation);
+          }).catch((error) => report(error));
+        }
+        return;
+      }
       dispatch({ type: "frame", frame });
     }, setStatus);
 
@@ -875,10 +896,9 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
    *   command's output because the connection blinked.
    * - **The server names a different one.** It is the source of truth, so
    *   follow it and read the scrollback that goes with it.
-   * - **The server names none.** Point it back at what is on screen rather
-   *   than making a new one. The conversation still exists and the person is
-   *   still reading it; `conv.create` here would strand it and leave an empty
-   *   row in the sidebar for every restart.
+   * - **The server names none.** Clear what is on screen. Another session may
+   *   have taken the conversation, and reclaiming it here would undo that
+   *   explicit handoff.
    */
   const resyncConversation = useCallback(async () => {
     try {
@@ -892,7 +912,10 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
       if (bound === null) {
         if (showing === null) return;
-        await sdk("conv.load", { id: showing });
+        conversationIdRef.current = null;
+        setConversationId(null);
+        setOpenConversationRow(null);
+        dispatch({ type: "history", turns: [], hasMore: false, oldestId: null });
         return;
       }
 

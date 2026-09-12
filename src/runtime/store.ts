@@ -1189,6 +1189,7 @@ function applyFrame(state: State, frame: Frame): State {
      */
     case "approval":
     case "notification":
+    case "conversation":
       return state;
 
     /**

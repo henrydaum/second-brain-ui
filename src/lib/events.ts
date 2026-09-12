@@ -186,6 +186,13 @@ export type ErrorPayload = {
  *  open these directly; the contents come back through `fs.read_bytes`. */
 type AttachmentsPayload = string[];
 
+/** The conversation currently bound to this browser session. A null id means
+ * the session was reset remotely and the client must show New Conversation. */
+type ConversationPayload = {
+  conversation_id: number | null;
+  title: string;
+};
+
 /**
  * Something the *system* is telling you, as opposed to something the agent said.
  *
@@ -266,6 +273,7 @@ export type Frame =
   | { kind: "buttons"; payload: ButtonsPayload }
   | { kind: "error"; payload: ErrorPayload }
   | { kind: "attachments"; payload: AttachmentsPayload }
+  | { kind: "conversation"; payload: ConversationPayload }
   | { kind: "notification"; payload: NotificationPayload };
 
 /** What the connection itself is doing, for the status line. This is not part
