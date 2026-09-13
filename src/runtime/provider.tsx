@@ -1908,6 +1908,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         modality: file.modality,
         extension: file.extension,
       }));
+      const isCommand =
+        files.length === 0 && looksLikeCommand(text, commandsRef.current);
 
       dispatch({
         type: "said",
@@ -1915,9 +1917,17 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         attachments,
         // A message carrying files is a message, whatever it starts with —
         // there is no such thing as a slash command with an attachment.
-        isCommand:
-          files.length === 0 && looksLikeCommand(text, commandsRef.current),
+        isCommand,
       });
+
+      // Claim the agent's turn before the Request crosses the network. Some
+      // providers do routing work before their first stream event, and waiting
+      // for that event left Send visible (and no activity indicator) during
+      // the pause. The real typing frames still own the eventual state; this
+      // provisional one only covers the round-trip before the first arrives.
+      if (!isCommand) {
+        dispatch({ type: "frame", frame: { kind: "typing", payload: true } });
+      }
 
       try {
         if (files.length) {
@@ -1940,6 +1950,12 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         await sdk("frontend.submit", { input_kind: "text", text });
         await adoptConversation();
       } catch (error) {
+        // A refused submit has no server turn whose final typing frame can
+        // close the provisional one, so roll it back here. The reducer also
+        // removes the empty assistant turn this optimistic transition opened.
+        if (!isCommand) {
+          dispatch({ type: "frame", frame: { kind: "typing", payload: false } });
+        }
         report(error);
       }
     },

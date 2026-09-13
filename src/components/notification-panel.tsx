@@ -95,7 +95,7 @@ export const NotificationPanel: FC = () => {
           {unread > 0 && !notificationsOpen && (
             <span
               aria-hidden
-              className="bg-primary absolute end-1 top-1 size-1.5 rounded-full"
+              className="bg-primary absolute end-1 top-1 size-1.5 rounded-full pointer-coarse:end-2.5 pointer-coarse:top-2.5"
             />
           )}
           {unread > 0 && (

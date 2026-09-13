@@ -238,7 +238,7 @@ export const Thread: FC = () => {
         autoScroll={false}
         scrollToBottomOnRunStart={false}
         className={cn(
-          "relative flex min-h-0 flex-1 flex-col overflow-y-scroll motion-safe:scroll-smooth px-4 pt-4",
+          "relative flex min-h-0 flex-1 flex-col overflow-y-scroll motion-safe:pointer-fine:scroll-smooth px-4 pt-4",
           centerComposer && "justify-center",
         )}
       >
@@ -356,7 +356,7 @@ const Composer: FC = () => {
               autoFocus={finePointer}
               unstable_insertNewlineOnTouchEnter
               placeholder="Message Second Brain"
-              className="placeholder:text-muted-foreground mb-2 max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
+              className="placeholder:text-muted-foreground mb-2 block max-h-40 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
             />
             <div className="relative flex min-w-0 items-center gap-1">
               <div className="flex min-w-0 items-center gap-1">
