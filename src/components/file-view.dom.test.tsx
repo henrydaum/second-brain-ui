@@ -34,6 +34,27 @@ import { forgetFile } from "@/lib/files";
 // otherwise both be in the document and the query would answer with the first.
 afterEach(cleanup);
 
+describe("HTML previews", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each(["html", "HTM"])("renders .%s in a script-enabled opaque sandbox", async (extension) => {
+    const html = '<!doctype html><button onclick="this.textContent=42">Run</button>';
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, headers: { get: () => null },
+      arrayBuffer: async () => new TextEncoder().encode(html).buffer,
+    }));
+    render(<FileView path={`/tmp/app.${extension}`} size="full" />);
+    const frame = await screen.findByTitle(`app.${extension}`);
+    expect(frame.tagName).toBe("IFRAME");
+    expect(frame.getAttribute("srcdoc")).toContain('onclick="this.textContent=42"');
+    expect(frame.getAttribute("srcdoc")).toContain("window.brain");
+    expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+    expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(frame).toHaveClass("h-full");
+    expect(screen.queryByRole("button", { name: "Run" })).toBeNull();
+  });
+});
+
 describe("an SVG in the file viewer", () => {
   // `.svg` is decided by extension in `kindOf`, before anything is asked of the
   // server, so this needs no stubbing to reach the branch under test.

@@ -38,6 +38,7 @@ import { DotMatrix } from "@/components/assistant-ui/dot-matrix";
 import { useMarkdownMode } from "@/components/markdown-mode";
 import { MarkdownPreview } from "@/components/markdown-preview";
 import { fileUrl } from "@/lib/client";
+import { appDocument, attachAppRelay } from "@/lib/html-app";
 import { delimiterFor, parseDelimited } from "@/lib/csv";
 import {
   describeStatus,
@@ -609,7 +610,39 @@ const PdfView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
  * the same file opened at its own URL is neutered too. Two independent
  * mechanisms, because this one is worth not getting wrong once.
  */
+/** Load through the authenticated, range-aware reader: /files may serve HTML
+ * as a download. Only the iframe executes it, with an opaque origin. */
+const HtmlView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
+  const { loaded, failure } = useText(path);
+  if (failure) return <Unavailable path={path} reason={failure} size={size} />;
+  if (!loaded) return <Loading path={path} size={size} />;
+  if (loaded.truncated) return <Unavailable path={path} size={size}
+    reason="This HTML file is too large to preview safely. Download it to open it." />;
+
+  return <HtmlApp key={loaded.text} html={loaded.text} path={path} size={size} />;
+};
+
+const HtmlApp: FC<{ html: string; path: string; size: FileViewSize }> = ({ html, path, size }) => {
+  const [document] = useState(() => {
+    const token = crypto.randomUUID();
+    return { token, source: appDocument(html, token) };
+  });
+  const attach = useCallback((frame: HTMLIFrameElement | null) => {
+    if (frame) return attachAppRelay(frame, document.token);
+  }, [document]);
+  return <iframe
+    ref={attach}
+    title={nameOf(path)}
+    srcDoc={document.source}
+    sandbox="allow-scripts"
+    referrerPolicy="no-referrer"
+    allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'"
+    className={cn("w-full rounded-lg border bg-white", size === "full" ? "h-full" : "h-80")}
+  />;
+};
+
 const EmbedView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) =>
+  [".html", ".htm"].includes(suffixOf(path)) ? <HtmlView key={path} path={path} size={size} /> :
   suffixOf(path) === ".pdf" ? (
     <PdfView path={path} size={size} />
   ) : (
