@@ -157,13 +157,14 @@ parent DOM or rely on origin-backed storage such as `localStorage`. Popups,
 top-level navigation, native form submission, and downloads are withheld.
 Use buttons and input handlers; if using a form, prevent its native submission.
 
-Use `brain.call` for SDK access. Direct `fetch` still faces ordinary CORS and
-authentication requirements. Do not embed credentials, implement a second
+Use `brain.call` for SDK access. The production host CSP blocks direct `fetch`.
+Do not embed credentials, implement a second
 relay, change the iframe sandbox, or overwrite `window.brain`.
 
 Inline CSS, JavaScript, and assets are simplest. Relative resource URLs resolve
-against the UI page, not the HTML file's directory. External libraries need
-explicit URLs and network access. React requires browser-ready JavaScript;
+against the host page, not the HTML file's directory. The production policy
+blocks external scripts; bundle libraries inline if needed. HTTPS images are
+allowed. React requires browser-ready JavaScript;
 raw JSX and TypeScript are not compiled by the viewer.
 
 Keep Apps small: the viewer uses a roughly 2 MiB text preview limit and refuses

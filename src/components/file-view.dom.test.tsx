@@ -18,7 +18,7 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -46,8 +46,16 @@ describe("HTML previews", () => {
     render(<FileView path={`/tmp/app.${extension}`} size="full" />);
     const frame = await screen.findByTitle(`app.${extension}`);
     expect(frame.tagName).toBe("IFRAME");
-    expect(frame.getAttribute("srcdoc")).toContain('onclick="this.textContent=42"');
-    expect(frame.getAttribute("srcdoc")).toContain("window.brain");
+    expect(frame).toHaveAttribute("src", "/html-app-host.html");
+    const post = vi.spyOn((frame as HTMLIFrameElement).contentWindow!, "postMessage");
+    fireEvent.load(frame);
+    expect(post).toHaveBeenCalledWith({
+      channel: "second-brain-html-mount-v1",
+      html: expect.stringContaining("window.brain"),
+    }, "*");
+    expect(post.mock.calls[0][0].html).toContain('onclick="this.textContent=42"');
+    fireEvent.load(frame);
+    expect(post).toHaveBeenCalledTimes(1);
     expect(frame).toHaveAttribute("sandbox", "allow-scripts");
     expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
     expect(frame).toHaveClass("h-full");

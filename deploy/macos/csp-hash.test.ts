@@ -71,4 +71,16 @@ describe("the production Content-Security-Policy", () => {
     expect(caddyfile).toContain("base-uri 'none'");
     expect(caddyfile).toContain("connect-src 'self'");
   });
+
+  it("isolates App script permission from the UI policy", () => {
+    const policies = [...caddyfile.matchAll(/header Content-Security-Policy "([^"]+)"/g)]
+      .map(match => match[1]);
+    const host = policies.find(policy => policy.startsWith("sandbox allow-scripts;"));
+    expect(host).toContain("script-src 'unsafe-inline'");
+    expect(host).toContain("connect-src 'none'");
+    expect(host).not.toContain("allow-same-origin");
+    expect(host).not.toContain("sha256-");
+    expect(policies.at(-1)?.match(/script-src ([^;]+)/)?.[1]).not.toContain("unsafe-inline");
+    expect(caddyfile).toContain("handle /html-app-host.html");
+  });
 });

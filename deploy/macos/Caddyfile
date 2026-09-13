@@ -107,6 +107,17 @@ http://:4173 {
 		respond "ok" 200
 	}
 
+	# A real document gets its own policy; srcdoc inherits the main UI's
+	# hash-only script policy and cannot run agent-authored inline scripts.
+	# Keep this route opaque even if opened directly. Kernel calls go through
+	# the parent relay; this document has no direct network connection rights.
+	handle /html-app-host.html {
+		header Content-Security-Policy "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob: https:; media-src blob:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+		header Cache-Control "no-store"
+		root * "{$SB_UI_CURRENT}"
+		file_server
+	}
+
 	handle {
 		# Everything this app needs comes from its own origin, so the policy says
 		# exactly that. Two directives are deliberately looser than the rest:

@@ -623,6 +623,7 @@ const HtmlView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
 };
 
 const HtmlApp: FC<{ html: string; path: string; size: FileViewSize }> = ({ html, path, size }) => {
+  const mounted = useRef(false);
   const [document] = useState(() => {
     const token = crypto.randomUUID();
     return { token, source: appDocument(html, token) };
@@ -633,7 +634,16 @@ const HtmlApp: FC<{ html: string; path: string; size: FileViewSize }> = ({ html,
   return <iframe
     ref={attach}
     title={nameOf(path)}
-    srcDoc={document.source}
+    src="/html-app-host.html"
+    onLoad={(event) => {
+      // document.close() produces another load. Deliver only to the initial
+      // host, never again after an App navigates its own frame.
+      if (mounted.current) return;
+      mounted.current = true;
+      event.currentTarget.contentWindow?.postMessage({
+        channel: "second-brain-html-mount-v1", html: document.source,
+      }, "*");
+    }}
     sandbox="allow-scripts"
     referrerPolicy="no-referrer"
     allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'"
