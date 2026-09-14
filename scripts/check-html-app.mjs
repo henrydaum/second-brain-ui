@@ -95,9 +95,34 @@ try {
       try { void parent.document.body; return false; } catch { return true; }
     });
     expect(isolated).toBe(true);
+    // Oversized ordinary content should scroll naturally. The viewer must
+    // also preserve scoped gesture controls and intentional App overflow CSS.
+    const appFrame = page.frames()[1];
+    await appFrame.evaluate(() => {
+      const content = document.createElement('div');
+      content.style.cssText = 'width:1600px;height:2000px';
+      content.textContent = 'Oversized App content';
+      document.body.append(content);
+    });
+    await page.locator('iframe').hover();
+    await page.mouse.wheel(500, 600);
+    await expect.poll(() => appFrame.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await expect.poll(() => appFrame.evaluate(() => window.scrollX)).toBeGreaterThan(0);
+    const gestures = await appFrame.evaluate(() => {
+      const control = document.createElement('div');
+      control.style.touchAction = 'none';
+      document.body.append(control);
+      document.documentElement.style.overflow = 'hidden';
+      return {
+        control: getComputedStyle(control).touchAction,
+        page: getComputedStyle(document.body).touchAction,
+        overflow: getComputedStyle(document.documentElement).overflow,
+      };
+    });
+    expect(gestures).toEqual({ control: 'none', page: 'auto', overflow: 'hidden' });
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(page.locator('iframe')).toHaveCount(0);
-    console.log('PASS: script boot, touch, SDK relay, opaque origin, modal close.');
+    console.log('PASS: script boot, touch, SDK relay, opaque origin, horizontal/vertical scrolling, modal close.');
   }
 } finally {
   await browser?.close();

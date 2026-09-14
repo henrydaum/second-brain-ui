@@ -152,6 +152,21 @@ that was already accepted.
 
 ## Browser constraints
 
+The viewer preserves normal browser scrolling and the App's CSS. Let the page
+grow with its content; avoid page-wide `overflow: hidden` or gesture handlers
+that cancel scrolling. Use `overflow: auto` on constrained containers whose
+contents must remain reachable.
+
+Scope swipe controls to their interactive areas. For a horizontal swipe control,
+use `touch-action: pan-y pinch-zoom` so vertical page scrolling and pinch zoom
+remain available. Use `touch-action: none` only on a control that needs to handle
+both gesture directions, such as a drawing canvas. Leave enough surrounding
+space for users to start a normal scrolling gesture outside those controls.
+Do not put gesture restrictions on `html`, `body`, or a page-sized wrapper:
+ancestor restrictions also affect their descendants. A gesture's behavior is
+determined where it starts; moving out of a control mid-swipe does not reliably
+turn that gesture into page scrolling.
+
 The iframe permits JavaScript but has an opaque origin. It cannot access the
 parent DOM or rely on origin-backed storage such as `localStorage`. Popups,
 top-level navigation, native form submission, and downloads are withheld.
