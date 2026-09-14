@@ -20,7 +20,11 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PendingAttachment } from "@assistant-ui/react";
+import {
+  ComposerPrimitive,
+  useAuiState,
+  type PendingAttachment,
+} from "@assistant-ui/react";
 
 const sdk = vi.fn();
 const connect = vi.fn();
@@ -75,6 +79,21 @@ const ModelProbe = () => {
       <button type="button" onClick={() => void setModel("openrouter/gpt-5.4")}>
         Switch
       </button>
+    </>
+  );
+};
+
+const SubmitProbe = () => {
+  const { submitting } = useSession();
+  const running = useAuiState((s) => s.thread.isRunning);
+  return (
+    <>
+      <span data-testid="submitting">{String(submitting)}</span>
+      <span data-testid="runtime-running">{String(running)}</span>
+      <ComposerPrimitive.Root>
+        <ComposerPrimitive.Input aria-label="Message" />
+        <ComposerPrimitive.Send>Send</ComposerPrimitive.Send>
+      </ComposerPrimitive.Root>
     </>
   );
 };
@@ -171,6 +190,39 @@ describe("a page that loads in the middle of a turn", () => {
 
     await waitFor(() => expect(readConversation).toHaveBeenCalledWith(7));
     expect(screen.getByTestId("typing").textContent).toBe("false");
+  });
+});
+
+describe("submission acknowledgement", () => {
+  it("shows a run before the submit request or first server frame settles", async () => {
+    let finishSubmit!: () => void;
+    sdk.mockImplementation(async (type: string) => {
+      if (type === "session.get") {
+        return { conversation_id: 7, mode: "ask", busy: false };
+      }
+      if (type === "frontend.submit") {
+        await new Promise<void>((resolve) => { finishSubmit = resolve; });
+        return true;
+      }
+      return null;
+    });
+    const user = userEvent.setup();
+    render(<SecondBrainProvider><SubmitProbe /></SecondBrainProvider>);
+
+    await user.type(screen.getByRole("textbox", { name: "Message" }), "Hello");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(screen.getByTestId("submitting")).toHaveTextContent("true");
+    await waitFor(() =>
+      expect(screen.getByTestId("runtime-running")).toHaveTextContent("true"),
+    );
+
+    receiveFrame?.({ kind: "typing", payload: true });
+    await waitFor(() =>
+      expect(screen.getByTestId("submitting")).toHaveTextContent("false"),
+    );
+    expect(screen.getByTestId("runtime-running")).toHaveTextContent("true");
+    finishSubmit();
   });
 });
 

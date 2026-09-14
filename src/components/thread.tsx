@@ -71,7 +71,7 @@ import { VoiceNoteButton } from "@/components/voice-note";
 import { fullTimestamp, shortTimestamp } from "@/lib/time";
 import { FINE_POINTER_QUERY, useMediaQuery } from "@/lib/media";
 import { cn } from "@/lib/utils";
-import { useConversations } from "@/runtime/provider";
+import { useConversations, useSession } from "@/runtime/provider";
 import { AGENT_FILES, PRESENTATION, SENT_AT } from "@/runtime/convert";
 
 /**
@@ -405,7 +405,12 @@ const Composer: FC = () => {
  * is staged — hides the composer's own state to prevent one legible refusal.
  */
 const ComposerAction: FC = () => {
-  const running = useAuiState((s) => s.thread.isRunning);
+  const runtimeRunning = useAuiState((s) => s.thread.isRunning);
+  // `submitting` is read directly from our provider so the control responds in
+  // the click's first React commit instead of waiting for assistant-ui's
+  // external-store adapter effect to copy the same fact into its runtime.
+  const { submitting } = useSession();
+  const running = runtimeRunning || submitting;
   const empty = useAuiState((s) => s.composer.isEmpty);
 
   if (running && empty) {

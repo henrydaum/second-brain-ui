@@ -90,6 +90,7 @@ function stub(over: Partial<provider.SecondBrain>) {
     conversationId: 5,
     commands: [],
     state: { turns: [], typing: false },
+    submitting: false,
     inputRequests: [],
     settingsRequest: null,
     ...spies,
@@ -135,6 +136,7 @@ function stub(over: Partial<provider.SecondBrain>) {
   vi.spyOn(provider, "useSession").mockReturnValue({
     status: value.status,
     state: value.state,
+    submitting: value.submitting,
     say: value.say,
     report: value.report,
     dismissError: value.dismissError,

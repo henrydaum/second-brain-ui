@@ -223,6 +223,9 @@ export const attachmentAdapter: AttachmentAdapter = {
 export type SecondBrain = {
   status: StreamStatus;
   state: State;
+  /** A chat submission accepted by the UI but not yet acknowledged by the
+   *  server's turn-lifecycle stream. */
+  submitting: boolean;
   /** The server's own command catalogue, organized by Settings. */
   commands: Command[];
   /** Every conversation this user owns, newest first. */
@@ -393,6 +396,7 @@ type SessionDomain = Pick<
   SecondBrain,
   | "status"
   | "state"
+  | "submitting"
   | "say"
   | "report"
   | "dismissError"
@@ -484,6 +488,11 @@ export const useSecurity = () => useDomain(SecurityContext, "useSecurity");
  *  uses it for why a minute is the right number and why a poll is here at all. */
 const IDLE_REFRESH_MS = 60_000;
 
+/** A missing SSE lifecycle acknowledgement must not leave Stop up forever.
+ * This is a backstop, not the normal path; a healthy stream clears the local
+ * submission state almost immediately. */
+const SUBMIT_ACK_RECONCILE_MS = 10_000;
+
 /** The kernel caps `conv.list`'s `limit` at 200. Refreshing everything shown
  *  stops there; past four pages a refresh re-reads the front of the list and
  *  the rest keeps whatever it last had, which is what it would have anyway. */
@@ -533,6 +542,7 @@ function writeConversationFilter(filter: ConversationFilter): void {
 
 export function SecondBrainProvider({ children }: PropsWithChildren) {
   const [state, dispatch] = useReducer(reduce, initialState);
+  const [submitting, setSubmitting] = useState(false);
   const [inputRequests, askDispatch] = useReducer(
     reduceInputRequests,
     initialInputRequests,
@@ -744,6 +754,17 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     const close = connect((frame) => {
       renderRevision.current += 1;
+      // This is the server's acknowledgement of the optimistic submit state.
+      // `typing` is normally first; the other turn frames are fallbacks for an
+      // older or interrupted transport that omitted it.
+      if (
+        frame.kind === "typing" ||
+        frame.kind === "turn_activity" ||
+        frame.kind === "stream_delta" ||
+        (frame.kind === "tool_status" && frame.payload.kind !== "command")
+      ) {
+        setSubmitting(false);
+      }
       // **Fanned out here, not inside the reducer.** A question the kernel is
       // blocking on belongs to the session; routing it through the
       // conversation store is what let a history read discard one. Keeping the
@@ -955,6 +976,34 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     void loadCatalogue();
     void resyncConversation();
   }, [status, loadCatalogue, resyncConversation]);
+
+  useEffect(() => {
+    if (!submitting) return;
+    let cancelled = false;
+    const reconcileSubmission = async () => {
+      try {
+        const session = await sdk<{
+          busy?: boolean | null;
+          turn_id?: string | null;
+        } | null>("session.get", { details: true });
+        if (!cancelled && !session?.busy && !session?.turn_id) {
+          setSubmitting(false);
+        }
+      } catch {
+        // The permanent connection status and ordinary Request error paths
+        // already explain an unavailable backend. This check only prevents a
+        // stale optimistic state and should not add a second error banner.
+      }
+    };
+    const timer = window.setInterval(
+      () => void reconcileSubmission(),
+      SUBMIT_ACK_RECONCILE_MS,
+    );
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [submitting]);
 
   /* ── Questions the kernel is blocking on ────────────────────────── */
 
@@ -1920,13 +1969,12 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         isCommand,
       });
 
-      // Claim the agent's turn before the Request crosses the network. Some
-      // providers do routing work before their first stream event, and waiting
-      // for that event left Send visible (and no activity indicator) during
-      // the pause. The real typing frames still own the eventual state; this
-      // provisional one only covers the round-trip before the first arrives.
+      // Local interaction feedback must not wait for the external runtime to
+      // receive and reinterpret a synthetic server frame. Keep this fact
+      // separate: it begins synchronously here and a genuine lifecycle frame
+      // above hands ownership back to the server.
       if (!isCommand) {
-        dispatch({ type: "frame", frame: { kind: "typing", payload: true } });
+        setSubmitting(true);
       }
 
       try {
@@ -1950,11 +1998,8 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
         await sdk("frontend.submit", { input_kind: "text", text });
         await adoptConversation();
       } catch (error) {
-        // A refused submit has no server turn whose final typing frame can
-        // close the provisional one, so roll it back here. The reducer also
-        // removes the empty assistant turn this optimistic transition opened.
         if (!isCommand) {
-          dispatch({ type: "frame", frame: { kind: "typing", payload: false } });
+          setSubmitting(false);
         }
         report(error);
       }
@@ -2030,7 +2075,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     // `typing` is the only end-of-turn signal the server has — `false` means the
     // *logical* turn ended, not each internal drive — so it drives this
     // directly rather than being inferred from the last message's status.
-    isRunning: state.typing,
+    isRunning: state.typing || submitting,
 
     // A pending question blocks the turn on the server side — and worse, the
     // state machine coerces plain text in that phase into the *answer*, so a
@@ -2074,6 +2119,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     () => ({
       status,
       state,
+      submitting,
       say,
       report,
       dismissError,
@@ -2082,6 +2128,7 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     [
       status,
       state,
+      submitting,
       say,
       report,
       dismissError,
