@@ -614,11 +614,19 @@ const PdfView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
  * as a download. Only the iframe executes it, with an opaque origin. */
 const HtmlView: FC<{ path: string; size: FileViewSize }> = ({ path, size }) => {
   const { loaded, failure } = useText(path);
+  const mode = useMarkdownMode();
   if (failure) return <Unavailable path={path} reason={failure} size={size} />;
   if (!loaded) return <Loading path={path} size={size} />;
   if (loaded.truncated) return <Unavailable path={path} size={size}
     reason="This HTML file is too large to preview safely. Download it to open it." />;
 
+  if (mode === "source") {
+    return (
+      <Frame className={cn("document-scrollbar block w-full overflow-auto p-3", size === "full" ? "h-full" : "max-h-80")}>
+        <HighlightedCode code={loaded.text} language="html" transparent className="font-mono text-xs leading-relaxed break-words whitespace-pre-wrap" />
+      </Frame>
+    );
+  }
   return <HtmlApp key={loaded.text} html={loaded.text} path={path} size={size} />;
 };
 

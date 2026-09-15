@@ -61,6 +61,19 @@ describe("HTML previews", () => {
     expect(frame).toHaveClass("h-full");
     expect(screen.queryByRole("button", { name: "Run" })).toBeNull();
   });
+
+  it("shows highlighted source when Source is selected", async () => {
+    const html = "<!doctype html><h1>Hello</h1>";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true, headers: { get: () => null },
+      arrayBuffer: async () => new TextEncoder().encode(html).buffer,
+    }));
+    act(() => setMarkdownMode("source"));
+    const { container } = render(<FileView path="/tmp/source-mode.html" size="full" />);
+    await waitFor(() => expect(container.querySelector("pre")?.textContent).toContain(html));
+    expect(screen.queryByTitle("source-mode.html")).toBeNull();
+    act(() => setMarkdownMode("preview"));
+  });
 });
 
 describe("an SVG in the file viewer", () => {

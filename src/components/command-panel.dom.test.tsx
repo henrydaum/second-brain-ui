@@ -50,6 +50,14 @@ it("does not offer path picking for numeric fields", () => {
   expect(screen.queryByRole("button", { name: "Choose path" })).not.toBeInTheDocument();
 });
 
+it("uses a multiline field for long text settings", () => {
+  form = { field: { name: "subagent_prompt", default: "A long prompt" }, display: { prompt: "Prompt", input_mode: "text" } };
+  render(<CommandPanel />);
+  const field = screen.getByRole("textbox");
+  expect(field.tagName).toBe("TEXTAREA");
+  expect(field).toHaveAttribute("rows", "1");
+});
+
 describe("CommandPanel choices", () => {
   it("sends the pre-selected default when it is picked again", async () => {
     const user = userEvent.setup();

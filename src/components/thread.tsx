@@ -344,6 +344,32 @@ const ScrollToBottom: FC = () => (
 
 const Composer: FC = () => {
   const finePointer = useMediaQuery(FINE_POINTER_QUERY);
+  const input = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    let frame = 0;
+    const syncCaret = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const element = input.current;
+        if (element && document.activeElement === element) {
+          // iOS can leave the caret's paint layer at its pre-keyboard viewport
+          // coordinates. Reasserting the unchanged selection refreshes it
+          // without changing the draft or moving the insertion point.
+          element.setSelectionRange(element.selectionStart, element.selectionEnd);
+        }
+      });
+    };
+    viewport.addEventListener("resize", syncCaret);
+    viewport.addEventListener("scroll", syncCaret);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", syncCaret);
+      viewport.removeEventListener("scroll", syncCaret);
+    };
+  }, []);
 
   return (
       <ComposerPrimitive.Root className="relative flex w-full flex-col">
@@ -351,6 +377,7 @@ const Composer: FC = () => {
           <div className="sb-composer border-primary/25 data-[dragging=true]:border-ring focus-within:border-primary/60 flex w-full flex-col rounded-(--composer-radius) border bg-(--composer-bg) p-2 data-[dragging=true]:border-dashed">
             <ComposerAttachments />
             <ComposerPrimitive.Input
+              ref={input}
               data-slot="chat-composer-input"
               rows={1}
               autoFocus={finePointer}

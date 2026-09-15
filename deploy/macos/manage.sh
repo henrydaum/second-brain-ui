@@ -12,6 +12,8 @@ usage() {
 
 case "${1:-}" in
   update)
+    cd "$REPO_ROOT"
+    git pull --ff-only
     sh "$SCRIPT_DIR/build-release.sh"
     ;;
   status)

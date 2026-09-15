@@ -75,7 +75,8 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
        */}
       <div className="sb-header-controls flex shrink-0 items-center gap-0 pointer-fine:gap-2">
         <span
-          className="text-muted-foreground flex shrink-0 items-center gap-2 px-(--header-control-inset) text-xs"
+          className="text-muted-foreground flex shrink-0 items-center px-[calc(var(--header-control-inset)+2px)] text-xs"
+          title={label}
           // The transport's state, announced when it changes: a dropped stream
           // looks exactly like a thinking agent, and only this tells them apart.
           role="status"
@@ -89,10 +90,7 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
               status !== "open" && "animate-pulse",
             )}
           />
-          {/* The dot alone carries this below `sm`, where the header is
-              tight. */}
-          <span className="hidden sm:inline">{label}</span>
-          <span className="sr-only sm:hidden">{label}</span>
+          <span className="sr-only">{label}</span>
         </span>
 
         {/* Before Files, which keeps Files hard against the edge its drawer

@@ -83,7 +83,7 @@ sh deploy/macos/manage.sh status
 # Restart Caddy
 sh deploy/macos/manage.sh restart
 
-# Test, build, and atomically activate the checked-out source
+# Pull, test, build, and atomically activate the latest source
 sh deploy/macos/manage.sh update
 
 # Swap the current and previous successful releases
@@ -93,11 +93,9 @@ sh deploy/macos/manage.sh rollback
 sh deploy/macos/manage.sh set-token
 ```
 
-Updating source remains explicit and reviewable:
+The update command performs the fast-forward pull itself:
 
 ```bash
-git status --short
-git pull --ff-only
 sh deploy/macos/manage.sh update
 ```
 

@@ -1,6 +1,6 @@
 /** A conventional form renderer for Second Brain's state-machine commands. */
 
-import { useEffect, useId, useState, type FC, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FC, type FormEvent } from "react";
 import {
   CheckCircle2Icon,
   CheckIcon,
@@ -29,6 +29,7 @@ export const CommandPanel: FC = () => {
   const { command, form } = state;
   const display = form?.display;
   const fieldId = useId();
+  const textArea = useRef<HTMLTextAreaElement>(null);
   const [typed, setTyped] = useState("");
   const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -47,6 +48,13 @@ export const CommandPanel: FC = () => {
     setSelectedChoice(defaultIndex >= 0 ? defaultIndex : null);
     setAdvancing(false);
   }, [form]);
+
+  useEffect(() => {
+    const element = textArea.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${Math.min(element.scrollHeight, 320)}px`;
+  }, [typed, form]);
 
   if (!command && !form) return null;
 
@@ -237,17 +245,20 @@ export const CommandPanel: FC = () => {
                     </span>
                   )}
                 </label>
-                {mode === "json" ? (
+                {mode !== "number" ? (
                   <textarea
+                    ref={textArea}
                     id={fieldId}
-                  autoFocus
+                    autoFocus
                     disabled={busy}
                     required={form.field?.required !== false}
-                    rows={6}
+                    rows={mode === "json" ? 6 : 1}
                     value={typed}
                     onChange={(event) => setTyped(event.target.value)}
-                    // `text-base` for the reason the input below has it.
-                    className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/30 w-full resize-y rounded-lg border px-3 py-2 font-mono text-base outline-none focus-visible:ring-[3px]"
+                    className={cn(
+                      "border-input bg-background focus-visible:border-ring focus-visible:ring-ring/30 min-h-10 max-h-80 w-full resize-y overflow-y-auto rounded-lg border px-3 py-2 text-base leading-6 outline-none focus-visible:ring-[3px]",
+                      mode === "json" && "font-mono",
+                    )}
                   />
                 ) : (
                   <input
@@ -255,7 +266,7 @@ export const CommandPanel: FC = () => {
                     autoFocus
                     disabled={busy}
                     required={form.field?.required !== false}
-                    type={mode === "number" ? "number" : "text"}
+                    type="number"
                     step={
                       form.field?.type === "integer" ||
                       form.field?.type === "int"
