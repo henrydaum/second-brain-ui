@@ -12,6 +12,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* A real element for the standalone status-bar color sampler. Using the
+ * app's background token also follows manual theme changes in Settings. */
+.sb-status-bar-color { display: none; }
+@media (display-mode: standalone) {
+  .sb-status-bar-color {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background-color: var(--background);
+    pointer-events: none;
+    z-index: 100;
+  }
+}
+
 .sb-composer-footer {
   background: linear-gradient(to bottom, transparent, var(--background) 85%);
 }
@@ -43,6 +60,8 @@
   pointer-events: none;
   background: transparent;
   box-shadow: none;
+  -webkit-backdrop-filter: blur(var(--sb-header-blur));
+  backdrop-filter: blur(var(--sb-header-blur));
 }
 
 .sb-session-bar > * {
@@ -59,8 +78,6 @@
   inset: 0;
   pointer-events: none;
   background-color: color-mix(in srgb, var(--background) 0%, transparent);
-  -webkit-backdrop-filter: blur(var(--sb-header-blur));
-  backdrop-filter: blur(var(--sb-header-blur));
 }
 
 .sb-session-bar[data-populated="true"]::before {
@@ -74,6 +91,10 @@
 }
 
 @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .sb-session-bar {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
   .sb-session-bar::before {
     display: none;
   }
@@ -459,6 +480,10 @@
  * rings and left keyboard focus visible only on a handful of bordered inputs. */
 
 @media (pointer: coarse) {
+  .sb-header-controls [role="status"] {
+    width: var(--spacing-touch);
+    height: var(--spacing-touch);
+  }
   button,
   [role="button"],
   [role="menuitem"],
