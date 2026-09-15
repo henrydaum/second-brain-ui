@@ -40,6 +40,7 @@
   position: absolute;
   inset: 0 0 auto;
   z-index: 20;
+  isolation: isolate;
   pointer-events: none;
   background: transparent;
   box-shadow: none;
@@ -48,6 +49,11 @@
 .sb-session-bar > * {
   position: relative;
   z-index: 1;
+  /* Keep WebKit's backdrop-filter layer behind the header chrome. Without a
+   * separate compositing layer, iOS can intermittently blur these descendants
+   * along with the page beneath the header. */
+  transform: translateZ(0);
+  -webkit-font-smoothing: antialiased;
   pointer-events: auto;
 }
 
@@ -491,6 +497,15 @@
     min-height: 0;
   }
 
+  /* Header chrome has one geometry on every device. The general touch-target
+   * floor otherwise grows only its buttons, leaving the status dot spaced
+   * differently from the same control on desktop. */
+  .sb-header-controls button,
+  .sb-header-controls [role="button"] {
+    min-width: var(--spacing-control-sm);
+    min-height: var(--spacing-control-sm);
+  }
+
   /* The mobile remove affordance sits over the attachment itself. Give it a
    * reliably light surface in dark mode instead of relying on utility ordering
    * against the tooltip button's background styles. */
@@ -766,16 +781,6 @@
   color: color-mix(in srgb, var(--foreground) 78%, var(--background));
   padding-left: calc(1rem + env(safe-area-inset-left, 0px));
   padding-right: calc(1rem + env(safe-area-inset-right, 0px));
-}
-
-@media (max-width: 639px) {
-  /* Mobile WebKit occasionally leaves a large stale blur tile behind this
-   * fixed header as the visual viewport moves. The empty header does not need
-   * backdrop blur, and the populated state already has an opaque-enough tint. */
-  .sb-session-bar::before {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
 }
 
 /* Extend the same image into letterboxed margins, under the sharp preview. */
