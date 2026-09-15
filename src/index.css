@@ -12,23 +12,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* A real element for the standalone status-bar color sampler. Using the
- * app's background token also follows manual theme changes in Settings. */
-.sb-status-bar-color { display: none; }
-@media (display-mode: standalone) {
-  .sb-status-bar-color {
-    display: block;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 1px;
-    background-color: var(--background);
-    pointer-events: none;
-    z-index: 100;
-  }
-}
-
 .sb-composer-footer {
   background: linear-gradient(to bottom, transparent, var(--background) 85%);
 }
