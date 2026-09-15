@@ -53,6 +53,28 @@
   pointer-events: auto;
 }
 
+/* Trial for the iOS Home Screen top-edge blur: give the OS an opaque,
+ * viewport-fixed toolbar. Include the existing safe area in its background
+ * while keeping the controls at their original vertical position. Limit this
+ * to the single-column layout so it cannot cover a desktop sidebar. */
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone) and (max-width: 767px) {
+    .sb-session-bar {
+      position: fixed;
+      top: 0;
+      height: calc(3rem + env(safe-area-inset-top, 0px));
+      padding-top: env(safe-area-inset-top, 0px);
+      background-color: var(--background);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+
+    .sb-session-bar::before {
+      display: none;
+    }
+  }
+}
+
 /* Keep the empty hero untinted so its ambient gradient stays continuous.
  * Populated conversations add contrast behind the sharp title and controls. */
 .sb-session-bar::before {
