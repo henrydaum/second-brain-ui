@@ -83,7 +83,7 @@ sh deploy/macos/manage.sh status
 # Restart Caddy
 sh deploy/macos/manage.sh restart
 
-# Pull, test, build, and atomically activate the latest source
+# Test, build, and atomically activate the checked-out source
 sh deploy/macos/manage.sh update
 
 # Swap the current and previous successful releases
@@ -93,9 +93,16 @@ sh deploy/macos/manage.sh rollback
 sh deploy/macos/manage.sh set-token
 ```
 
-The update command performs the fast-forward pull itself:
+Settings has a separate **Update UI** panel. Enter the absolute path of the UI
+checkout on the Mac, then start the update. It pulls the configured upstream
+with `git pull --ff-only`, invokes the deployment command, and displays process
+output and the final exit status. Kernel process approvals still apply.
+The regular **Update** action continues to invoke the kernel's `/update` command.
+
+To perform the same update from a terminal in the checkout:
 
 ```bash
+git pull --ff-only
 sh deploy/macos/manage.sh update
 ```
 

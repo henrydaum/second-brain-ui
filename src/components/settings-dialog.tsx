@@ -3,6 +3,7 @@ import { ChevronRightIcon, LoaderCircleIcon } from "lucide-react";
 
 import { CommandPanel } from "@/components/command-panel";
 import { ThemePicker } from "@/components/theme-picker";
+import { UiUpdate } from "@/components/ui-update";
 import {
   FEATURED_COMMANDS,
   SETTINGS_PAGES,
@@ -87,6 +88,7 @@ const SystemActions: FC<{
         </p>
       )}
       <ThemePicker />
+      <UiUpdate />
       {SYSTEM_ACTIONS.map((action) => {
         const Icon = action.icon;
         return (
