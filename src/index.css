@@ -484,6 +484,13 @@
     min-height: 0;
   }
 
+  /* This is one compact two-state control, not two independent toolbar
+   * actions. Let its buttons share the available mobile footer width. */
+  .sb-file-mode button {
+    min-width: 0;
+    min-height: 0;
+  }
+
   /* The mobile remove affordance sits over the attachment itself. Give it a
    * reliably light surface in dark mode instead of relying on utility ordering
    * against the tooltip button's background styles. */
@@ -759,6 +766,16 @@
   color: color-mix(in srgb, var(--foreground) 78%, var(--background));
   padding-left: calc(1rem + env(safe-area-inset-left, 0px));
   padding-right: calc(1rem + env(safe-area-inset-right, 0px));
+}
+
+@media (max-width: 639px) {
+  /* Mobile WebKit occasionally leaves a large stale blur tile behind this
+   * fixed header as the visual viewport moves. The empty header does not need
+   * backdrop blur, and the populated state already has an opaque-enough tint. */
+  .sb-session-bar::before {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 /* Extend the same image into letterboxed margins, under the sharp preview. */

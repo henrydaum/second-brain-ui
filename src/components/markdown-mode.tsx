@@ -66,7 +66,7 @@ export const MarkdownModePicker: FC = () => {
     <div
       role="group"
       aria-label="How to show this file"
-      className="bg-muted/40 inline-flex shrink-0 items-center gap-0.5 rounded-md border p-0.5"
+      className="sb-file-mode bg-muted/40 inline-flex shrink-0 items-center gap-0.5 rounded-md border p-0.5"
     >
       {(
         [

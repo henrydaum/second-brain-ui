@@ -256,7 +256,7 @@ export const CommandPanel: FC = () => {
                     value={typed}
                     onChange={(event) => setTyped(event.target.value)}
                     className={cn(
-                      "border-input bg-background focus-visible:border-ring focus-visible:ring-ring/30 min-h-10 max-h-80 w-full resize-y overflow-y-auto rounded-lg border px-3 py-2 text-base leading-6 outline-none focus-visible:ring-[3px]",
+                      "border-input bg-background focus-visible:border-ring focus-visible:ring-ring/30 min-h-10 max-h-80 w-full resize-none overflow-y-auto rounded-lg border px-3 py-2 text-base leading-6 outline-none focus-visible:ring-[3px]",
                       mode === "json" && "font-mono",
                     )}
                   />

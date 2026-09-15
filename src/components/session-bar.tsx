@@ -73,9 +73,9 @@ export const SessionBar: FC<{ onOpenNav: () => void }> = ({ onOpenNav }) => {
        * phone has no room to spare and the touch floor has already spent it,
        * so down there the padding is the whole of it.
        */}
-      <div className="sb-header-controls flex shrink-0 items-center gap-0 pointer-fine:gap-2">
+      <div className="sb-header-controls flex shrink-0 items-center">
         <span
-          className="text-muted-foreground flex shrink-0 items-center px-[calc(var(--header-control-inset)+2px)] text-xs"
+          className="text-muted-foreground flex size-8 shrink-0 items-center justify-center text-xs"
           title={label}
           // The transport's state, announced when it changes: a dropped stream
           // looks exactly like a thinking agent, and only this tells them apart.
