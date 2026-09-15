@@ -40,20 +40,16 @@
   position: absolute;
   inset: 0 0 auto;
   z-index: 20;
-  isolation: isolate;
   pointer-events: none;
   background: transparent;
   box-shadow: none;
+  -webkit-backdrop-filter: blur(var(--sb-header-blur));
+  backdrop-filter: blur(var(--sb-header-blur));
 }
 
 .sb-session-bar > * {
   position: relative;
   z-index: 1;
-  /* Keep WebKit's backdrop-filter layer behind the header chrome. Without a
-   * separate compositing layer, iOS can intermittently blur these descendants
-   * along with the page beneath the header. */
-  transform: translateZ(0);
-  -webkit-font-smoothing: antialiased;
   pointer-events: auto;
 }
 
@@ -65,8 +61,6 @@
   inset: 0;
   pointer-events: none;
   background-color: color-mix(in srgb, var(--background) 0%, transparent);
-  -webkit-backdrop-filter: blur(var(--sb-header-blur));
-  backdrop-filter: blur(var(--sb-header-blur));
 }
 
 .sb-session-bar[data-populated="true"]::before {
@@ -80,6 +74,10 @@
 }
 
 @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .sb-session-bar {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
   .sb-session-bar::before {
     display: none;
   }
@@ -497,13 +495,10 @@
     min-height: 0;
   }
 
-  /* Header chrome has one geometry on every device. The general touch-target
-   * floor otherwise grows only its buttons, leaving the status dot spaced
-   * differently from the same control on desktop. */
-  .sb-header-controls button,
-  .sb-header-controls [role="button"] {
-    min-width: var(--spacing-control-sm);
-    min-height: var(--spacing-control-sm);
+  /* Give the dot the same centered slot as the 44px touch buttons. */
+  .sb-header-controls [role="status"] {
+    width: var(--spacing-touch);
+    height: var(--spacing-touch);
   }
 
   /* The mobile remove affordance sits over the attachment itself. Give it a
