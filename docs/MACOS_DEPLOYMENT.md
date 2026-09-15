@@ -93,10 +93,10 @@ sh deploy/macos/manage.sh rollback
 sh deploy/macos/manage.sh set-token
 ```
 
-Settings has a separate **Update UI** panel. It automatically locates the UI
-checkout from the installed LaunchAgent's `WorkingDirectory`, then pulls the configured upstream
-with `git pull --ff-only`, invokes the deployment command, and displays process
-output and the final exit status. Kernel process approvals still apply.
+The optional store package `command_update_ui` provides `/update_ui`.
+Install it with `/packages install command_update_ui`. It discovers the checkout
+from the installed LaunchAgent, pulls with `git pull --ff-only`, and runs the
+deployment command with progress messages in the normal command interface.
 The regular **Update** action continues to invoke the kernel's `/update` command.
 
 To perform the same update from a terminal in the checkout:
