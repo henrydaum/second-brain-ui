@@ -1555,6 +1555,29 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   refreshConversationsRef.current = refreshConversations;
 
   /**
+   * Re-read the command catalogue.
+   *
+   * **`command.list` was read exactly once, at boot.** Which was right when the
+   * vocabulary was fixed, and stopped being right the moment a command could be
+   * installed — after `/plugin install` the command it just added was missing
+   * from Settings, missing from the composer's idea of what a slash command is,
+   * and stayed missing until the page was reloaded. The install reports success
+   * and the thing installed is nowhere: as far as the app is concerned it did
+   * not happen.
+   *
+   * Kept on failure rather than emptied. A catalogue that momentarily could not
+   * be read is not a session with no commands, and Settings drawn empty is the
+   * symptom `loadCatalogue` above goes out of its way not to invent.
+   */
+  const refreshCommands = useCallback(async () => {
+    try {
+      setCommands(await listCommands());
+    } catch (error) {
+      report(error);
+    }
+  }, [report]);
+
+  /**
    * Keep the header's row in step with the list.
    *
    * A conversation the first message just created is not in the copy of the
@@ -1640,7 +1663,12 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     if (!wasTyping.current) return;
     wasTyping.current = false;
     void refreshConversations();
-  }, [state.typing, refreshConversations]);
+    // The catalogue too, and for the same reason: installing a command is
+    // something a turn *does*, whether it was `/plugin install` typed into the
+    // composer or the agent reaching for the same tool on your behalf. The end
+    // of the turn is when the new command exists.
+    void refreshCommands();
+  }, [state.typing, refreshConversations, refreshCommands]);
 
   /**
    * Ask again while nothing is happening.
@@ -1674,13 +1702,29 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     const refreshIfWatched = () => {
       if (!document.hidden) void refreshConversations();
     };
+    /**
+     * The catalogue, on coming back to the tab only — not on the timer.
+     *
+     * The turn-end refresh already covers a command installed *here*, so what
+     * is left is one installed somewhere else: another browser, or the store on
+     * the Mac Mini. That is a thing you do and then come back from, which is
+     * exactly what a `visibilitychange` is. Putting it on the minute timer as
+     * well would double the idle traffic to catch an install nobody is waiting
+     * on — the list only has to be right by the time somebody looks at it, and
+     * this fires before they can.
+     */
+    const refreshOnReturn = () => {
+      if (document.hidden) return;
+      void refreshConversations();
+      void refreshCommands();
+    };
     const timer = window.setInterval(refreshIfWatched, IDLE_REFRESH_MS);
-    document.addEventListener("visibilitychange", refreshIfWatched);
+    document.addEventListener("visibilitychange", refreshOnReturn);
     return () => {
       window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", refreshIfWatched);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
     };
-  }, [status, state.typing, refreshConversations]);
+  }, [status, state.typing, refreshConversations, refreshCommands]);
 
   /**
    * Fetch the page above what is on screen and prepend it.
