@@ -1518,16 +1518,26 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
   const refreshConversations = useCallback(async () => {
     try {
       const held = conversationsRef.current;
+      const limit = Math.min(
+        Math.max(held.length, CONVERSATION_PAGE),
+        MOST_CONVERSATIONS_AT_ONCE,
+      );
       const page = await listConversations({
-        limit: Math.min(
-          Math.max(held.length, CONVERSATION_PAGE),
-          MOST_CONVERSATIONS_AT_ONCE,
-        ),
+        limit,
         category: filterCategory(conversationFilterRef.current),
       });
+      // **A short page is the whole list, and is therefore authoritative.**
+      // The tail below is kept because a read capped at `limit` cannot speak
+      // for rows past it — but a read that came back *under* its own limit was
+      // not capped, so every row this user has is in it, and anything still
+      // held past its end is a row the server no longer has. Keeping that tail
+      // is what left a deleted conversation in the sidebar until a reload: the
+      // row it had just lost was the one row the merge put back, every minute,
+      // forever.
+      const complete = page.items.length < limit;
       const refreshed = new Set(page.items.map((item) => item.id));
       setConversations(
-        held.length <= page.items.length
+        complete || held.length <= page.items.length
           ? page.items
           : [
               ...page.items,
@@ -1795,6 +1805,16 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     async (id: number) => {
       try {
         await sdk("conv.delete", { id });
+        // **Dropped here as well as re-read below.** The re-read is the truth,
+        // but it can only speak for the rows it covers: past
+        // `MOST_CONVERSATIONS_AT_ONCE` the merge keeps what is already held,
+        // and a row deleted out of that tail would survive its own deletion.
+        // The ref is set alongside the state because `refreshConversations`
+        // reads it on the next line, before React has re-rendered.
+        conversationsRef.current = conversationsRef.current.filter(
+          (item) => item.id !== id,
+        );
+        setConversations(conversationsRef.current);
         await refreshConversations();
         // Deleting the one being read leaves the session pointing at nothing,
         // which is simply the empty-composer state now — the next message
