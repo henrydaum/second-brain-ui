@@ -1392,9 +1392,25 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
     [report],
   );
 
+  /**
+   * Re-read the session after any command, not after three named ones.
+   *
+   * **The names were `mode`, `llm` and `agent`, and the list was the bug.** It
+   * is a client-side guess at which commands can move the security mode, the
+   * model or the agent profile — and every other route to the same state was
+   * therefore invisible until the stream next opened or the page was reloaded.
+   * `/config` writes settings by name, which is one such route; a command
+   * installed from the store is another, and it cannot be in a list written
+   * before it existed. Same shape of mistake as reading `command.list` once:
+   * the app deciding in advance what the server is allowed to have done.
+   *
+   * Every command instead, because a command is the only thing on this surface
+   * that can change any of it — ordinary chat cannot write config — and because
+   * running one is rare and deliberate. The cost is one `session.get` and two
+   * `config.read`s per command run, which is nothing beside the command itself.
+   */
   useEffect(() => {
     if (!state.command?.name) return;
-    if (!["mode", "llm", "agent"].includes(state.command.name)) return;
     if (state.command.status !== "finished") return;
     void syncSession();
   }, [state.command?.name, state.command?.status, syncSession]);
@@ -1490,16 +1506,6 @@ export function SecondBrainProvider({ children }: PropsWithChildren) {
 
   /* ── Conversations ──────────────────────────────────────────────── */
 
-  /**
-   * Read the list from the top, as far as it is currently shown.
-   *
-   * **One Request, however many pages are open.** Re-reading only the first
-   * page would drop everything a person had loaded past it, on a timer; asking
-   * for each page again would be a Request per page for the same reason. A
-   * single read of `min(what is shown, the server's cap)` is both, and is
-   * exactly right: this exists to catch retitles and reordering, and both of
-   * those move rows *within* what is already on screen.
-   */
   /**
    * Re-read the list from the top, as far as it is currently shown.
    *

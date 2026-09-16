@@ -117,6 +117,51 @@ describe("the command catalogue", () => {
     );
   });
 
+  /**
+   * The same read-once mistake, one level up: the session was re-read only
+   * after a command named `mode`, `llm` or `agent`. Any other route to the
+   * model, the agent profile or the security mode — `/config`, or a command
+   * installed from the store, which no such list can name in advance — left the
+   * chrome showing what those settings used to be.
+   */
+  it("re-reads the session after any command, not three named ones", async () => {
+    render(
+      <SecondBrainProvider>
+        <Probe />
+      </SecondBrainProvider>,
+    );
+    await waitFor(() => expect(sdk).toHaveBeenCalled());
+    sdk.mockClear();
+
+    await act(async () => {
+      receiveFrame?.({
+        kind: "tool_status",
+        payload: {
+          kind: "command",
+          call_id: "c1",
+          command_name: "config",
+          status: "running",
+        },
+      });
+    });
+    await act(async () => {
+      receiveFrame?.({
+        kind: "tool_status",
+        payload: {
+          kind: "command",
+          call_id: "c1",
+          command_name: "config",
+          status: "finished",
+          ok: true,
+        },
+      });
+    });
+
+    await waitFor(() =>
+      expect(sdk).toHaveBeenCalledWith("session.get", { details: true }),
+    );
+  });
+
   it("picks up one installed elsewhere, on coming back to the tab", async () => {
     render(
       <SecondBrainProvider>
